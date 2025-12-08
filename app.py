@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 st.title("Recursive STAC Links Extractor (STAC Browser Friendly)")
 
@@ -14,11 +14,7 @@ all_links = []
 
 def normalize_stac_url(url):
 """Convert STAC Browser URL to direct JSON URL if needed."""
-# Remove hash fragment
-url = url.split('#')[0]
-# If URL ends with /, remove it
-url = url.rstrip('/')
-# If URL ends with .json, keep as is; else, assume user pasted browser folder URL
+url = url.split('#')[0].rstrip('/')
 if not url.endswith('.json'):
 st.warning("Please ensure the URL points to a JSON file (item or collection).")
 return url
@@ -38,7 +34,6 @@ except Exception as e:
     st.warning(f"Failed to fetch {url}: {e}")
     return
 
-# Extract item/collection links
 links = data.get("links", [])
 for link in links:
     href = link.get("href")
@@ -59,11 +54,9 @@ crawl_stac(root_url)
 ```
 if all_links:
     st.success(f"Found {len(all_links)} links!")
-    # Display clickable links
     for idx, link in enumerate(all_links, 1):
         st.markdown(f"{idx}. [{link}]({link})")
-    
-    # Optional: download links as CSV
+
     import pandas as pd
     df = pd.DataFrame({"Link Number": list(range(1, len(all_links)+1)), "URL": all_links})
     csv = df.to_csv(index=False).encode("utf-8")
