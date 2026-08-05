@@ -64,7 +64,10 @@ def resolve_relative_url(base_url: str, relative_url: str) -> str:
 
 
 def format_datetime_display(iso_str: str) -> str:
-    """Best-effort friendly formatting of an ISO 8601 datetime string.
+    """Format an ISO 8601 datetime string to match OAM's own date display
+    exactly, e.g. "Aug 5, 2026 12:00 AM" (no leading zero on day or hour).
+    The value is kept in UTC as recorded in the STAC item — no timezone
+    conversion is applied.
     Falls back to the raw string rather than dropping it if parsing fails.
     """
     if not iso_str:
@@ -77,7 +80,15 @@ def format_datetime_display(iso_str: str) -> str:
         # which fromisoformat can choke on — trim to microsecond precision.
         s = re.sub(r"(\.\d{6})\d+", r"\1", s)
         dt = datetime.fromisoformat(s)
-        return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        month = dt.strftime("%b")
+        day = str(dt.day)
+        year = dt.year
+        hour12 = dt.strftime("%I").lstrip("0") or "12"
+        minute = dt.strftime("%M")
+        ampm = dt.strftime("%p")
+
+        return f"{month} {day}, {year} {hour12}:{minute} {ampm}"
     except Exception:
         return iso_str
 
