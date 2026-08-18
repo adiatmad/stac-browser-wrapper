@@ -5,6 +5,7 @@ import re
 import io
 import csv
 from datetime import datetime
+import json  # NEW: for escaping text in copy buttons
 
 
 st.title("Recursive STAC Links Extractor & TIFF URL Generator")
@@ -368,31 +369,62 @@ if root_url_input:
                     "left blank since STAC has no equivalent field."
                 )
 
+                # NEW: Inject the JavaScript copy function once for all buttons
+                st.markdown("""
+                <script>
+                function copyField(text, btn) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        const original = btn.textContent;
+                        btn.textContent = 'Copied!';
+                        setTimeout(() => { btn.textContent = original; }, 2000);
+                    });
+                }
+                </script>
+                """, unsafe_allow_html=True)
+
                 if oam_items:
+                    # NEW: Define field order and labels
+                    field_mappings = [
+                        ("Item URL", "item_url"),
+                        ("Title", "title"),
+                        ("Platform", "platform"),
+                        ("Sensor", "sensor"),
+                        ("Date start", "date_start"),
+                        ("Date end", "date_end"),
+                        ("Provider", "provider"),
+                        ("Tags", "tags"),
+                        ("License (OAM default)", "license_oam_default"),
+                        ("STAC license reference", "stac_license_reference"),
+                        ("Image source URL", "image_source_url"),
+                    ]
+
                     for idx, meta in enumerate(oam_items, 1):
                         with st.expander(f"{idx}. {meta['title'] or meta['item_url']}"):
-                            block = (
-                                f"Title: {meta['title']}\n"
-                                f"Platform: {meta['platform']}\n"
-                                f"Sensor: {meta['sensor']}\n"
-                                f"Date start: {meta['date_start']}\n"
-                                f"Date end: {meta['date_end']}\n"
-                                f"Provider: {meta['provider']}\n"
-                                f"Tags: {meta['tags']}\n"
-                                f"License: {meta['license_oam_default']}\n"
-                                f"Image source (Url): {meta['image_source_url']}\n"
-                            )
-                            st.code(block, language=None)
+                            # Render each field as a row with copy button
+                            for label, key in field_mappings:
+                                value = meta.get(key, "")
+                                # Use columns: label, value, copy button
+                                cols = st.columns([2, 4, 1])
+                                with cols[0]:
+                                    st.markdown(f"**{label}**")
+                                with cols[1]:
+                                    # Display the value as plain text
+                                    st.markdown(value)
+                                with cols[2]:
+                                    # Generate a copy button with the value as argument
+                                    # json.dumps escapes the string for JavaScript
+                                    button_html = f'<button onclick="copyField({json.dumps(value)}, this)">Copy</button>'
+                                    st.markdown(button_html, unsafe_allow_html=True)
 
-                            if meta["stac_license_reference"]:
+                            # Keep the original note about the STAC license if present
+                            if meta.get("stac_license_reference"):
                                 st.caption(
                                     f"STAC item's own license field: **{meta['stac_license_reference']}** — "
                                     f"the OAM License above defaults to {OAM_DEFAULT_LICENSE} regardless; "
                                     f"double-check this if the source license isn't CC-BY."
                                 )
 
-                            st.caption(f"Source item: {meta['item_url']}")
-
+                    # CSV download (unchanged)
                     csv_buffer = io.StringIO()
                     writer = csv.DictWriter(csv_buffer, fieldnames=OAM_FIELDNAMES)
                     writer.writeheader()
