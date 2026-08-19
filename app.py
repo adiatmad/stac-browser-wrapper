@@ -16,9 +16,11 @@ tiff_links = []  # list of dicts: {"item_url": str, "tiff_url": str, "guessed": 
 oam_items = []  # list of dicts from extract_oam_metadata()
 
 OAM_DEFAULT_LICENSE = "CC-BY 4.0"  # OAM's default license option; not auto-matched to the STAC item's own license
+OAM_UPLOADER_ISSUE_URL = "https://github.com/hotosm/openaerialmap/issues/296"
 OAM_FIELDNAMES = [
     "item_url", "title", "platform", "sensor", "date_start", "date_end",
     "provider", "tags", "license_oam_default", "stac_license_reference", "image_source_url",
+    "longitude_risk", "reprojection_command",
 ]
 
 
@@ -103,6 +105,53 @@ def guess_provider_name(domain: str) -> str:
     return domain
 
 
+def compute_utm_epsg(lon: float, lat: float) -> int:
+    """Compute the UTM EPSG code (WGS84 datum) for a given lon/lat."""
+    zone = int((lon + 180) // 6) + 1
+    zone = max(1, min(60, zone))
+    return (32600 if lat >= 0 else 32700) + zone
+
+
+def build_reprojection_command(item_id: str, epsg: int) -> str:
+    """gdalwarp command to reproject imagery into the given UTM zone, per
+    the workaround documented in OAM issue #296."""
+    src_name = f"{item_id}.tif"
+    dst_name = f"{item_id}_utm.tif"
+    return (
+        f"gdalwarp -multi -wo NUM_THREADS=ALL_CPUS -t_srs EPSG:{epsg} -r cubic -of COG \\\n"
+        f"  -co COMPRESS=JPEG -co QUALITY=85 -co OVERVIEWS=IGNORE_EXISTING \\\n"
+        f"  -co BLOCKSIZE=512 -co BIGTIFF=YES -co NUM_THREADS=ALL_CPUS \\\n"
+        f"  {src_name} {dst_name}"
+    )
+
+
+def check_oam_longitude_risk(item_data: dict) -> dict:
+    """Best-effort heuristic flag for a known OAM uploader bug
+    (see OAM_UPLOADER_ISSUE_URL): the old transcoder silently fails on
+    geographic-CRS (e.g. EPSG:4326) imagery whose longitude exceeds +/-90.
+
+    This STAC item doesn't tell us the raster's true CRS (no proj:epsg
+    extension present), so this checks the item's WGS84 bbox as a
+    heuristic trigger only — not a confirmed diagnosis.
+    """
+    bbox = item_data.get("bbox")
+    if not bbox or len(bbox) < 4:
+        return {"at_risk": False, "epsg": None, "command": ""}
+
+    west, south, east, north = bbox[0], bbox[1], bbox[2], bbox[3]
+    at_risk = abs(west) > 90 or abs(east) > 90
+
+    if not at_risk:
+        return {"at_risk": False, "epsg": None, "command": ""}
+
+    center_lon = (west + east) / 2
+    center_lat = (south + north) / 2
+    epsg = compute_utm_epsg(center_lon, center_lat)
+    item_id = item_data.get("id", "item")
+
+    return {"at_risk": True, "epsg": epsg, "command": build_reprojection_command(item_id, epsg)}
+
+
 def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
     """Map available STAC fields to OpenAerialMap upload-form fields.
 
@@ -129,6 +178,8 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
     date_start = dt_display
     date_end = dt_display
 
+    longitude_risk = check_oam_longitude_risk(item_data)
+
     return {
         "item_url": item_url,
         "title": title,
@@ -141,6 +192,8 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
         "license_oam_default": OAM_DEFAULT_LICENSE,
         "stac_license_reference": item_data.get("license", ""),
         "image_source_url": tiff_url or "",
+        "longitude_risk": longitude_risk["at_risk"],
+        "reprojection_command": longitude_risk["command"],
     }
 
 
@@ -368,6 +421,12 @@ if root_url_input:
                     "left blank since STAC has no equivalent field."
                 )
 
+                st.caption(
+                    f"Note: OAM's uploader has a known bug ([issue #296]({OAM_UPLOADER_ISSUE_URL})) where "
+                    "geographic-CRS imagery beyond ±90° longitude can fail transcoding silently. Items below "
+                    "flag this automatically when it may apply."
+                )
+
                 if oam_items:
                     for idx, meta in enumerate(oam_items, 1):
                         with st.expander(f"{idx}. {meta['title'] or meta['item_url']}"):
@@ -388,6 +447,16 @@ if root_url_input:
                                     st.markdown(f"**{label}**")
                                 with col_value:
                                     st.code(value, language=None)
+
+                            if meta["longitude_risk"]:
+                                st.warning(
+                                    "This item's bounding box crosses ±90° longitude. If the source imagery "
+                                    f"is in a geographic CRS (e.g. EPSG:4326), OAM's uploader may fail silently "
+                                    f"(see [issue #296]({OAM_UPLOADER_ISSUE_URL})). Workaround — reproject to "
+                                    "the local UTM zone before uploading (replace the input filename with your "
+                                    "actual downloaded file):"
+                                )
+                                st.code(meta["reprojection_command"], language="bash")
 
                             if meta["stac_license_reference"]:
                                 st.caption(
