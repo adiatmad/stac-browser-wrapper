@@ -19,7 +19,7 @@ OAM_DEFAULT_LICENSE = "CC-BY 4.0"  # OAM's default license option; not auto-matc
 OAM_UPLOADER_ISSUE_URL = "https://github.com/hotosm/openaerialmap/issues/296"
 OAM_FIELDNAMES = [
     "item_url", "title", "platform", "sensor", "date_start", "date_end",
-    "provider", "tags", "license_oam_default", "stac_license_reference", "image_source_url",
+    "image_source_url", "provider", "tags", "license_oam_default", "stac_license_reference",
     "longitude_risk", "reprojection_command",
 ]
 
@@ -426,6 +426,7 @@ if root_url_input:
                     "geographic-CRS imagery beyond ±90° longitude can fail transcoding silently. Items below "
                     "flag this automatically when it may apply."
                 )
+                st.link_button("Open OAM Upload Page", "https://map.openaerialmap.org/#/upload")
 
                 if oam_items:
                     for idx, meta in enumerate(oam_items, 1):
@@ -436,10 +437,10 @@ if root_url_input:
                                 ("Sensor", meta["sensor"]),
                                 ("Date start", meta["date_start"]),
                                 ("Date end", meta["date_end"]),
+                                ("Image source (Url)", meta["image_source_url"]),
                                 ("Provider", meta["provider"]),
                                 ("Tags", meta["tags"]),
                                 ("License", meta["license_oam_default"]),
-                                ("Image source (Url)", meta["image_source_url"]),
                             ]
                             for label, value in fields:
                                 col_label, col_value = st.columns([1, 3])
@@ -457,6 +458,27 @@ if root_url_input:
                                     "actual downloaded file):"
                                 )
                                 st.code(meta["reprojection_command"], language="bash")
+
+                                with st.expander("How to run this command on Windows (first time using GDAL)"):
+                                    st.markdown(
+                                        "1. **Download the image** — click the *Image source (Url)* link above "
+                                        "(or right-click it → Save link as) and save the `.tif` file somewhere "
+                                        "easy to find, e.g. your Downloads folder.\n"
+                                        "2. **Install GDAL** — download and run the "
+                                        "[OSGeo4W installer](https://trac.osgeo.org/osgeo4w/) "
+                                        "(\"Express Web Install\"). Tick **GDAL** in the package list and finish "
+                                        "the install.\n"
+                                        "3. **Open the OSGeo4W Shell** from the Start Menu — it comes with "
+                                        "`gdalwarp` already set up, no extra configuration needed.\n"
+                                        "4. **Go to the folder with your file.** In that shell, type `cd ` "
+                                        "followed by the folder path and press Enter, e.g.:\n"
+                                        "   ```\n   cd C:\\Users\\YourName\\Downloads\n   ```\n"
+                                        "5. **Paste the command above** into the shell and press Enter. Large "
+                                        "images can take a minute or two.\n"
+                                        "6. **Find the result** — a new file ending in `_utm.tif` will appear "
+                                        "in that same folder. Upload **that** file to OAM instead of the "
+                                        "original."
+                                    )
 
                             if meta["stac_license_reference"]:
                                 st.caption(
