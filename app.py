@@ -116,14 +116,15 @@ def build_reprojection_command(item_id: str, epsg: int) -> str:
     """gdalwarp command to reproject imagery into the given UTM zone, per
     the workaround documented in OAM issue #296, with -srcnodata 0 -dstalpha
     added to handle missing data properly.
+    Returns the command as a single line.
     """
     src_name = f"{item_id}.tif"
     dst_name = f"{item_id}_utm.tif"
     return (
-        f"gdalwarp -multi -wo NUM_THREADS=ALL_CPUS -t_srs EPSG:{epsg} -r cubic -srcnodata 0 -dstalpha -of COG \\\n"
-        f"  -co COMPRESS=JPEG -co QUALITY=85 -co OVERVIEWS=IGNORE_EXISTING \\\n"
-        f"  -co BLOCKSIZE=512 -co BIGTIFF=YES -co NUM_THREADS=ALL_CPUS \\\n"
-        f"  {src_name} {dst_name}"
+        f"gdalwarp -multi -wo NUM_THREADS=ALL_CPUS -t_srs EPSG:{epsg} -r cubic -srcnodata 0 -dstalpha -of COG "
+        f"-co COMPRESS=JPEG -co QUALITY=85 -co OVERVIEWS=IGNORE_EXISTING "
+        f"-co BLOCKSIZE=512 -co BIGTIFF=YES -co NUM_THREADS=ALL_CPUS "
+        f"{src_name} {dst_name}"
     )
 
 
