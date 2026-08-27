@@ -7,13 +7,20 @@ import csv
 from datetime import datetime
 
 
-st.title("Recursive STAC Links Extractor & TIFF URL Generator")
+st.title("STAC-to-OAM Tool")
 
 root_url_input = st.text_input("Enter STAC Browser URL")
+st.caption(
+    "Examples — Vantor (STAC Browser link): "
+    "https://browser.moregeo.it/external/vantor-opendata.s3.amazonaws.com/events/Bordeaux-France-Wildfire-July-2026/B160001101B07110.json  \n"
+    "Examples — Planet (direct STAC URL): "
+    "https://data.source.coop/planet/disasterdata/nepal-flash-flood-2026-08-26/post-event/catalog.json"
+)
 
 all_links = []
 tiff_links = []  # list of dicts: {"item_url": str, "tiff_url": str, "guessed": bool}
 oam_items = []  # list of dicts from extract_oam_metadata()
+collection_license_cache = {}  # collection URL -> license string ("" if none), avoids refetching per item
 
 OAM_DEFAULT_LICENSE = "CC-BY 4.0"  # OAM's default license option; not auto-matched to the STAC item's own license
 OAM_UPLOADER_ISSUE_URL = "https://github.com/hotosm/openaerialmap/issues/296"
@@ -25,20 +32,26 @@ OAM_FIELDNAMES = [
 
 
 def extract_real_stac_url(browser_url: str) -> str:
-    """Extract and normalize the real STAC JSON URL from a STAC Browser URL.
+    """Extract and normalize the real STAC JSON URL from a STAC Browser URL,
+    or pass through a direct STAC catalog/item URL unchanged.
 
-    Supports both the older hash-based format used by some browsers
-    (https://browser.example/#/external/<url>) and the newer path-based
-    format used by Vantor's browser
-    (https://browser.example/external/<url>).
+    Supports three input shapes:
+    - the older hash-based browser format (.../#/external/<url>)
+    - the newer path-based browser format used by Vantor's browser
+      (.../external/<url>)
+    - a direct STAC catalog/item URL with no browser wrapper at all
+      (e.g. https://data.source.coop/.../catalog.json) — treated as
+      already being the real STAC URL.
     """
     if "#/external/" in browser_url:
         raw_url = browser_url.split("#/external/")[-1].strip()
     elif "/external/" in browser_url:
         raw_url = browser_url.split("/external/")[-1].strip()
     else:
-        st.error("This does not look like a STAC Browser URL (no '/external/' segment found)")
-        return None
+        # No browser wrapper detected — assume this is already a direct
+        # STAC URL. Invalid input still fails gracefully later, when
+        # fetch_json() can't reach it.
+        raw_url = browser_url.strip()
 
     real_url = unquote(raw_url)
 
@@ -95,13 +108,19 @@ def format_datetime_display(iso_str: str) -> str:
         return iso_str
 
 
-def guess_provider_name(domain: str) -> str:
-    """Best-effort provider display name from the item's own domain."""
-    d = domain.lower()
-    if "vantor" in d:
+def guess_provider_name(item_url: str) -> str:
+    """Best-effort provider display name from the item's URL — checks the
+    domain (Vantor, Maxar) and, for providers hosted on shared platforms
+    like source.coop, the URL path (Planet)."""
+    parsed = urlparse(item_url)
+    domain = parsed.netloc.lower()
+    path = parsed.path.lower()
+    if "vantor" in domain:
         return "Vantor"
-    if "maxar" in d:
+    if "maxar" in domain:
         return "Maxar"
+    if "planet" in path:
+        return "Planet"
     return domain
 
 
@@ -114,14 +133,15 @@ def compute_utm_epsg(lon: float, lat: float) -> int:
 
 def build_reprojection_command(item_id: str, epsg: int) -> str:
     """gdalwarp command to reproject imagery into the given UTM zone, per
-    the workaround documented in OAM issue #296, with -srcnodata 0 -dstalpha
-    added to handle missing data properly.
-    Returns the command as a single line.
+    the workaround documented in OAM issue #296.
+    Kept as a single line (no backslash line-continuation) so it works
+    unmodified in cmd.exe, PowerShell, and bash/zsh alike — backslash
+    continuation is bash-only and breaks silently in cmd.exe.
     """
     src_name = f"{item_id}.tif"
     dst_name = f"{item_id}_utm.tif"
     return (
-        f"gdalwarp -multi -wo NUM_THREADS=ALL_CPUS -t_srs EPSG:{epsg} -r cubic -srcnodata 0 -dstalpha -of COG "
+        f"gdalwarp -multi -wo NUM_THREADS=ALL_CPUS -t_srs EPSG:{epsg} -r cubic -of COG "
         f"-co COMPRESS=JPEG -co QUALITY=85 -co OVERVIEWS=IGNORE_EXISTING "
         f"-co BLOCKSIZE=512 -co BIGTIFF=YES -co NUM_THREADS=ALL_CPUS "
         f"{src_name} {dst_name}"
@@ -155,6 +175,37 @@ def check_oam_longitude_risk(item_data: dict) -> dict:
     return {"at_risk": True, "epsg": epsg, "command": build_reprojection_command(item_id, epsg)}
 
 
+def get_collection_license(item_url: str, item_data: dict) -> str:
+    """Fallback for providers (e.g. Planet) that don't declare a license on
+    the Item itself, only on its parent Collection. Fetches and caches the
+    Collection's license per unique collection URL, so it's fetched once
+    total per collection rather than once per item in it."""
+    links = item_data.get("links", [])
+
+    collection_href = None
+    for link in links:
+        if link.get("rel") == "collection":
+            collection_href = link.get("href")
+            break
+    if not collection_href:
+        for link in links:
+            if link.get("rel") == "parent":
+                collection_href = link.get("href")
+                break
+    if not collection_href:
+        return ""
+
+    collection_url = resolve_relative_url(item_url, collection_href)
+
+    if collection_url in collection_license_cache:
+        return collection_license_cache[collection_url]
+
+    collection_data = fetch_json(collection_url)
+    license_value = (collection_data or {}).get("license", "") or ""
+    collection_license_cache[collection_url] = license_value
+    return license_value
+
+
 def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
     """Map available STAC fields to OpenAerialMap upload-form fields.
 
@@ -164,13 +215,15 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
     field, so anything auto-generated here would be a guess, not metadata.
     """
     properties = item_data.get("properties", {})
-    domain = urlparse(item_url).netloc
 
     title = properties.get("title") or item_data.get("id", "")
 
+    instruments = properties.get("instruments") or []
     constellation = properties.get("constellation", "") or ""
     vehicle_name = properties.get("vehicle_name", "") or ""
-    if constellation and vehicle_name:
+    if instruments:
+        sensor = ", ".join(instruments)
+    elif constellation and vehicle_name:
         sensor = f"{constellation.title()} {vehicle_name}"
     else:
         sensor = constellation.title() or vehicle_name
@@ -183,6 +236,12 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
 
     longitude_risk = check_oam_longitude_risk(item_data)
 
+    # Some providers only declare a license on the parent Collection, not
+    # on the Item itself — fall back to that when the Item has none.
+    stac_license = item_data.get("license", "") or ""
+    if not stac_license:
+        stac_license = get_collection_license(item_url, item_data)
+
     return {
         "item_url": item_url,
         "title": title,
@@ -190,10 +249,10 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
         "sensor": sensor,
         "date_start": date_start,
         "date_end": date_end,
-        "provider": guess_provider_name(domain),
+        "provider": guess_provider_name(item_url),
         "tags": "",
         "license_oam_default": OAM_DEFAULT_LICENSE,
-        "stac_license_reference": item_data.get("license", ""),
+        "stac_license_reference": stac_license,
         "image_source_url": tiff_url or "",
         "longitude_risk": longitude_risk["at_risk"],
         "reprojection_command": longitude_risk["command"],
@@ -476,8 +535,8 @@ if root_url_input:
                                         "4. **Go to the folder with your file.** In that shell, type `cd ` "
                                         "followed by the folder path and press Enter, e.g.:\n"
                                         "   ```\n   cd C:\\Users\\YourName\\Downloads\n   ```\n"
-                                        "5. **Paste the command above** into the shell and press Enter. Large "
-                                        "images can take a minute or two.\n"
+                                        "5. **Paste the command above** into the shell as a single line and "
+                                        "press Enter. Large images can take a minute or two.\n"
                                         "6. **Find the result** — a new file ending in `_utm.tif` will appear "
                                         "in that same folder. Upload **that** file to OAM instead of the "
                                         "original."
