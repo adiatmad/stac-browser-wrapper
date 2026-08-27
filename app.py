@@ -11,9 +11,11 @@ st.title("STAC-to-OAM Tool")
 
 root_url_input = st.text_input("Enter STAC Browser URL")
 st.caption(
-    "Examples — Vantor (STAC Browser link): "
-    "https://browser.moregeo.it/external/vantor-opendata.s3.amazonaws.com/events/Bordeaux-France-Wildfire-July-2026/B160001101B07110.json  \n"
-    "Examples — Planet (direct STAC URL): "
+    "Example — Vantor (STAC Browser link): "
+    "https://browser.moregeo.it/external/vantor-opendata.s3.amazonaws.com/events/Bordeaux-France-Wildfire-July-2026/B160001101B07110.json"
+)
+st.caption(
+    "Example — Planet (direct STAC URL): "
     "https://data.source.coop/planet/disasterdata/nepal-flash-flood-2026-08-26/post-event/catalog.json"
 )
 
@@ -417,15 +419,15 @@ def crawl_stac(url, visited=None):
 
         abs_href = urljoin(url, href)
 
-        if rel in ["item", "collection"]:
+        if rel == "item":
             if abs_href not in all_links:
                 all_links.append(abs_href)
+                process_item(abs_href)
 
-                if rel == "item":
-                    process_item(abs_href)
-
-            if rel == "collection":
-                crawl_stac(abs_href, visited)
+        elif rel in ["collection", "child"]:
+            if abs_href not in all_links:
+                all_links.append(abs_href)
+            crawl_stac(abs_href, visited)
 
 
 # MAIN EXECUTION
