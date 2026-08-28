@@ -5,9 +5,15 @@ import re
 import io
 import csv
 from datetime import datetime
+import folium
+from folium.plugins import Draw
+from streamlit_folium import st_folium
 
 
 st.title("STAC-to-OAM Tool")
+
+if "location_filter_bbox" not in st.session_state:
+    st.session_state["location_filter_bbox"] = None  # (west, south, east, north) or None = no filter
 
 root_url_input = st.text_input("Enter STAC Browser URL")
 st.caption(
@@ -258,7 +264,19 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
         "image_source_url": tiff_url or "",
         "longitude_risk": longitude_risk["at_risk"],
         "reprojection_command": longitude_risk["command"],
+        "bbox": item_data.get("bbox"),  # used only for the location-filter map; not an OAM form field
     }
+
+
+def bbox_intersects(item_bbox, filter_bbox) -> bool:
+    """True if item_bbox [w,s,e,n] intersects filter_bbox (w,s,e,n).
+    Fails open (returns True) when the item has no bbox, so items with
+    missing geometry are never silently hidden by the filter."""
+    if not item_bbox or len(item_bbox) < 4:
+        return True
+    iw, is_, ie, in_ = item_bbox[0], item_bbox[1], item_bbox[2], item_bbox[3]
+    fw, fs, fe, fn = filter_bbox
+    return not (ie < fw or iw > fe or in_ < fs or is_ > fn)
 
 
 def guess_tiff_url(stac_item_url: str, item_data: dict) -> str:
@@ -449,6 +467,76 @@ if root_url_input:
         if all_links:
             st.success(f"Found {len(all_links)} STAC links and generated {len(tiff_links)} TIFF URLs")
 
+            group_by_location = st.toggle("📍 Group by location (draw a box on the map)")
+
+            if group_by_location:
+                items_with_bbox = [m for m in oam_items if m.get("bbox")]
+
+                if items_with_bbox:
+                    st.caption(
+                        "Item footprints are shown as blue boxes. Draw a rectangle over the area you "
+                        "want (e.g. just NTT, not Sumatra), then click Apply filter."
+                    )
+
+                    all_lons = [m["bbox"][0] for m in items_with_bbox] + [m["bbox"][2] for m in items_with_bbox]
+                    all_lats = [m["bbox"][1] for m in items_with_bbox] + [m["bbox"][3] for m in items_with_bbox]
+                    center_lat = sum(all_lats) / len(all_lats)
+                    center_lon = sum(all_lons) / len(all_lons)
+
+                    fmap = folium.Map(location=[center_lat, center_lon], zoom_start=5)
+                    for m in items_with_bbox:
+                        west, south, east, north = m["bbox"][0], m["bbox"][1], m["bbox"][2], m["bbox"][3]
+                        folium.Rectangle(
+                            bounds=[[south, west], [north, east]],
+                            color="blue", weight=1, fill=True, fill_opacity=0.1,
+                            tooltip=m["title"],
+                        ).add_to(fmap)
+
+                    Draw(
+                        export=False,
+                        draw_options={
+                            "rectangle": True, "polygon": False, "circle": False,
+                            "marker": False, "circlemarker": False, "polyline": False,
+                        },
+                        edit_options={"edit": False},
+                    ).add_to(fmap)
+
+                    map_data = st_folium(fmap, height=420, width=700, key="location_filter_map")
+
+                    col_apply, col_clear = st.columns([1, 1])
+                    with col_apply:
+                        if st.button("Apply filter"):
+                            drawn = (map_data or {}).get("last_active_drawing")
+                            if drawn and drawn.get("geometry", {}).get("type") == "Polygon":
+                                coords = drawn["geometry"]["coordinates"][0]
+                                lons = [c[0] for c in coords]
+                                lats = [c[1] for c in coords]
+                                st.session_state["location_filter_bbox"] = (min(lons), min(lats), max(lons), max(lats))
+                            else:
+                                st.warning("Draw a rectangle on the map first, then click Apply filter.")
+                    with col_clear:
+                        if st.button("Clear filter"):
+                            st.session_state["location_filter_bbox"] = None
+
+                    active_filter = st.session_state["location_filter_bbox"]
+                    if active_filter:
+                        w, s, e, n = active_filter
+                        st.caption(f"Active filter box: {w:.3f}, {s:.3f} to {e:.3f}, {n:.3f}")
+                else:
+                    st.info("No item footprints available to plot (items are missing bbox data).")
+
+            active_filter = st.session_state["location_filter_bbox"] if group_by_location else None
+            if active_filter:
+                filtered_item_urls = {
+                    m["item_url"] for m in oam_items if bbox_intersects(m.get("bbox"), active_filter)
+                }
+                display_tiff_links = [e for e in tiff_links if e["item_url"] in filtered_item_urls]
+                display_oam_items = [m for m in oam_items if m["item_url"] in filtered_item_urls]
+                st.caption(f"Showing {len(display_oam_items)} of {len(oam_items)} items within the drawn box.")
+            else:
+                display_tiff_links = tiff_links
+                display_oam_items = oam_items
+
             tab1, tab2, tab3 = st.tabs(["STAC Links", "TIFF URLs", "OAM Metadata"])
 
             with tab1:
@@ -458,15 +546,15 @@ if root_url_input:
 
             with tab2:
                 st.subheader("Complete TIFF URLs")
-                if tiff_links:
-                    for idx, entry in enumerate(tiff_links, 1):
+                if display_tiff_links:
+                    for idx, entry in enumerate(display_tiff_links, 1):
                         tiff_url = entry["tiff_url"]
                         if entry["guessed"]:
                             st.warning(f"#{idx}: this URL is a guess based on naming conventions — it is not confirmed to exist. Verify before relying on it.")
                         st.code(tiff_url, language=None)
                         st.markdown(f"{idx}. [{tiff_url}]({tiff_url})")
 
-                    tiff_text = "\n".join(entry["tiff_url"] for entry in tiff_links)
+                    tiff_text = "\n".join(entry["tiff_url"] for entry in display_tiff_links)
                     st.download_button(
                         label="Download Complete TIFF URLs",
                         data=tiff_text,
@@ -492,8 +580,8 @@ if root_url_input:
                 )
                 st.link_button("Open OAM Upload Page", "https://map.openaerialmap.org/#/upload")
 
-                if oam_items:
-                    for idx, meta in enumerate(oam_items, 1):
+                if display_oam_items:
+                    for idx, meta in enumerate(display_oam_items, 1):
                         with st.expander(f"{idx}. {meta['title'] or meta['item_url']}"):
                             fields = [
                                 ("Title", meta["title"]),
@@ -554,9 +642,9 @@ if root_url_input:
                             st.caption(f"Source item: {meta['item_url']}")
 
                     csv_buffer = io.StringIO()
-                    writer = csv.DictWriter(csv_buffer, fieldnames=OAM_FIELDNAMES)
+                    writer = csv.DictWriter(csv_buffer, fieldnames=OAM_FIELDNAMES, extrasaction="ignore")
                     writer.writeheader()
-                    for meta in oam_items:
+                    for meta in display_oam_items:
                         writer.writerow(meta)
 
                     st.download_button(
