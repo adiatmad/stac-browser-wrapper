@@ -15,7 +15,7 @@ from streamlit_folium import st_folium
 OAM_DEFAULT_LICENSE = "CC-BY 4.0"
 OAM_UPLOADER_ISSUE_URL = "https://github.com/hotosm/openaerialmap/issues/296"
 OAM_MAP_URL = "https://map.openaerialmap.org/"
-OAM_STAC_SEARCH_URL = "https://api.imagery.hotosm.org/stac/collections/openaerialmap/items"
+OAM_META_API = "https://api.openaerialmap.org/meta"
 
 OAM_FIELDNAMES = [
     "item_url", "title", "platform", "sensor", "date_start", "date_end",
@@ -23,86 +23,101 @@ OAM_FIELDNAMES = [
     "longitude_risk", "reprojection_command", "provider_item_id",
 ]
 
-# ---------- Session State ----------
+# ---------- Session State Initialization ----------
 if "oam_duplicates" not in st.session_state:
     st.session_state["oam_duplicates"] = {}
 
 if "location_filter_bbox" not in st.session_state:
     st.session_state["location_filter_bbox"] = None
 
-# ---------- Improved Duplicate Check ----------
-def check_oam_duplicate(provider_item_id: str) -> dict:
-    """
-    Check OAM for an existing image with this provider ID.
-    Uses a filter on the 'title' property first, then falls back to q= search.
-    Returns: {"exists": bool, "oam_id": str or None, "oam_title": str or None, "error": str or None}
-    """
-    if not provider_item_id:
-        return {"exists": False, "oam_id": None, "oam_title": None, "error": "No provider ID"}
+if "pending_drawing" not in st.session_state:
+    st.session_state["pending_drawing"] = None
 
+if "last_processed_url" not in st.session_state:
+    st.session_state["last_processed_url"] = ""
+
+# ---------- Spatial & Geometry Helpers ----------
+def parse_bbox_2d(bbox: list):
+    """Safely extract 2D bbox [west, south, east, north] from 2D or 3D STAC bounding boxes."""
+    if not bbox or len(bbox) < 4:
+        return None
+    if len(bbox) >= 6:
+        return [bbox[0], bbox[1], bbox[3], bbox[4]]
+    return [bbox[0], bbox[1], bbox[2], bbox[3]]
+
+def calculate_iou(bbox1: list, bbox2: list) -> float:
+    """Calculates Intersection over Union (IoU) overlap ratio between two 2D bboxes."""
+    w1, s1, e1, n1 = bbox1
+    w2, s2, e2, n2 = bbox2
+
+    inter_w = max(0, min(e1, e2) - max(w1, w2))
+    inter_h = max(0, min(n1, n2) - max(s1, s2))
+    inter_area = inter_w * inter_h
+
+    if inter_area <= 0:
+        return 0.0
+
+    area1 = (e1 - w1) * (n1 - s1)
+    area2 = (e2 - w2) * (n2 - s2)
+    union_area = area1 + area2 - inter_area
+    return inter_area / union_area if union_area > 0 else 0.0
+
+# ---------- OAM Duplicate Check Endpoint ----------
+def check_oam_duplicate(meta: dict) -> dict:
+    """
+    Checks OAM for existing uploads.
+    Combines direct Title/ID search with Spatial (Bbox IoU > 70%) footprint overlap detection.
+    """
+    provider_item_id = meta.get("provider_item_id", "").strip()
+    stac_bbox = parse_bbox_2d(meta.get("bbox"))
     headers = {"User-Agent": "STAC-to-OAM-Tool/1.0"}
-    search_id = provider_item_id.strip()
 
-    # ---- Method 1: filter by title (query=) ----
-    query_filter = {
-        "op": "contains",
-        "args": [{"property": "title"}, search_id]
-    }
-    params = {
-        "query": json.dumps(query_filter),
-        "limit": 50
-    }
+    # Method 1: Title query using provider item ID
+    if provider_item_id:
+        try:
+            params = {"title": provider_item_id, "limit": 50}
+            resp = requests.get(OAM_META_API, params=params, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                results = resp.json().get("results", [])
+                for item in results:
+                    title = item.get("title", "")
+                    if provider_item_id.lower() in title.lower():
+                        return {
+                            "exists": True,
+                            "oam_id": item.get("_id"),
+                            "oam_title": title,
+                            "match_type": "Exact ID in Title",
+                            "error": None
+                        }
+        except Exception:
+            pass
 
-    try:
-        resp = requests.get(OAM_STAC_SEARCH_URL, params=params, headers=headers, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        features = data.get("features", [])
+    # Method 2: Fallback to Spatial Bbox Overlap match (IoU Threshold: 70%)
+    if stac_bbox:
+        bbox_str = ",".join(str(v) for v in stac_bbox)
+        params = {"bbox": bbox_str, "limit": 100}
+        try:
+            resp = requests.get(OAM_META_API, params=params, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                results = resp.json().get("results", [])
+                for item in results:
+                    oam_bbox = parse_bbox_2d(item.get("bbox"))
+                    if oam_bbox:
+                        iou = calculate_iou(stac_bbox, oam_bbox)
+                        if iou > 0.70:
+                            return {
+                                "exists": True,
+                                "oam_id": item.get("_id"),
+                                "oam_title": item.get("title", "Untitled"),
+                                "match_type": f"Spatial Overlap ({int(iou * 100)}%)",
+                                "error": None
+                            }
+        except Exception as e:
+            return {"exists": False, "oam_id": None, "oam_title": None, "match_type": None, "error": f"Bbox error: {e}"}
 
-        if features:
-            for f in features:
-                title = f.get("properties", {}).get("title", "")
-                if search_id.lower() in title.lower():
-                    return {
-                        "exists": True,
-                        "oam_id": f.get("id"),
-                        "oam_title": title,
-                        "error": None
-                    }
-            # If we got features but none match (shouldn't happen), treat as not found
-            return {"exists": False, "oam_id": None, "oam_title": None, "error": None}
-    except Exception:
-        # Fall through to method 2
-        pass
+    return {"exists": False, "oam_id": None, "oam_title": None, "match_type": None, "error": None}
 
-    # ---- Method 2: fallback to full‑text search (q=) ----
-    try:
-        params = {"q": search_id, "limit": 50}
-        resp = requests.get(OAM_STAC_SEARCH_URL, params=params, headers=headers, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        features = data.get("features", [])
-
-        for f in features:
-            title = f.get("properties", {}).get("title", "")
-            if search_id.lower() in title.lower():
-                return {
-                    "exists": True,
-                    "oam_id": f.get("id"),
-                    "oam_title": title,
-                    "error": None
-                }
-
-        return {"exists": False, "oam_id": None, "oam_title": None, "error": None}
-
-    except requests.exceptions.RequestException as e:
-        return {"exists": False, "oam_id": None, "oam_title": None, "error": f"Request error: {e}"}
-    except json.JSONDecodeError as e:
-        return {"exists": False, "oam_id": None, "oam_title": None, "error": f"Invalid JSON: {e}"}
-    except Exception as e:
-        return {"exists": False, "oam_id": None, "oam_title": None, "error": f"Unexpected: {e}"}
-
-# ---------- All helper functions (unchanged) ----------
+# ---------- STAC & GDAL Helpers ----------
 def extract_real_stac_url(browser_url: str) -> str:
     if "#/external/" in browser_url:
         raw_url = browser_url.split("#/external/")[-1].strip()
@@ -117,7 +132,7 @@ def extract_real_stac_url(browser_url: str) -> str:
     if not parsed.scheme:
         real_url = "https://" + real_url
     if not real_url.endswith(".json"):
-        st.warning("Extracted URL does not end with .json — may not be a valid STAC JSON")
+        st.warning("Extracted URL does not end with .json — verify if this is a valid STAC endpoint.")
     return real_url
 
 def resolve_relative_url(base_url: str, relative_url: str) -> str:
@@ -174,14 +189,22 @@ def build_reprojection_command(item_id: str, epsg: int) -> str:
     )
 
 def check_oam_longitude_risk(item_data: dict) -> dict:
-    bbox = item_data.get("bbox")
-    if not bbox or len(bbox) < 4:
+    bbox = parse_bbox_2d(item_data.get("bbox"))
+    if not bbox:
         return {"at_risk": False, "epsg": None, "command": ""}
-    west, south, east, north = bbox[0], bbox[1], bbox[2], bbox[3]
+    west, south, east, north = bbox
     at_risk = abs(west) > 90 or abs(east) > 90
     if not at_risk:
         return {"at_risk": False, "epsg": None, "command": ""}
-    center_lon = (west + east) / 2
+
+    # Anti-meridian wrap-around adjustment
+    if west > east:
+        center_lon = (west + east + 360) / 2
+        if center_lon > 180:
+            center_lon -= 360
+    else:
+        center_lon = (west + east) / 2
+
     center_lat = (south + north) / 2
     epsg = compute_utm_epsg(center_lon, center_lat)
     item_id = item_data.get("id", "item")
@@ -247,9 +270,10 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str, collecti
     }
 
 def bbox_intersects(item_bbox, filter_bbox) -> bool:
-    if not item_bbox or len(item_bbox) < 4:
+    parsed_item = parse_bbox_2d(item_bbox)
+    if not parsed_item or not filter_bbox:
         return True
-    iw, is_, ie, in_ = item_bbox[0], item_bbox[1], item_bbox[2], item_bbox[3]
+    iw, is_, ie, in_ = parsed_item
     fw, fs, fe, fn = filter_bbox
     return not (ie < fw or iw > fe or in_ < fs or is_ > fn)
 
@@ -308,7 +332,7 @@ def fetch_json(url: str):
 
 def generate_tiff_url(stac_item_url: str, item_data: dict):
     try:
-        if item_data.get("type") == "Feature" and item_data.get("stac_version"):
+        if item_data.get("type") == "Feature" or "assets" in item_data:
             assets = item_data.get("assets", {})
             visual_assets = []
             for asset_name, asset_info in assets.items():
@@ -381,7 +405,7 @@ def run_crawl(real_url: str):
         crawl_stac(real_url, all_links, tiff_links, oam_items, collection_cache, data=root_data)
     return all_links, tiff_links, oam_items
 
-# ---------- Main UI ----------
+# ---------- Main Application Interface ----------
 st.title("STAC-to-OAM Tool")
 
 root_url_input = st.text_input("Enter STAC Browser URL")
@@ -397,12 +421,21 @@ st.caption(
 if root_url_input:
     real_url = extract_real_stac_url(root_url_input)
 
+    # Reset duplicates state if input URL changes
+    if real_url != st.session_state["last_processed_url"]:
+        st.session_state["oam_duplicates"] = {}
+        st.session_state["location_filter_bbox"] = None
+        st.session_state["pending_drawing"] = None
+        st.session_state["last_processed_url"] = real_url
+
     if real_url:
         col_recrawl, _ = st.columns([1, 3])
         with col_recrawl:
             if st.button("🔄 Re-crawl (ignore cache)"):
                 run_crawl.clear()
                 st.session_state["oam_duplicates"] = {}
+                st.session_state["location_filter_bbox"] = None
+                st.session_state["pending_drawing"] = None
 
         all_links, tiff_links, oam_items = run_crawl(real_url)
 
@@ -412,22 +445,24 @@ if root_url_input:
             group_by_location = st.toggle("📍 Group by location (draw a box on the map)")
 
             if group_by_location:
-                items_with_bbox = [m for m in oam_items if m.get("bbox")]
+                items_with_bbox = [m for m in oam_items if parse_bbox_2d(m.get("bbox"))]
                 if items_with_bbox:
                     st.caption(
                         "Item footprints are shown as blue boxes. Draw a rectangle over the area you "
-                        "want (e.g. just NTT, not Sumatra), then click Apply filter."
+                        "want, then click Apply filter."
                     )
-                    all_lons = [m["bbox"][0] for m in items_with_bbox] + [m["bbox"][2] for m in items_with_bbox]
-                    all_lats = [m["bbox"][1] for m in items_with_bbox] + [m["bbox"][3] for m in items_with_bbox]
+                    
+                    parsed_bboxes = [parse_bbox_2d(m["bbox"]) for m in items_with_bbox]
+                    all_lons = [b[0] for b in parsed_bboxes] + [b[2] for b in parsed_bboxes]
+                    all_lats = [b[1] for b in parsed_bboxes] + [b[3] for b in parsed_bboxes]
                     center_lat = sum(all_lats) / len(all_lats)
                     center_lon = sum(all_lons) / len(all_lons)
 
                     fmap = folium.Map(location=[center_lat, center_lon], zoom_start=5)
                     for m in items_with_bbox:
-                        west, south, east, north = m["bbox"][0], m["bbox"][1], m["bbox"][2], m["bbox"][3]
+                        b = parse_bbox_2d(m["bbox"])
                         folium.Rectangle(
-                            bounds=[[south, west], [north, east]],
+                            bounds=[[b[1], b[0]], [b[3], b[2]]],
                             color="blue", weight=1, fill=True, fill_opacity=0.1,
                             tooltip=m["title"],
                         ).add_to(fmap)
@@ -442,11 +477,15 @@ if root_url_input:
                     ).add_to(fmap)
 
                     map_data = st_folium(fmap, height=420, width=700, key="location_filter_map")
+                    
+                    # Store active drawing safely into session_state before rerun triggers
+                    if map_data and map_data.get("last_active_drawing"):
+                        st.session_state["pending_drawing"] = map_data["last_active_drawing"]
 
                     col_apply, col_clear = st.columns([1, 1])
                     with col_apply:
                         if st.button("Apply filter"):
-                            drawn = (map_data or {}).get("last_active_drawing")
+                            drawn = st.session_state.get("pending_drawing")
                             if drawn and drawn.get("geometry", {}).get("type") == "Polygon":
                                 coords = drawn["geometry"]["coordinates"][0]
                                 lons = [c[0] for c in coords]
@@ -457,6 +496,7 @@ if root_url_input:
                     with col_clear:
                         if st.button("Clear filter"):
                             st.session_state["location_filter_bbox"] = None
+                            st.session_state["pending_drawing"] = None
 
                     active_filter = st.session_state["location_filter_bbox"]
                     if active_filter:
@@ -524,20 +564,11 @@ if root_url_input:
                     with col_check:
                         if st.button("🔍 Check duplicates on OAM"):
                             st.session_state["oam_duplicates"] = {}
-                            progress_bar = st.progress(0, text="Checking...")
+                            progress_bar = st.progress(0, text="Checking OAM metadata...")
                             total = len(display_oam_items)
                             for i, meta in enumerate(display_oam_items):
-                                provider_id = meta.get("provider_item_id", "")
-                                if provider_id:
-                                    result = check_oam_duplicate(provider_id)
-                                    st.session_state["oam_duplicates"][meta["item_url"]] = result
-                                else:
-                                    st.session_state["oam_duplicates"][meta["item_url"]] = {
-                                        "exists": False,
-                                        "oam_id": None,
-                                        "oam_title": None,
-                                        "error": "No provider ID"
-                                    }
+                                result = check_oam_duplicate(meta)
+                                st.session_state["oam_duplicates"][meta["item_url"]] = result
                                 if i % 5 == 0 or i == total - 1:
                                     progress_bar.progress((i + 1) / total, text=f"Checked {i+1}/{total}")
                                 time.sleep(0.15)
@@ -554,7 +585,8 @@ if root_url_input:
                                 elif dup_info.get("exists"):
                                     oam_id = dup_info.get("oam_id", "unknown")
                                     oam_title = dup_info.get("oam_title", "")
-                                    st.success(f"✅ Already uploaded to OAM (ID: {oam_id})\n\n_Title:_ {oam_title}")
+                                    match_type = dup_info.get("match_type", "Matched")
+                                    st.success(f"✅ Already uploaded to OAM (ID: {oam_id})\n\n_Title:_ {oam_title}\n\n_Match Method:_ {match_type}")
                                 else:
                                     st.info("❌ Not found on OAM – ready to upload.")
                             else:
@@ -580,10 +612,8 @@ if root_url_input:
 
                             st.markdown("**Check for duplicates on OAM**")
                             st.caption(
-                                "OAM titles often embed the provider's original ID (e.g. \"Vantor LG03 Image "
-                                f"{meta['provider_item_id']}\"). OAM's search API isn't reliably filtering results "
-                                "right now, so this can't be checked automatically — copy the ID below and paste "
-                                "it into OAM's own search to check by hand."
+                                "OAM titles often embed the provider's original ID. Copy the ID below "
+                                "if you wish to manually query OAM search."
                             )
                             st.code(meta["provider_item_id"], language=None)
                             st.link_button("Open OAM to search manually", OAM_MAP_URL)
@@ -593,37 +623,26 @@ if root_url_input:
                                     "This item's bounding box crosses ±90° longitude. If the source imagery "
                                     f"is in a geographic CRS (e.g. EPSG:4326), OAM's uploader may fail silently "
                                     f"(see [issue #296]({OAM_UPLOADER_ISSUE_URL})). Workaround — reproject to "
-                                    "the local UTM zone before uploading (replace the input filename with your "
-                                    "actual downloaded file):"
+                                    "the local UTM zone before uploading:"
                                 )
                                 st.code(meta["reprojection_command"], language="bash")
 
                                 with st.expander("How to run this command on Windows (first time using GDAL)"):
                                     st.markdown(
                                         "1. **Download the image** — click the *Image source (Url)* link above "
-                                        "(or right-click it → Save link as) and save the `.tif` file somewhere "
-                                        "easy to find, e.g. your Downloads folder.\n"
-                                        "2. **Install GDAL** — download and run the "
-                                        "[OSGeo4W installer](https://trac.osgeo.org/osgeo4w/) "
-                                        "(\"Express Web Install\"). Tick **GDAL** in the package list and finish "
-                                        "the install.\n"
-                                        "3. **Open the OSGeo4W Shell** from the Start Menu — it comes with "
-                                        "`gdalwarp` already set up, no extra configuration needed.\n"
-                                        "4. **Go to the folder with your file.** In that shell, type `cd ` "
-                                        "followed by the folder path and press Enter, e.g.:\n"
-                                        "   ```\n   cd C:\\Users\\YourName\\Downloads\n   ```\n"
-                                        "5. **Paste the command above** into the shell as a single line and "
-                                        "press Enter. Large images can take a minute or two.\n"
-                                        "6. **Find the result** — a new file ending in `_utm.tif` will appear "
-                                        "in that same folder. Upload **that** file to OAM instead of the "
-                                        "original."
+                                        "and save the `.tif` file.\n"
+                                        "2. **Install GDAL** via the "
+                                        "[OSGeo4W installer](https://trac.osgeo.org/osgeo4w/).\n"
+                                        "3. **Open OSGeo4W Shell** from Start Menu.\n"
+                                        "4. **Navigate to directory**: `cd C:\\Users\\YourName\\Downloads`\n"
+                                        "5. **Paste command** above and press Enter.\n"
+                                        "6. Upload generated `_utm.tif` file to OAM."
                                     )
 
                             if meta["stac_license_reference"]:
                                 st.caption(
-                                    f"STAC item's own license field: **{meta['stac_license_reference']}** — "
-                                    f"the OAM License above defaults to {OAM_DEFAULT_LICENSE} regardless; "
-                                    f"double-check this if the source license isn't CC-BY."
+                                    f"STAC item license field: **{meta['stac_license_reference']}** — "
+                                    f"the OAM License defaults to {OAM_DEFAULT_LICENSE}; double-check if source license differs."
                                 )
 
                             st.caption(f"Source item: {meta['item_url']}")
