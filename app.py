@@ -30,11 +30,11 @@ if "oam_duplicates" not in st.session_state:
 if "location_filter_bbox" not in st.session_state:
     st.session_state["location_filter_bbox"] = None
 
-# ---------- Duplicate Check Function ----------
+# ---------- Improved Duplicate Check Function ----------
 def check_oam_duplicate(provider_item_id: str) -> dict:
     """
     Query OAM's STAC API to see if an image with this provider ID already exists.
-    Searches by full‑text (q=) and then verifies that the ID appears in the title.
+    Searches by full‑text (q=) and verifies that the ID appears in the title.
     Returns: {"exists": bool, "oam_id": str or None, "oam_title": str or None, "error": str or None}
     """
     if not provider_item_id:
@@ -42,7 +42,7 @@ def check_oam_duplicate(provider_item_id: str) -> dict:
 
     params = {
         "q": provider_item_id.strip(),
-        "limit": 5  # only need a few results to check
+        "limit": 20   # increased to reduce chance of missing on later pages
     }
     headers = {"User-Agent": "STAC-to-OAM-Tool/1.0"}
 
@@ -50,22 +50,22 @@ def check_oam_duplicate(provider_item_id: str) -> dict:
         resp = requests.get(OAM_STAC_SEARCH_URL, params=params, headers=headers, timeout=15)
         resp.raise_for_status()
 
-        # Ensure we got JSON
-        content_type = resp.headers.get("content-type", "")
-        if "application/json" not in content_type:
+        # Try to parse JSON directly – no content‑type check needed
+        try:
+            data = resp.json()
+        except json.JSONDecodeError as e:
             snippet = resp.text[:200].replace("\n", " ")
             return {
                 "exists": False,
                 "oam_id": None,
                 "oam_title": None,
-                "error": f"Non‑JSON response: {snippet}..."
+                "error": f"Invalid JSON: {e}. Raw: {snippet}..."
             }
 
-        data = resp.json()
         features = data.get("features", [])
+        search_id = provider_item_id.strip().lower()
 
         # Look for a match where the provider ID appears in the title (case‑insensitive)
-        search_id = provider_item_id.strip().lower()
         for feature in features:
             props = feature.get("properties", {})
             title = props.get("title", "")
@@ -81,12 +81,12 @@ def check_oam_duplicate(provider_item_id: str) -> dict:
 
     except requests.exceptions.RequestException as e:
         return {"exists": False, "oam_id": None, "oam_title": None, "error": f"Request error: {e}"}
-    except json.JSONDecodeError as e:
-        return {"exists": False, "oam_id": None, "oam_title": None, "error": f"Invalid JSON: {e}"}
     except Exception as e:
         return {"exists": False, "oam_id": None, "oam_title": None, "error": f"Unexpected: {e}"}
 
-# ---------- All existing helper functions ----------
+# ---------- All helper functions (extract_real_stac_url, etc.) ----------
+# (They are exactly the same as before; I'm including them here for completeness.)
+
 def extract_real_stac_url(browser_url: str) -> str:
     """Extract and normalize the real STAC JSON URL from a STAC Browser URL,
     or pass through a direct STAC catalog/item URL unchanged.
@@ -489,7 +489,7 @@ if root_url_input:
         if all_links:
             st.success(f"Found {len(all_links)} STAC links and generated {len(tiff_links)} TIFF URLs")
 
-            # ---------- Location filter (unchanged) ----------
+            # ---------- Location filter ----------
             group_by_location = st.toggle("📍 Group by location (draw a box on the map)")
 
             if group_by_location:
@@ -623,7 +623,7 @@ if root_url_input:
                                     }
                                 if i % 5 == 0 or i == total - 1:
                                     progress_bar.progress((i + 1) / total, text=f"Checked {i+1}/{total}")
-                                time.sleep(0.2)  # be gentle to the API
+                                time.sleep(0.15)  # gentle rate limit
                             progress_bar.empty()
                             st.success("Duplicate check complete!")
 
