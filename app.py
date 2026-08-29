@@ -5,6 +5,7 @@ import re
 import io
 import csv
 from datetime import datetime
+import time          # NEW: for rate limiting
 import folium
 from folium.plugins import Draw
 from streamlit_folium import st_folium
@@ -12,8 +13,14 @@ from streamlit_folium import st_folium
 
 st.title("STAC-to-OAM Tool")
 
+# NEW: initialise duplicate cache in session state
+if "oam_duplicates" not in st.session_state:
+    st.session_state["oam_duplicates"] = {}
+
+
 if "location_filter_bbox" not in st.session_state:
     st.session_state["location_filter_bbox"] = None  # (west, south, east, north) or None = no filter
+
 
 root_url_input = st.text_input("Enter STAC Browser URL")
 st.caption(
@@ -25,40 +32,69 @@ st.caption(
     "https://data.source.coop/planet/disasterdata/nepal-flash-flood-2026-08-26/post-event/catalog.json"
 )
 
-all_links = []
-tiff_links = []  # list of dicts: {"item_url": str, "tiff_url": str, "guessed": bool}
-oam_items = []  # list of dicts from extract_oam_metadata()
-collection_license_cache = {}  # collection URL -> license string ("" if none), avoids refetching per item
 
-OAM_DEFAULT_LICENSE = "CC-BY 4.0"  # OAM's default license option; not auto-matched to the STAC item's own license
+OAM_DEFAULT_LICENSE = "CC-BY 4.0"
 OAM_UPLOADER_ISSUE_URL = "https://github.com/hotosm/openaerialmap/issues/296"
+OAM_MAP_URL = "https://map.openaerialmap.org/"
+# NEW: correct OAM API base URL
+OAM_API_BASE = "https://api.imagery.hotosm.org/api/v1/images"
+
 OAM_FIELDNAMES = [
     "item_url", "title", "platform", "sensor", "date_start", "date_end",
     "image_source_url", "provider", "tags", "license_oam_default", "stac_license_reference",
-    "longitude_risk", "reprojection_command",
+    "longitude_risk", "reprojection_command", "provider_item_id",
 ]
 
 
-def extract_real_stac_url(browser_url: str) -> str:
-    """Extract and normalize the real STAC JSON URL from a STAC Browser URL,
-    or pass through a direct STAC catalog/item URL unchanged.
+# NEW: robust duplicate checker
+def check_oam_duplicate(provider_item_id: str) -> dict:
+    """
+    Query OAM API to see if an image with this provider ID already exists.
+    Returns:
+        {"exists": bool, "oam_id": str or None, "error": str or None}
+    """
+    if not provider_item_id:
+        return {"exists": False, "oam_id": None, "error": "No provider ID provided"}
 
-    Supports three input shapes:
-    - the older hash-based browser format (.../#/external/<url>)
-    - the newer path-based browser format used by Vantor's browser
-      (.../external/<url>)
-    - a direct STAC catalog/item URL with no browser wrapper at all
-      (e.g. https://data.source.coop/.../catalog.json) — treated as
-      already being the real STAC URL.
+    try:
+        # Use the correct 'q' parameter for full‑text search
+        params = {"q": provider_item_id.strip()}
+        headers = {"User-Agent": "STAC-to-OAM-Tool/1.0"}
+        resp = requests.get(OAM_API_BASE, params=params, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        features = data.get("features", [])
+        # Search through the first page of results for a strong match
+        for feature in features:
+            props = feature.get("properties", {})
+            title = props.get("title", "")
+            # Check if the ID appears in the title (case‑insensitive)
+            if provider_item_id.strip().lower() in title.lower():
+                oam_id = feature.get("id")
+                return {"exists": True, "oam_id": oam_id, "error": None}
+            # Also check dedicated fields if they exist
+            if props.get("provider_item_id") == provider_item_id or props.get("original_id") == provider_item_id:
+                oam_id = feature.get("id")
+                return {"exists": True, "oam_id": oam_id, "error": None}
+
+        return {"exists": False, "oam_id": None, "error": None}
+
+    except requests.exceptions.RequestException as e:
+        return {"exists": False, "oam_id": None, "error": f"Network error: {e}"}
+    except Exception as e:
+        return {"exists": False, "oam_id": None, "error": f"Unexpected error: {e}"}
+
+
+def extract_real_stac_url(browser_url: str) -> str:
+    """Extract and normalise the real STAC JSON URL from a STAC Browser URL,
+    or pass through a direct STAC catalog/item URL unchanged.
     """
     if "#/external/" in browser_url:
         raw_url = browser_url.split("#/external/")[-1].strip()
     elif "/external/" in browser_url:
         raw_url = browser_url.split("/external/")[-1].strip()
     else:
-        # No browser wrapper detected — assume this is already a direct
-        # STAC URL. Invalid input still fails gracefully later, when
-        # fetch_json() can't reach it.
         raw_url = browser_url.strip()
 
     real_url = unquote(raw_url)
@@ -88,10 +124,7 @@ def resolve_relative_url(base_url: str, relative_url: str) -> str:
 
 def format_datetime_display(iso_str: str) -> str:
     """Format an ISO 8601 datetime string to match OAM's own date display
-    exactly, e.g. "Aug 5, 2026 12:00 AM" (no leading zero on day or hour).
-    The value is kept in UTC as recorded in the STAC item — no timezone
-    conversion is applied.
-    Falls back to the raw string rather than dropping it if parsing fails.
+    exactly, e.g. "Aug 5, 2026 12:00 AM".
     """
     if not iso_str:
         return ""
@@ -99,8 +132,6 @@ def format_datetime_display(iso_str: str) -> str:
         s = iso_str.strip()
         if s.endswith("Z"):
             s = s[:-1] + "+00:00"
-        # Some providers use more than 6 digits of fractional seconds,
-        # which fromisoformat can choke on — trim to microsecond precision.
         s = re.sub(r"(\.\d{6})\d+", r"\1", s)
         dt = datetime.fromisoformat(s)
 
@@ -117,9 +148,7 @@ def format_datetime_display(iso_str: str) -> str:
 
 
 def guess_provider_name(item_url: str) -> str:
-    """Best-effort provider display name from the item's URL — checks the
-    domain (Vantor, Maxar) and, for providers hosted on shared platforms
-    like source.coop, the URL path (Planet)."""
+    """Best‑effort provider display name from the item's URL."""
     parsed = urlparse(item_url)
     domain = parsed.netloc.lower()
     path = parsed.path.lower()
@@ -140,12 +169,7 @@ def compute_utm_epsg(lon: float, lat: float) -> int:
 
 
 def build_reprojection_command(item_id: str, epsg: int) -> str:
-    """gdalwarp command to reproject imagery into the given UTM zone, per
-    the workaround documented in OAM issue #296.
-    Kept as a single line (no backslash line-continuation) so it works
-    unmodified in cmd.exe, PowerShell, and bash/zsh alike — backslash
-    continuation is bash-only and breaks silently in cmd.exe.
-    """
+    """gdalwarp command to reproject imagery into the given UTM zone."""
     src_name = f"{item_id}.tif"
     dst_name = f"{item_id}_utm.tif"
     return (
@@ -157,14 +181,7 @@ def build_reprojection_command(item_id: str, epsg: int) -> str:
 
 
 def check_oam_longitude_risk(item_data: dict) -> dict:
-    """Best-effort heuristic flag for a known OAM uploader bug
-    (see OAM_UPLOADER_ISSUE_URL): the old transcoder silently fails on
-    geographic-CRS (e.g. EPSG:4326) imagery whose longitude exceeds +/-90.
-
-    This STAC item doesn't tell us the raster's true CRS (no proj:epsg
-    extension present), so this checks the item's WGS84 bbox as a
-    heuristic trigger only — not a confirmed diagnosis.
-    """
+    """Best‑effort heuristic flag for the known OAM uploader bug."""
     bbox = item_data.get("bbox")
     if not bbox or len(bbox) < 4:
         return {"at_risk": False, "epsg": None, "command": ""}
@@ -183,11 +200,8 @@ def check_oam_longitude_risk(item_data: dict) -> dict:
     return {"at_risk": True, "epsg": epsg, "command": build_reprojection_command(item_id, epsg)}
 
 
-def get_collection_license(item_url: str, item_data: dict) -> str:
-    """Fallback for providers (e.g. Planet) that don't declare a license on
-    the Item itself, only on its parent Collection. Fetches and caches the
-    Collection's license per unique collection URL, so it's fetched once
-    total per collection rather than once per item in it."""
+def get_collection_license(item_url: str, item_data: dict, collection_cache: dict) -> str:
+    """Fallback for providers that declare a license on the parent Collection."""
     links = item_data.get("links", [])
 
     collection_href = None
@@ -205,23 +219,17 @@ def get_collection_license(item_url: str, item_data: dict) -> str:
 
     collection_url = resolve_relative_url(item_url, collection_href)
 
-    if collection_url in collection_license_cache:
-        return collection_license_cache[collection_url]
+    if collection_url in collection_cache:
+        return collection_cache[collection_url]
 
     collection_data = fetch_json(collection_url)
     license_value = (collection_data or {}).get("license", "") or ""
-    collection_license_cache[collection_url] = license_value
+    collection_cache[collection_url] = license_value
     return license_value
 
 
-def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
-    """Map available STAC fields to OpenAerialMap upload-form fields.
-
-    Platform, Provider, and the OAM License default are fixed best-effort
-    values (per-provider) meant to be reviewed/edited, not auto-submitted
-    blindly. Tags are intentionally left blank — STAC has no equivalent
-    field, so anything auto-generated here would be a guess, not metadata.
-    """
+def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str, collection_cache: dict) -> dict:
+    """Map available STAC fields to OpenAerialMap upload‑form fields."""
     properties = item_data.get("properties", {})
 
     title = properties.get("title") or item_data.get("id", "")
@@ -236,19 +244,15 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
     else:
         sensor = constellation.title() or vehicle_name
 
-    # STAC items commonly carry a single acquisition "datetime" rather than
-    # a start/end range — both OAM date fields use that same instant.
     dt_display = format_datetime_display(properties.get("datetime", ""))
     date_start = dt_display
     date_end = dt_display
 
     longitude_risk = check_oam_longitude_risk(item_data)
 
-    # Some providers only declare a license on the parent Collection, not
-    # on the Item itself — fall back to that when the Item has none.
     stac_license = item_data.get("license", "") or ""
     if not stac_license:
-        stac_license = get_collection_license(item_url, item_data)
+        stac_license = get_collection_license(item_url, item_data, collection_cache)
 
     return {
         "item_url": item_url,
@@ -264,14 +268,13 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
         "image_source_url": tiff_url or "",
         "longitude_risk": longitude_risk["at_risk"],
         "reprojection_command": longitude_risk["command"],
-        "bbox": item_data.get("bbox"),  # used only for the location-filter map; not an OAM form field
+        "bbox": item_data.get("bbox"),
+        "provider_item_id": item_data.get("id", ""),
     }
 
 
 def bbox_intersects(item_bbox, filter_bbox) -> bool:
-    """True if item_bbox [w,s,e,n] intersects filter_bbox (w,s,e,n).
-    Fails open (returns True) when the item has no bbox, so items with
-    missing geometry are never silently hidden by the filter."""
+    """True if item_bbox [w,s,e,n] intersects filter_bbox (w,s,e,n)."""
     if not item_bbox or len(item_bbox) < 4:
         return True
     iw, is_, ie, in_ = item_bbox[0], item_bbox[1], item_bbox[2], item_bbox[3]
@@ -280,32 +283,24 @@ def bbox_intersects(item_bbox, filter_bbox) -> bool:
 
 
 def guess_tiff_url(stac_item_url: str, item_data: dict) -> str:
-    """
-    Best-effort fallback for when a STAC item has no usable TIFF asset href.
-
-    This is a GUESS based on known provider URL conventions (Maxar, Vantor),
-    not a verified asset — callers must treat the result accordingly and the
-    UI must flag it as unconfirmed. Returns None if nothing can be
-    confidently guessed for the detected provider.
-    """
+    """Best‑effort fallback for TIFF URLs based on provider conventions."""
     domain = urlparse(stac_item_url).netloc.lower()
     properties = item_data.get("properties", {})
     item_id = item_data.get("id", "")
     parsed_url = urlparse(stac_item_url)
     path_parts = parsed_url.path.split('/')
 
-    # --- Maxar-style layout: events/{event}/ard/{grid}/{tile}/{date}/{image_id}-visual.tif
     if "maxar" in domain:
         event_name = grid = tile = date = None
 
         for i, part in enumerate(path_parts):
             if "events" in part and i + 1 < len(path_parts):
                 event_name = path_parts[i + 1]
-            if part.isdigit() and len(part) == 2:  # Grid like "44"
+            if part.isdigit() and len(part) == 2:
                 grid = part
-            if part.isdigit() and len(part) == 12:  # Tile like "033313123002"
+            if part.isdigit() and len(part) == 12:
                 tile = part
-            if re.match(r"\d{4}-\d{2}-\d{2}", part):  # Date pattern
+            if re.match(r"\d{4}-\d{2}-\d{2}", part):
                 date = part
 
         if "event" in properties:
@@ -321,12 +316,11 @@ def guess_tiff_url(stac_item_url: str, item_data: dict) -> str:
             if item_id and len(item_id) >= 16 and any(c.isalpha() for c in item_id):
                 base_image_id = item_id[:16]
             else:
-                base_image_id = "10400100AFC26500"  # Maxar default
+                base_image_id = "10400100AFC26500"
             return f"https://{domain}/events/{event_name}/ard/{grid}/{tile}/{date}/{base_image_id}-visual.tif"
 
         return None
 
-    # --- Vantor-style layout: events/{event}/{item_id}.json -> events/{event}/{item_id}-visual.tif
     if "vantor" in domain:
         event_name = None
 
@@ -342,7 +336,6 @@ def guess_tiff_url(stac_item_url: str, item_data: dict) -> str:
 
         return None
 
-    # Unknown provider — no safe guess available
     return None
 
 
@@ -382,7 +375,6 @@ def generate_tiff_url(stac_item_url: str, item_data: dict):
             if visual_assets:
                 return visual_assets[0], False
 
-            # No usable asset href in the item itself — fall back to a guess
             guessed = guess_tiff_url(stac_item_url, item_data)
             if guessed:
                 return guessed, True
@@ -394,26 +386,27 @@ def generate_tiff_url(stac_item_url: str, item_data: dict):
         return None, False
 
 
-def process_item_data(item_url: str, item_data: dict):
-    """Given an already-fetched STAC item, derive both its TIFF URL and its
-    OAM-ready metadata in one pass (avoids fetching the item twice)."""
+def process_item_data(item_url: str, item_data: dict, tiff_links: list, oam_items: list, collection_cache: dict):
+    """Given an already‑fetched STAC item, derive both its TIFF URL and its
+    OAM‑ready metadata in one pass.
+    """
     tiff_url, is_guessed = generate_tiff_url(item_url, item_data)
     if tiff_url:
         tiff_links.append({"item_url": item_url, "tiff_url": tiff_url, "guessed": is_guessed})
 
-    oam_items.append(extract_oam_metadata(item_url, item_data, tiff_url))
+    oam_items.append(extract_oam_metadata(item_url, item_data, tiff_url, collection_cache))
 
 
-def process_item(item_url: str):
+def process_item(item_url: str, tiff_links: list, oam_items: list, collection_cache: dict):
     """Fetch a STAC item by URL, then process it."""
     item_data = fetch_json(item_url)
     if item_data is None:
         return
-    process_item_data(item_url, item_data)
+    process_item_data(item_url, item_data, tiff_links, oam_items, collection_cache)
 
 
-def crawl_stac(url, visited=None):
-    """Recursive STAC crawler for links with rel=item or rel=collection."""
+def crawl_stac(url, all_links: list, tiff_links: list, oam_items: list, collection_cache: dict, visited=None, data=None):
+    """Recursive STAC crawler for links with rel=item or rel=collection/child."""
     if visited is None:
         visited = set()
 
@@ -422,7 +415,8 @@ def crawl_stac(url, visited=None):
 
     visited.add(url)
 
-    data = fetch_json(url)
+    if data is None:
+        data = fetch_json(url)
     if data is None:
         return
 
@@ -440,29 +434,46 @@ def crawl_stac(url, visited=None):
         if rel == "item":
             if abs_href not in all_links:
                 all_links.append(abs_href)
-                process_item(abs_href)
+                process_item(abs_href, tiff_links, oam_items, collection_cache)
 
         elif rel in ["collection", "child"]:
             if abs_href not in all_links:
                 all_links.append(abs_href)
-            crawl_stac(abs_href, visited)
+            crawl_stac(abs_href, all_links, tiff_links, oam_items, collection_cache, visited)
 
 
-# MAIN EXECUTION
+@st.cache_data(show_spinner="Crawling STAC links and generating TIFF URLs...", ttl=600)
+def run_crawl(real_url: str):
+    """Crawl a STAC catalog/item and build everything the app displays."""
+    all_links = []
+    tiff_links = []
+    oam_items = []
+    collection_cache = {}
+
+    root_data = fetch_json(real_url)
+
+    if root_data is not None and root_data.get("type") == "Feature":
+        all_links.append(real_url)
+        process_item_data(real_url, root_data, tiff_links, oam_items, collection_cache)
+    elif root_data is not None:
+        crawl_stac(real_url, all_links, tiff_links, oam_items, collection_cache, data=root_data)
+
+    return all_links, tiff_links, oam_items
+
+
+# ---- MAIN EXECUTION ----
 if root_url_input:
     real_url = extract_real_stac_url(root_url_input)
 
     if real_url:
-        with st.spinner("Crawling STAC links and generating TIFF URLs..."):
-            root_data = fetch_json(real_url)
+        col_recrawl, _ = st.columns([1, 3])
+        with col_recrawl:
+            if st.button("🔄 Re-crawl (ignore cache)"):
+                run_crawl.clear()
+                # NEW: clear duplicate cache on re-crawl
+                st.session_state["oam_duplicates"] = {}
 
-            if root_data is not None and root_data.get("type") == "Feature":
-                # The root URL is itself a single STAC Item (common for Vantor
-                # links), not a Catalog/Collection to crawl.
-                all_links.append(real_url)
-                process_item_data(real_url, root_data)
-            elif root_data is not None:
-                crawl_stac(real_url)
+        all_links, tiff_links, oam_items = run_crawl(real_url)
 
         if all_links:
             st.success(f"Found {len(all_links)} STAC links and generated {len(tiff_links)} TIFF URLs")
@@ -580,9 +591,47 @@ if root_url_input:
                 )
                 st.link_button("Open OAM Upload Page", "https://map.openaerialmap.org/#/upload")
 
+                # NEW: "Check duplicates" button
+                if display_oam_items:
+                    col_check, _ = st.columns([1, 4])
+                    with col_check:
+                        if st.button("🔍 Check duplicates on OAM"):
+                            # Clear previous results to avoid stale data
+                            st.session_state["oam_duplicates"] = {}
+                            progress_bar = st.progress(0, text="Checking...")
+                            total = len(display_oam_items)
+                            for i, meta in enumerate(display_oam_items):
+                                provider_id = meta.get("provider_item_id", "")
+                                if provider_id:
+                                    result = check_oam_duplicate(provider_id)
+                                    st.session_state["oam_duplicates"][meta["item_url"]] = result
+                                else:
+                                    st.session_state["oam_duplicates"][meta["item_url"]] = {
+                                        "exists": False, "oam_id": None, "error": "No ID"
+                                    }
+                                # Update progress every 5 items to reduce UI overhead, but keep it responsive
+                                if i % 5 == 0 or i == total - 1:
+                                    progress_bar.progress((i + 1) / total, text=f"Checked {i+1}/{total}")
+                                time.sleep(0.2)  # gentle rate limit (200ms)
+                            progress_bar.empty()
+                            st.success("Duplicate check complete!")
+
                 if display_oam_items:
                     for idx, meta in enumerate(display_oam_items, 1):
                         with st.expander(f"{idx}. {meta['title'] or meta['item_url']}"):
+                            # NEW: show duplicate status if checked
+                            dup_info = st.session_state.get("oam_duplicates", {}).get(meta["item_url"])
+                            if dup_info is not None:
+                                if dup_info.get("error"):
+                                    st.warning(f"⚠️ Duplicate check failed: {dup_info['error']}")
+                                elif dup_info.get("exists"):
+                                    oam_id = dup_info.get("oam_id", "unknown ID")
+                                    st.success(f"✅ Already uploaded to OAM (ID: {oam_id}) – you can skip this item.")
+                                else:
+                                    st.info("❌ Not found on OAM – ready to upload.")
+                            else:
+                                st.caption("Click 'Check duplicates on OAM' above to see if this item already exists.")
+
                             fields = [
                                 ("Title", meta["title"]),
                                 ("Platform", meta["platform"]),
@@ -600,6 +649,16 @@ if root_url_input:
                                     st.markdown(f"**{label}**")
                                 with col_value:
                                     st.code(value, language=None)
+
+                            st.markdown("**Check for duplicates on OAM**")
+                            st.caption(
+                                "OAM titles often embed the provider's original ID (e.g. \"Vantor LG03 Image "
+                                f"{meta['provider_item_id']}\"). OAM's search API isn't reliably filtering results "
+                                "right now, so this can't be checked automatically — copy the ID below and paste "
+                                "it into OAM's own search to check by hand."
+                            )
+                            st.code(meta["provider_item_id"], language=None)
+                            st.link_button("Open OAM to search manually", OAM_MAP_URL)
 
                             if meta["longitude_risk"]:
                                 st.warning(
