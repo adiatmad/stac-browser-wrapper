@@ -86,14 +86,380 @@ def check_oam_duplicate(provider_item_id: str) -> dict:
     except Exception as e:
         return {"exists": False, "oam_id": None, "oam_title": None, "error": f"Unexpected: {e}"}
 
-# ---------- All other existing functions ----------
-# (extract_real_stac_url, resolve_relative_url, format_datetime_display,
-#  guess_provider_name, compute_utm_epsg, build_reprojection_command,
-#  check_oam_longitude_risk, get_collection_license, extract_oam_metadata,
-#  bbox_intersects, guess_tiff_url, fetch_json, generate_tiff_url,
-#  process_item_data, process_item, crawl_stac, run_crawl)
-# --- They remain exactly as you had them, so I'm omitting them here for brevity ---
-# BUT in the final answer I will include them all.
+# ---------- All existing helper functions ----------
+def extract_real_stac_url(browser_url: str) -> str:
+    """Extract and normalize the real STAC JSON URL from a STAC Browser URL,
+    or pass through a direct STAC catalog/item URL unchanged.
+    """
+    if "#/external/" in browser_url:
+        raw_url = browser_url.split("#/external/")[-1].strip()
+    elif "/external/" in browser_url:
+        raw_url = browser_url.split("/external/")[-1].strip()
+    else:
+        raw_url = browser_url.strip()
+
+    real_url = unquote(raw_url)
+
+    if "?" in real_url:
+        real_url = real_url.split("?")[0]
+
+    parsed = urlparse(real_url)
+    if not parsed.scheme:
+        real_url = "https://" + real_url
+
+    if not real_url.endswith(".json"):
+        st.warning("Extracted URL does not end with .json — may not be a valid STAC JSON")
+
+    return real_url
+
+
+def resolve_relative_url(base_url: str, relative_url: str) -> str:
+    """Convert a relative URL to an absolute URL."""
+    if relative_url.startswith(('http://', 'https://')):
+        return relative_url
+    elif relative_url.startswith('./'):
+        relative_url = relative_url[2:]
+
+    return urljoin(base_url, relative_url)
+
+
+def format_datetime_display(iso_str: str) -> str:
+    """Format an ISO 8601 datetime string to match OAM's own date display
+    exactly, e.g. "Aug 5, 2026 12:00 AM".
+    """
+    if not iso_str:
+        return ""
+    try:
+        s = iso_str.strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        s = re.sub(r"(\.\d{6})\d+", r"\1", s)
+        dt = datetime.fromisoformat(s)
+
+        month = dt.strftime("%b")
+        day = str(dt.day)
+        year = dt.year
+        hour12 = dt.strftime("%I").lstrip("0") or "12"
+        minute = dt.strftime("%M")
+        ampm = dt.strftime("%p")
+
+        return f"{month} {day}, {year} {hour12}:{minute} {ampm}"
+    except Exception:
+        return iso_str
+
+
+def guess_provider_name(item_url: str) -> str:
+    """Best‑effort provider display name from the item's URL."""
+    parsed = urlparse(item_url)
+    domain = parsed.netloc.lower()
+    path = parsed.path.lower()
+    if "vantor" in domain:
+        return "Vantor"
+    if "maxar" in domain:
+        return "Maxar"
+    if "planet" in path:
+        return "Planet"
+    return domain
+
+
+def compute_utm_epsg(lon: float, lat: float) -> int:
+    """Compute the UTM EPSG code (WGS84 datum) for a given lon/lat."""
+    zone = int((lon + 180) // 6) + 1
+    zone = max(1, min(60, zone))
+    return (32600 if lat >= 0 else 32700) + zone
+
+
+def build_reprojection_command(item_id: str, epsg: int) -> str:
+    """gdalwarp command to reproject imagery into the given UTM zone."""
+    src_name = f"{item_id}.tif"
+    dst_name = f"{item_id}_utm.tif"
+    return (
+        f"gdalwarp -multi -wo NUM_THREADS=ALL_CPUS -t_srs EPSG:{epsg} -r cubic -of COG "
+        f"-co COMPRESS=JPEG -co QUALITY=85 -co OVERVIEWS=IGNORE_EXISTING "
+        f"-co BLOCKSIZE=512 -co BIGTIFF=YES -co NUM_THREADS=ALL_CPUS "
+        f"{src_name} {dst_name}"
+    )
+
+
+def check_oam_longitude_risk(item_data: dict) -> dict:
+    """Best‑effort heuristic flag for the known OAM uploader bug."""
+    bbox = item_data.get("bbox")
+    if not bbox or len(bbox) < 4:
+        return {"at_risk": False, "epsg": None, "command": ""}
+
+    west, south, east, north = bbox[0], bbox[1], bbox[2], bbox[3]
+    at_risk = abs(west) > 90 or abs(east) > 90
+
+    if not at_risk:
+        return {"at_risk": False, "epsg": None, "command": ""}
+
+    center_lon = (west + east) / 2
+    center_lat = (south + north) / 2
+    epsg = compute_utm_epsg(center_lon, center_lat)
+    item_id = item_data.get("id", "item")
+
+    return {"at_risk": True, "epsg": epsg, "command": build_reprojection_command(item_id, epsg)}
+
+
+def get_collection_license(item_url: str, item_data: dict, collection_cache: dict) -> str:
+    """Fallback for providers that declare a license on the parent Collection."""
+    links = item_data.get("links", [])
+
+    collection_href = None
+    for link in links:
+        if link.get("rel") == "collection":
+            collection_href = link.get("href")
+            break
+    if not collection_href:
+        for link in links:
+            if link.get("rel") == "parent":
+                collection_href = link.get("href")
+                break
+    if not collection_href:
+        return ""
+
+    collection_url = resolve_relative_url(item_url, collection_href)
+
+    if collection_url in collection_cache:
+        return collection_cache[collection_url]
+
+    collection_data = fetch_json(collection_url)
+    license_value = (collection_data or {}).get("license", "") or ""
+    collection_cache[collection_url] = license_value
+    return license_value
+
+
+def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str, collection_cache: dict) -> dict:
+    """Map available STAC fields to OpenAerialMap upload‑form fields."""
+    properties = item_data.get("properties", {})
+
+    title = properties.get("title") or item_data.get("id", "")
+
+    instruments = properties.get("instruments") or []
+    constellation = properties.get("constellation", "") or ""
+    vehicle_name = properties.get("vehicle_name", "") or ""
+    if instruments:
+        sensor = ", ".join(instruments)
+    elif constellation and vehicle_name:
+        sensor = f"{constellation.title()} {vehicle_name}"
+    else:
+        sensor = constellation.title() or vehicle_name
+
+    dt_display = format_datetime_display(properties.get("datetime", ""))
+    date_start = dt_display
+    date_end = dt_display
+
+    longitude_risk = check_oam_longitude_risk(item_data)
+
+    stac_license = item_data.get("license", "") or ""
+    if not stac_license:
+        stac_license = get_collection_license(item_url, item_data, collection_cache)
+
+    return {
+        "item_url": item_url,
+        "title": title,
+        "platform": "Satellite",
+        "sensor": sensor,
+        "date_start": date_start,
+        "date_end": date_end,
+        "provider": guess_provider_name(item_url),
+        "tags": "",
+        "license_oam_default": OAM_DEFAULT_LICENSE,
+        "stac_license_reference": stac_license,
+        "image_source_url": tiff_url or "",
+        "longitude_risk": longitude_risk["at_risk"],
+        "reprojection_command": longitude_risk["command"],
+        "bbox": item_data.get("bbox"),
+        "provider_item_id": item_data.get("id", ""),
+    }
+
+
+def bbox_intersects(item_bbox, filter_bbox) -> bool:
+    """True if item_bbox [w,s,e,n] intersects filter_bbox (w,s,e,n)."""
+    if not item_bbox or len(item_bbox) < 4:
+        return True
+    iw, is_, ie, in_ = item_bbox[0], item_bbox[1], item_bbox[2], item_bbox[3]
+    fw, fs, fe, fn = filter_bbox
+    return not (ie < fw or iw > fe or in_ < fs or is_ > fn)
+
+
+def guess_tiff_url(stac_item_url: str, item_data: dict) -> str:
+    """Best‑effort fallback for TIFF URLs based on provider conventions."""
+    domain = urlparse(stac_item_url).netloc.lower()
+    properties = item_data.get("properties", {})
+    item_id = item_data.get("id", "")
+    parsed_url = urlparse(stac_item_url)
+    path_parts = parsed_url.path.split('/')
+
+    if "maxar" in domain:
+        event_name = grid = tile = date = None
+
+        for i, part in enumerate(path_parts):
+            if "events" in part and i + 1 < len(path_parts):
+                event_name = path_parts[i + 1]
+            if part.isdigit() and len(part) == 2:
+                grid = part
+            if part.isdigit() and len(part) == 12:
+                tile = part
+            if re.match(r"\d{4}-\d{2}-\d{2}", part):
+                date = part
+
+        if "event" in properties:
+            event_name = properties.get("event", event_name)
+        if "grid" in properties:
+            grid = properties.get("grid", grid)
+        if "tile" in properties:
+            tile = properties.get("tile", tile)
+        if properties.get("datetime"):
+            date = properties["datetime"].split("T")[0]
+
+        if event_name and grid and tile and date:
+            if item_id and len(item_id) >= 16 and any(c.isalpha() for c in item_id):
+                base_image_id = item_id[:16]
+            else:
+                base_image_id = "10400100AFC26500"
+            return f"https://{domain}/events/{event_name}/ard/{grid}/{tile}/{date}/{base_image_id}-visual.tif"
+
+        return None
+
+    if "vantor" in domain:
+        event_name = None
+
+        for i, part in enumerate(path_parts):
+            if "events" in part and i + 1 < len(path_parts):
+                event_name = path_parts[i + 1]
+
+        if "event" in properties:
+            event_name = properties.get("event", event_name)
+
+        if event_name and item_id:
+            return f"https://{domain}/events/{event_name}/{item_id}-visual.tif"
+
+        return None
+
+    return None
+
+
+def fetch_json(url: str):
+    """Fetch and parse JSON from a URL. Returns None (with a UI warning) on failure."""
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        st.warning(f"Failed to fetch {url}: {e}")
+        return None
+
+
+def generate_tiff_url(stac_item_url: str, item_data: dict):
+    """
+    Returns (tiff_url, is_guessed).
+    Real asset hrefs found in the STAC item are always preferred over
+    guessed URLs. Returns (None, False) if nothing could be found.
+    """
+    try:
+        if item_data.get("type") == "Feature" and item_data.get("stac_version"):
+            assets = item_data.get("assets", {})
+
+            visual_assets = []
+            for asset_name, asset_info in assets.items():
+                href = asset_info.get("href", "")
+
+                if href and href.endswith((".tif", ".tiff")):
+                    absolute_href = resolve_relative_url(stac_item_url, href)
+
+                    if any(keyword in asset_name.lower() for keyword in ["visual", "rgb", "natural"]):
+                        visual_assets.insert(0, absolute_href)
+                    else:
+                        visual_assets.append(absolute_href)
+
+            if visual_assets:
+                return visual_assets[0], False
+
+            guessed = guess_tiff_url(stac_item_url, item_data)
+            if guessed:
+                return guessed, True
+
+        return None, False
+
+    except Exception as e:
+        st.warning(f"Could not generate TIFF URL for {stac_item_url}: {e}")
+        return None, False
+
+
+def process_item_data(item_url: str, item_data: dict, tiff_links: list, oam_items: list, collection_cache: dict):
+    """Given an already‑fetched STAC item, derive both its TIFF URL and its
+    OAM‑ready metadata in one pass.
+    """
+    tiff_url, is_guessed = generate_tiff_url(item_url, item_data)
+    if tiff_url:
+        tiff_links.append({"item_url": item_url, "tiff_url": tiff_url, "guessed": is_guessed})
+
+    oam_items.append(extract_oam_metadata(item_url, item_data, tiff_url, collection_cache))
+
+
+def process_item(item_url: str, tiff_links: list, oam_items: list, collection_cache: dict):
+    """Fetch a STAC item by URL, then process it."""
+    item_data = fetch_json(item_url)
+    if item_data is None:
+        return
+    process_item_data(item_url, item_data, tiff_links, oam_items, collection_cache)
+
+
+def crawl_stac(url, all_links: list, tiff_links: list, oam_items: list, collection_cache: dict, visited=None, data=None):
+    """Recursive STAC crawler for links with rel=item or rel=collection/child."""
+    if visited is None:
+        visited = set()
+
+    if url in visited:
+        return
+
+    visited.add(url)
+
+    if data is None:
+        data = fetch_json(url)
+    if data is None:
+        return
+
+    links = data.get("links", [])
+
+    for link in links:
+        href = link.get("href")
+        rel = link.get("rel")
+
+        if not href:
+            continue
+
+        abs_href = urljoin(url, href)
+
+        if rel == "item":
+            if abs_href not in all_links:
+                all_links.append(abs_href)
+                process_item(abs_href, tiff_links, oam_items, collection_cache)
+
+        elif rel in ["collection", "child"]:
+            if abs_href not in all_links:
+                all_links.append(abs_href)
+            crawl_stac(abs_href, all_links, tiff_links, oam_items, collection_cache, visited)
+
+
+@st.cache_data(show_spinner="Crawling STAC links and generating TIFF URLs...", ttl=600)
+def run_crawl(real_url: str):
+    """Crawl a STAC catalog/item and build everything the app displays."""
+    all_links = []
+    tiff_links = []
+    oam_items = []
+    collection_cache = {}
+
+    root_data = fetch_json(real_url)
+
+    if root_data is not None and root_data.get("type") == "Feature":
+        all_links.append(real_url)
+        process_item_data(real_url, root_data, tiff_links, oam_items, collection_cache)
+    elif root_data is not None:
+        crawl_stac(real_url, all_links, tiff_links, oam_items, collection_cache, data=root_data)
+
+    return all_links, tiff_links, oam_items
 
 # ---------- Main UI ----------
 st.title("STAC-to-OAM Tool")
