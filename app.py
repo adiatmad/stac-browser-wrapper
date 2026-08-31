@@ -119,11 +119,26 @@ def get_item_phase(entry: dict) -> str:
     return "OTHER"
 
 # ---------- VRT & Command Generator Helpers ----------
+def build_fast_local_download_and_merge_cmd(tiff_urls: list[str], output_filename: str) -> str:
+    """
+    Generates an optimized OSGeo4W Shell command that downloads all raw GeoTIFF files 
+    in parallel via curl -Z, builds a local VRT, translates to COG locally, 
+    and cleans up temporary files.
+    """
+    local_filenames = [url.split("/")[-1] for url in tiff_urls if url]
+    curl_flags = " ".join([f'-O "{url}"' for url in tiff_urls if url])
+    local_files_str = " ".join([f'"{fn}"' for fn in local_filenames])
+    temp_vrt = "temp_local_mosaic.vrt"
+    
+    return (
+        f"curl -Z {curl_flags} && "
+        f"gdalbuildvrt -srcnodata 0 -vrtnodata 0 -addalpha {temp_vrt} {local_files_str} && "
+        f"gdal_translate -of COG -co COMPRESS=JPEG -co QUALITY=85 -co BIGTIFF=YES {temp_vrt} {output_filename} && "
+        f"del {temp_vrt}"
+    )
+
 def build_osgeo4w_direct_tif_one_liner(tiff_urls: list[str], output_filename: str) -> str:
-    """
-    Generates a single-line OSGeo4W Shell command that streams online COGs, 
-    merges them, and bakes them directly into a single output GeoTIFF file.
-    """
+    """Generates a single-line OSGeo4W command streaming COGs remotely via /vsicurl/."""
     vsicurl_urls = [f'"/vsicurl/{url}"' for url in tiff_urls if url]
     urls_str = " ".join(vsicurl_urls)
     temp_vrt = "temp_mosaic.vrt"
@@ -584,8 +599,8 @@ if root_url_input:
                 post_urls = [e["tiff_url"] for e in display_tiff_links if get_item_phase(e) == "POST"]
                 all_urls = [e["tiff_url"] for e in display_tiff_links]
 
-                st.markdown("### 🌐 Ready-to-Run Mosaics")
-                st.caption("Merge remote Cloud-Optimized GeoTIFFs directly into a single compressed GeoTIFF file using OSGeo4W Shell.")
+                st.markdown("### 🌐 OSGeo4W Shell Command Generators")
+                st.caption("Select your workflow below to generate ready-to-run Windows commands.")
 
                 mosaic_tab_pre, mosaic_tab_post, mosaic_tab_all = st.tabs([
                     f"PRE-Event ({len(pre_urls)} scenes)", 
@@ -601,26 +616,27 @@ if root_url_input:
                     vrt_filename = f"{event_prefix}_{category_name.upper()}_mosaic.vrt"
                     tif_filename = f"{event_prefix}_{category_name.upper()}_MERGED.tif"
 
-                    # 1. OSGeo4W Direct One-Liner (Render & Download Merged TIF)
-                    st.markdown("#### 1. OSGeo4W Shell One-Liner (Downloads & Renders Single Merged GeoTIFF)")
+                    # 1. FAST Parallel Local Download + Local Merge (RECOMMENDED)
+                    st.markdown("#### ⚡ 1. Fast Parallel Local Download & Local Merge (RECOMMENDED)")
                     st.caption(
-                        "**Step-by-step:** Open **OSGeo4W Shell** from Windows Start Menu, "
-                        "navigate to your downloads folder (`cd C:\\Users\\YourName\\Downloads`), "
-                        "then copy and paste the command below:"
+                        "**Step-by-step:** Open **OSGeo4W Shell**, navigate to your target folder (`cd C:\\Users\\Dinar\\Downloads`), "
+                        "and run the command below. It downloads raw tiles in parallel using `curl -Z` (maxing out internet bandwidth) "
+                        "and merges them locally in minutes."
                     )
-                    osgeo_cmd = build_osgeo4w_direct_tif_one_liner(urls, tif_filename)
-                    st.code(osgeo_cmd, language="cmd")
+                    fast_cmd = build_fast_local_download_and_merge_cmd(urls, tif_filename)
+                    st.code(fast_cmd, language="cmd")
 
-                    # 2. Virtual Index Command (.VRT only)
-                    st.markdown("#### 2. Virtual Raster Index Command (Builds Instant 10KB .VRT)")
-                    st.caption("Creates a lightweight index file to stream imagery in QGIS without downloading pixels:")
-                    cli_cmd = build_gdal_cli_command(urls, vrt_filename)
-                    st.code(cli_cmd, language="bash")
+                    # 2. Direct HTTP Remote Streaming Command
+                    st.markdown("#### 🌐 2. Direct Remote Streaming Command (Slower Network Streaming)")
+                    st.caption("Streams uncompressed pixel blocks directly over HTTP without saving intermediate files locally:")
+                    remote_cmd = build_osgeo4w_direct_tif_one_liner(urls, tif_filename)
+                    st.code(remote_cmd, language="cmd")
 
-                    # 3. Python Script Query
-                    st.markdown("#### 3. Ready-to-Run Python Query (Google Colab / Jupyter)")
-                    py_script = build_python_script_query(urls, vrt_filename)
-                    st.code(py_script, language="python")
+                    # 3. Virtual Index Command (.VRT only)
+                    st.markdown("#### 📄 3. Virtual Raster Index Command (Builds Instant 10KB .VRT)")
+                    st.caption("Creates an index file to open and view the mosaic in QGIS instantly:")
+                    vrt_cmd = build_gdal_cli_command(urls, vrt_filename)
+                    st.code(vrt_cmd, language="bash")
 
                     # 4. Server-Side Direct VRT Download
                     if GDAL_AVAILABLE:
