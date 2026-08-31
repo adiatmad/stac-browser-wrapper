@@ -131,7 +131,7 @@ def build_fast_local_download_and_merge_cmd(tiff_urls: list[str], output_filenam
     temp_vrt = "temp_local_mosaic.vrt"
     
     return (
-        f"curl -Z {curl_flags} && "
+        f"curl -k -Z {curl_flags} && "
         f"gdalbuildvrt -srcnodata 0 -vrtnodata 0 -addalpha {temp_vrt} {local_files_str} && "
         f"gdal_translate -of COG -co COMPRESS=JPEG -co QUALITY=85 -co BIGTIFF=YES {temp_vrt} {output_filename} && "
         f"del {temp_vrt}"
@@ -619,8 +619,8 @@ if root_url_input:
                     # 1. FAST Parallel Local Download + Local Merge (RECOMMENDED)
                     st.markdown("#### ⚡ 1. Fast Parallel Local Download & Local Merge (RECOMMENDED)")
                     st.caption(
-                        "**Step-by-step:** Open **OSGeo4W Shell**, navigate to your target folder (`cd C:\\Users\\Dinar\\Downloads`), "
-                        "and run the command below. It downloads raw tiles in parallel using `curl -Z` (maxing out internet bandwidth) "
+                        "**Step-by-step:** Open **OSGeo4W Shell**, navigate to your target folder (`cd C:\\Users\\YourName\\Downloads`), "
+                        "and run the command below. It downloads raw tiles in parallel using `curl -k -Z` (maxing out internet bandwidth) "
                         "and merges them locally in minutes."
                     )
                     fast_cmd = build_fast_local_download_and_merge_cmd(urls, tif_filename)
