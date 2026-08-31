@@ -101,9 +101,40 @@ def extract_event_name_from_url(url: str) -> str:
         return last_part
     return "stac_event"
 
+# ---------- Phase Detection Helper ----------
+def get_item_phase(entry: dict) -> str:
+    """Multi-layer detection to identify PRE vs POST event imagery."""
+    phase = str(entry.get("phase", "")).strip().lower()
+    if phase == "pre":
+        return "PRE"
+    elif phase == "post":
+        return "POST"
+
+    title = str(entry.get("title", "")).upper()
+    if "[PRE]" in title or " PRE " in title or title.startswith("PRE"):
+        return "PRE"
+    elif "[POST]" in title or " POST " in title or title.startswith("POST"):
+        return "POST"
+
+    return "OTHER"
+
 # ---------- VRT & Command Generator Helpers ----------
+def build_osgeo4w_direct_tif_one_liner(tiff_urls: list[str], output_filename: str) -> str:
+    """
+    Generates a single-line OSGeo4W Shell command that streams online COGs, 
+    merges them, and bakes them directly into a single output GeoTIFF file.
+    """
+    vsicurl_urls = [f'"/vsicurl/{url}"' for url in tiff_urls if url]
+    urls_str = " ".join(vsicurl_urls)
+    temp_vrt = "temp_mosaic.vrt"
+    return (
+        f"gdalbuildvrt -srcnodata 0 -vrtnodata 0 -addalpha {temp_vrt} {urls_str} && "
+        f"gdal_translate -of COG -co COMPRESS=JPEG -co QUALITY=85 -co BIGTIFF=YES {temp_vrt} {output_filename} && "
+        f"del {temp_vrt}"
+    )
+
 def build_gdal_cli_command(tiff_urls: list[str], output_filename: str) -> str:
-    """Generates a ready-to-run terminal GDAL command for virtual mosaic creation."""
+    """Generates a terminal GDAL command for virtual raster (.vrt) index creation."""
     vsicurl_urls = [f'"/vsicurl/{url}"' for url in tiff_urls if url]
     urls_str = " ".join(vsicurl_urls)
     return f"gdalbuildvrt -srcnodata 0 -vrtnodata 0 -addalpha {output_filename} {urls_str}"
@@ -154,7 +185,6 @@ def check_oam_duplicate(meta: dict) -> dict:
     stac_geom = meta.get("geometry")
     headers = {"User-Agent": "STAC-to-OAM-Tool/2.0"}
 
-    # Title query using provider item ID
     if provider_item_id:
         try:
             params = {"title": provider_item_id, "limit": 50}
@@ -173,7 +203,6 @@ def check_oam_duplicate(meta: dict) -> dict:
         except Exception:
             pass
 
-    # Spatial Overlap match with Shapely (IoU Threshold: 70%)
     if stac_bbox:
         bbox_str = ",".join(str(v) for v in stac_bbox)
         params = {"bbox": bbox_str, "limit": 100}
@@ -337,6 +366,7 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
         "date_start": dt_display,
         "date_end": dt_display,
         "raw_datetime": raw_dt,
+        "phase": properties.get("phase") or properties.get("odp:phase") or "",
         "provider": guess_provider_name(item_data, item_url),
         "tags": "",
         "license_oam_default": OAM_DEFAULT_LICENSE,
@@ -389,9 +419,17 @@ def generate_tiff_url_from_stac(stac_item_url: str, item_data: dict) -> tuple[st
 
 def process_item_data(item_url: str, item_data: dict, tiff_links: list, oam_items: list):
     tiff_url, is_guessed = generate_tiff_url_from_stac(item_url, item_data)
+    meta = extract_oam_metadata(item_url, item_data, tiff_url)
     if tiff_url:
-        tiff_links.append({"item_url": item_url, "tiff_url": tiff_url, "guessed": is_guessed})
-    oam_items.append(extract_oam_metadata(item_url, item_data, tiff_url))
+        tiff_links.append({
+            "item_url": item_url,
+            "tiff_url": tiff_url,
+            "guessed": is_guessed,
+            "title": meta["title"],
+            "phase": meta["phase"],
+            "raw_datetime": meta["raw_datetime"]
+        })
+    oam_items.append(meta)
 
 def crawl_stac(url: str, all_links: list, tiff_links: list, oam_items: list, visited=None, data=None):
     if visited is None:
@@ -541,13 +579,13 @@ if root_url_input:
             with tab2:
                 st.subheader("Validated GeoTIFF URLs & Online Merged Mosaics")
                 
-                # --- Categorize Imagery Mosaics (PRE / POST / ALL) ---
-                pre_urls = [e["tiff_url"] for e in display_tiff_links if "PRE" in e["tiff_url"].upper() or "PRE" in e["item_url"].upper()]
-                post_urls = [e["tiff_url"] for e in display_tiff_links if "POST" in e["tiff_url"].upper() or "POST" in e["item_url"].upper()]
+                # --- Categorize Imagery Mosaics using Metadata Phase Detection ---
+                pre_urls = [e["tiff_url"] for e in display_tiff_links if get_item_phase(e) == "PRE"]
+                post_urls = [e["tiff_url"] for e in display_tiff_links if get_item_phase(e) == "POST"]
                 all_urls = [e["tiff_url"] for e in display_tiff_links]
 
-                st.markdown("### 🌐 Ready-to-Run Mosaics (No Hardware Constraints)")
-                st.caption("Merge remote Cloud-Optimized GeoTIFFs online into virtual layers without downloading large raster files.")
+                st.markdown("### 🌐 Ready-to-Run Mosaics")
+                st.caption("Merge remote Cloud-Optimized GeoTIFFs directly into a single compressed GeoTIFF file using OSGeo4W Shell.")
 
                 mosaic_tab_pre, mosaic_tab_post, mosaic_tab_all = st.tabs([
                     f"PRE-Event ({len(pre_urls)} scenes)", 
@@ -561,19 +599,30 @@ if root_url_input:
                         return
                     
                     vrt_filename = f"{event_prefix}_{category_name.upper()}_mosaic.vrt"
+                    tif_filename = f"{event_prefix}_{category_name.upper()}_MERGED.tif"
 
-                    # 1. Ready-to-run terminal command
-                    st.markdown("#### 1. Ready-to-Run Terminal Command (GDAL CLI)")
-                    st.caption("Copy and paste this into OSGeo4W Shell, Terminal, or Command Prompt:")
+                    # 1. OSGeo4W Direct One-Liner (Render & Download Merged TIF)
+                    st.markdown("#### 1. OSGeo4W Shell One-Liner (Downloads & Renders Single Merged GeoTIFF)")
+                    st.caption(
+                        "**Step-by-step:** Open **OSGeo4W Shell** from Windows Start Menu, "
+                        "navigate to your downloads folder (`cd C:\\Users\\YourName\\Downloads`), "
+                        "then copy and paste the command below:"
+                    )
+                    osgeo_cmd = build_osgeo4w_direct_tif_one_liner(urls, tif_filename)
+                    st.code(osgeo_cmd, language="cmd")
+
+                    # 2. Virtual Index Command (.VRT only)
+                    st.markdown("#### 2. Virtual Raster Index Command (Builds Instant 10KB .VRT)")
+                    st.caption("Creates a lightweight index file to stream imagery in QGIS without downloading pixels:")
                     cli_cmd = build_gdal_cli_command(urls, vrt_filename)
                     st.code(cli_cmd, language="bash")
 
-                    # 2. Ready-to-run Python script query
-                    st.markdown("#### 2. Ready-to-Run Python Query (Google Colab / Jupyter)")
+                    # 3. Python Script Query
+                    st.markdown("#### 3. Ready-to-Run Python Query (Google Colab / Jupyter)")
                     py_script = build_python_script_query(urls, vrt_filename)
                     st.code(py_script, language="python")
 
-                    # 3. Server-side VRT download button (if GDAL binary available)
+                    # 4. Server-Side Direct VRT Download
                     if GDAL_AVAILABLE:
                         vrt_xml = generate_vrt_bytes(urls)
                         if vrt_xml:
@@ -584,8 +633,6 @@ if root_url_input:
                                 mime="application/xml",
                                 help="Open this lightweight .vrt file directly in QGIS to stream the combined imagery online."
                             )
-                    else:
-                        st.caption("ℹ️ *Note: Install GDAL Python package locally to enable direct .vrt file downloads in Streamlit.*")
 
                 with mosaic_tab_pre:
                     render_mosaic_queries(pre_urls, "PRE")
@@ -598,6 +645,8 @@ if root_url_input:
                 st.markdown("### Raw Individual GeoTIFF Links")
                 if display_tiff_links:
                     for idx, entry in enumerate(display_tiff_links, 1):
+                        phase_tag = get_item_phase(entry)
+                        st.markdown(f"**#{idx} [{phase_tag}]** — `{entry['title']}`")
                         st.code(entry["tiff_url"], language=None)
 
                     tiff_text = "\n".join(entry["tiff_url"] for entry in display_tiff_links)
@@ -651,7 +700,6 @@ if root_url_input:
                                 upload_bar.empty()
                                 st.info(f"Batch upload finished. {success_count} item(s) submitted.")
 
-                    # Build detailed meta items with duplicate status
                     for meta in display_oam_items:
                         dup_info = st.session_state.get("oam_duplicates", {}).get(meta["item_url"])
                         if dup_info:
@@ -659,7 +707,6 @@ if root_url_input:
                         else:
                             meta["oam_duplicate_status"] = "Not checked"
 
-                    # Item Cards
                     for idx, meta in enumerate(display_oam_items, 1):
                         status_label = meta["oam_duplicate_status"]
                         with st.expander(f"{idx}. {meta['title']} | Status: [{status_label}]"):
@@ -698,7 +745,6 @@ if root_url_input:
                                 st.warning("±90° Longitude Risk Detected. Reprojection command:")
                                 st.code(meta["reprojection_command"], language="bash")
 
-                    # CSV Export
                     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                     export_csv_filename = f"{event_prefix}_oam_metadata_{timestamp_str}.csv"
 
