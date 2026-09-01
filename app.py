@@ -6,18 +6,10 @@ import io
 import csv
 from datetime import datetime
 import time
-import json
 import folium
 from folium.plugins import Draw
 from streamlit_folium import st_folium
 from shapely.geometry import box, shape
-
-# Try importing GDAL for server-side VRT generation; fallback gracefully if unavailable
-try:
-    from osgeo import gdal
-    GDAL_AVAILABLE = True
-except ImportError:
-    GDAL_AVAILABLE = False
 
 # ---------- Constants ----------
 OAM_DEFAULT_LICENSE = "CC-BY 4.0"
@@ -113,61 +105,12 @@ def get_item_phase(entry: dict) -> str:
 
     return "OTHER"
 
-# ---------- Tasking Manager Composite Command Generators ----------
-def build_fast_local_download_and_merge_cmd(tiff_urls: list[str], output_filename: str) -> str:
-    """
-    Downloads raw GeoTIFF files in parallel, builds a VRT with -addalpha to prevent 
-    JPEG compression "fuzzy fringes" on borders, and translates to a final COG.
-    """
-    local_filenames = [url.split("/")[-1] for url in tiff_urls if url]
-    curl_flags = " ".join([f'-O "{url}"' for url in tiff_urls if url])
-    local_files_str = " ".join([f'"{fn}"' for fn in local_filenames])
-    temp_vrt = "temp_local_mosaic.vrt"
-    
-    return (
-        f"curl -k -Z {curl_flags} && "
-        f"gdalbuildvrt -srcnodata 0 -vrtnodata 0 -addalpha {temp_vrt} {local_files_str} && "
-        f"gdal_translate -of COG -co COMPRESS=JPEG -co QUALITY=85 -co BIGTIFF=YES {temp_vrt} {output_filename} && "
-        f"del {temp_vrt}"
-    )
-
-def build_osgeo4w_direct_tif_one_liner(tiff_urls: list[str], output_filename: str) -> str:
-    vsicurl_urls = [f'"/vsicurl/{url}"' for url in tiff_urls if url]
-    urls_str = " ".join(vsicurl_urls)
-    temp_vrt = "temp_mosaic.vrt"
-    return (
-        f"gdalbuildvrt -srcnodata 0 -vrtnodata 0 -addalpha {temp_vrt} {urls_str} && "
-        f"gdal_translate -of COG -co COMPRESS=JPEG -co QUALITY=85 -co BIGTIFF=YES {temp_vrt} {output_filename} && "
-        f"del {temp_vrt}"
-    )
-
-def generate_vrt_bytes(tiff_urls: list[str]) -> str | None:
-    if not GDAL_AVAILABLE or not tiff_urls:
-        return None
-    try:
-        vsicurl_urls = [f"/vsicurl/{url}" for url in tiff_urls if url]
-        vrt_path = "/vsimem/temp_mosaic.vrt"
-        options = gdal.BuildVRTOptions(srcNodata=0, vrtNodata=0, addAlpha=True)
-        ds = gdal.BuildVRT(vrt_path, vsicurl_urls, options=options)
-        ds.FlushCache()
-        
-        f = gdal.VSIFOpenL(vrt_path, "rb")
-        gdal.VSIFSeekL(f, 0, 2)
-        size = gdal.VSIFTellL(f)
-        gdal.VSIFSeekL(f, 0, 0)
-        vrt_bytes = gdal.VSIFReadL(1, size, f)
-        gdal.VSIFCloseL(f)
-        gdal.Unlink(vrt_path)
-        return vrt_bytes.decode("utf-8")
-    except Exception:
-        return None
-
 # ---------- OAM Duplicate Check & Upload Helpers ----------
 def check_oam_duplicate(meta: dict) -> dict:
     provider_item_id = meta.get("provider_item_id", "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
     stac_geom = meta.get("geometry")
-    headers = {"User-Agent": "STAC-to-OAM-Tool/2.0"}
+    headers = {"User-Agent": "STAC-to-OAM-Tool/3.0"}
 
     if provider_item_id:
         try:
@@ -460,8 +403,9 @@ def run_crawl(real_url: str):
 
 # ---------- Streamlit Main Application UI ----------
 st.set_page_config(page_title="STAC-to-OAM Tool", layout="wide")
-st.title("STAC-to-OAM Humanitarian Ingest & Online Mosaic Tool")
+st.title("STAC-to-OAM Humanitarian Ingest Tool")
 
+# Sidebar - OAM Settings
 st.sidebar.header("OAM Upload Settings")
 oam_token = st.sidebar.text_input("OAM API Token (Optional)", type="password", help="Paste your OpenAerialMap token for direct 1-click uploads.")
 if oam_token:
@@ -469,6 +413,7 @@ if oam_token:
 else:
     st.sidebar.info("Provide a token above to enable direct Streamlit-to-OAM uploads.")
 
+# Input Field
 root_url_input = st.text_input("Enter STAC Catalog / Collection / Item Browser URL", value=DEFAULT_SAMPLE_URL)
 
 if root_url_input:
@@ -550,7 +495,7 @@ if root_url_input:
                 display_tiff_links = tiff_links
                 display_oam_items = oam_items
 
-            tab1, tab2, tab3 = st.tabs(["STAC Links", "Tasking Manager Composites", "OAM Metadata & Ingestion"])
+            tab1, tab2, tab3 = st.tabs(["STAC Links", "Tasking Manager / Cloud Handoff", "OAM Metadata & Ingestion"])
 
             with tab1:
                 st.subheader("Original STAC Links")
@@ -558,16 +503,16 @@ if root_url_input:
                     st.markdown(f"{idx}. [{link}]({link})")
 
             with tab2:
-                st.subheader("Create Seamless Composite Mosaics for JOSM / Tasking Manager")
+                st.subheader("Request a Seamless Composite from Data Experts")
                 
                 pre_urls = [e["tiff_url"] for e in display_tiff_links if get_item_phase(e) == "PRE"]
                 post_urls = [e["tiff_url"] for e in display_tiff_links if get_item_phase(e) == "POST"]
                 all_urls = [e["tiff_url"] for e in display_tiff_links]
 
                 st.markdown(
-                    "This workflow solves the **'fuzzy black edge'** and dynamic stacking issues seen in standard tile servers. "
-                    "It downloads raw tiles, seamlessly merges them using an alpha mask (to remove black borders completely), "
-                    "and outputs a single, clean COG ready for HOT Tasking Manager."
+                    "High-resolution regional mosaics require over 100+ Gigabytes of processing memory and are best "
+                    "handled by experts on AWS Cloud instances (e.g., to remove fuzzy black boundaries automatically). "
+                    "**Use this tab to generate a ready-to-send package to the Data Team.**"
                 )
 
                 mosaic_tab_pre, mosaic_tab_post, mosaic_tab_all = st.tabs([
@@ -576,66 +521,38 @@ if root_url_input:
                     f"ALL Scenes ({len(all_urls)} scenes)"
                 ])
 
-                def render_tasking_manager_workflow(urls: list[str], category_name: str):
+                def render_cloud_handoff_workflow(urls: list[str], category_name: str):
                     if not urls:
                         st.info(f"No {category_name} images found in this selection.")
                         return
                     
-                    tif_filename = f"{event_prefix}_{category_name.upper()}_COMPOSITE.tif"
-
-                    st.markdown("### Step 1: Download & Merge Locally")
-                    st.caption("Open **OSGeo4W Shell** and run this command to build the seamless composite in minutes:")
-                    fast_cmd = build_fast_local_download_and_merge_cmd(urls, tif_filename)
-                    st.code(fast_cmd, language="cmd")
-
-                    st.markdown("### Step 2: Host the Image")
-                    st.caption(
-                        "Take the resulting `" + tif_filename + "` and upload it to an S3 bucket or **OpenAerialMap** "
-                        "(via the adjacent tab). Once hosted, copy its direct download URL."
-                    )
-
-                    st.markdown("### Step 3: Load into Tasking Manager / JOSM")
-                    st.caption("Replace `[YOUR_HOSTED_URL_HERE]` below with your new URL. Paste this straight into HOT Tasking Manager or JOSM:")
-                    tms_url = "https://titiler.hotosm.org/cog/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?url=[YOUR_HOSTED_URL_HERE]&bidx=1,2,3"
-                    st.code(tms_url, language="text")
-                    
-                    with st.expander("Show advanced remote processing options (Slow / VRT)"):
-                        st.markdown("**Option A: Remote Streaming Build (Slow)**")
-                        st.code(build_osgeo4w_direct_tif_one_liner(urls, tif_filename), language="cmd")
-                        
-                        st.markdown("**Option B: Download VRT Index Only**")
-                        if GDAL_AVAILABLE:
-                            vrt_xml = generate_vrt_bytes(urls)
-                            if vrt_xml:
-                                st.download_button(
-                                    label=f"📥 Download {category_name} VRT",
-                                    data=vrt_xml,
-                                    file_name=f"{event_prefix}_{category_name}.vrt",
-                                    mime="application/xml"
-                                )
-
-                with mosaic_tab_pre:
-                    render_tasking_manager_workflow(pre_urls, "PRE")
-                with mosaic_tab_post:
-                    render_tasking_manager_workflow(post_urls, "POST")
-                with mosaic_tab_all:
-                    render_tasking_manager_workflow(all_urls, "ALL")
-
-                st.markdown("---")
-                st.markdown("### Raw Individual GeoTIFF Links")
-                if display_tiff_links:
-                    for idx, entry in enumerate(display_tiff_links, 1):
-                        phase_tag = get_item_phase(entry)
-                        st.markdown(f"**#{idx} [{phase_tag}]** — `{entry['title']}`")
-                        st.code(entry["tiff_url"], language=None)
-
-                    tiff_text = "\n".join(entry["tiff_url"] for entry in display_tiff_links)
+                    st.markdown("### Step 1: Download the URL List")
+                    st.caption(f"Download this text file containing the {len(urls)} raw GeoTIFF URLs.")
+                    urls_txt = "\n".join(urls)
                     st.download_button(
-                        label="Download Complete TIFF URLs List",
-                        data=tiff_text,
-                        file_name=f"{event_prefix}_tiff_urls.txt",
+                        label=f"📥 Download {category_name}_URLs.txt",
+                        data=urls_txt,
+                        file_name=f"{event_prefix}_{category_name}_URLs.txt",
                         mime="text/plain"
                     )
+
+                    st.markdown("### Step 2: Copy the Handoff Message")
+                    st.caption("Copy this message, attach the `.txt` file you just downloaded, and send it to the Data Team via Slack/Email.")
+                    
+                    slack_msg = f"Hey team,\n\nCould someone with cloud processing access help merge these {len(urls)} **{category_name}**-event images into a single composite COG?\n\nI need this to set up a clean Tasking Manager project for the `{event_prefix}` activation.\n\nI've attached the text file containing the raw S3 URLs. Let me know the final hosted URL once it's baked! Thank you!"
+                    st.code(slack_msg, language="text")
+
+                    st.markdown("### Step 3: Load into Tasking Manager / JOSM")
+                    st.caption("Once the data expert replies with a final hosted `.tif` URL, replace `[HOSTED_URL]` below and paste it directly into Tasking Manager or JOSM Custom Imagery:")
+                    tms_url = "https://titiler.hotosm.org/cog/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?url=[HOSTED_URL]&bidx=1,2,3"
+                    st.code(tms_url, language="text")
+
+                with mosaic_tab_pre:
+                    render_cloud_handoff_workflow(pre_urls, "PRE")
+                with mosaic_tab_post:
+                    render_cloud_handoff_workflow(post_urls, "POST")
+                with mosaic_tab_all:
+                    render_cloud_handoff_workflow(all_urls, "ALL")
 
             with tab3:
                 st.subheader("OpenAerialMap Ingestion & Duplicate Protection")
