@@ -111,23 +111,18 @@ def get_item_phase(entry: dict) -> str:
     return "OTHER"
 
 # ---------- OAM Duplicate Check Helpers ----------
-def generate_oam_map_link(oam_id: str, bbox: list) -> str:
-    """Calculates the center of the bbox and generates a visual OAM frontend link."""
-    if not bbox or len(bbox) < 4:
-        return "https://map.openaerialmap.org/"
-    
-    min_lon, min_lat, max_lon, max_lat = bbox
-    center_lon = (min_lon + max_lon) / 2.0
-    center_lat = (min_lat + max_lat) / 2.0
-    
-    # CORRECT OAM URL FORMAT: /#/longitude,latitude,zoom (comma separated)
-    return f"https://map.openaerialmap.org/#/{center_lon:.5f},{center_lat:.5f},14"
+def generate_oam_map_link(oam_id: str) -> str:
+    """Generates a direct, individual imagery verification link using the HOTOSM STAC Viewer."""
+    if not oam_id:
+        return ""
+    # Standard STAC item routing via HOTOSM API
+    return f"https://api.imagery.hotosm.org/map/?href=https://api.imagery.hotosm.org/stac/collections/openaerialmap/items/{oam_id}"
 
 def check_oam_duplicate(meta: dict) -> dict:
     provider_item_id = meta.get("provider_item_id", "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
     stac_geom = meta.get("geometry")
-    headers = {"User-Agent": "STAC-to-OAM-Tool/5.1"}
+    headers = {"User-Agent": "STAC-to-OAM-Tool/6.0"}
 
     # 1. Check by Exact ID in the Title
     if provider_item_id:
@@ -140,12 +135,11 @@ def check_oam_duplicate(meta: dict) -> dict:
                     title = item.get("title", "")
                     if provider_item_id.lower() in title.lower():
                         oam_id = item.get("_id")
-                        oam_bbox = item.get("bbox") or stac_bbox
                         return {
                             "exists": True,
                             "oam_id": oam_id,
                             "status_str": "Already exists (Exact ID in Title)",
-                            "link": generate_oam_map_link(oam_id, oam_bbox),
+                            "link": generate_oam_map_link(oam_id),
                             "error": None
                         }
         except Exception:
@@ -169,7 +163,7 @@ def check_oam_duplicate(meta: dict) -> dict:
                                 "exists": True,
                                 "oam_id": oam_id,
                                 "status_str": f"Already exists (Spatial Overlap {int(iou * 100)}%)",
-                                "link": generate_oam_map_link(oam_id, oam_bbox),
+                                "link": generate_oam_map_link(oam_id),
                                 "error": None
                             }
         except Exception as e:
@@ -555,7 +549,6 @@ if root_url_input:
                             result = check_oam_duplicate(meta)
                             st.session_state["oam_duplicates"][meta["item_url"]] = result
                             
-                            # Also update the meta dictionary so the CSV gets the link immediately
                             if result.get("exists") and result.get("link"):
                                 meta["oam_existing_link"] = result["link"]
                             
@@ -579,12 +572,11 @@ if root_url_input:
                             if "Already exists" in status_label:
                                 st.warning(f"⚠️ {status_label}")
                                 
-                                # Dynamic button rendering based on exact vs overlap
                                 if meta.get("oam_existing_link"):
                                     if "Exact ID" in status_label:
-                                        st.link_button("👀 View Exact Image on OAM", meta["oam_existing_link"])
+                                        st.link_button("👀 View Exact OAM Image (HOTOSM Viewer)", meta["oam_existing_link"])
                                     else:
-                                        st.link_button("⚠️ View Overlapping Image on OAM", meta["oam_existing_link"])
+                                        st.link_button("⚠️ View Overlapping OAM Image (HOTOSM Viewer)", meta["oam_existing_link"])
                                         
                             elif "Not found" in status_label:
                                 st.success(f"✅ {status_label} – Ready for submission.")
