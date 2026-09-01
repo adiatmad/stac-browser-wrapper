@@ -11,6 +11,13 @@ from folium.plugins import Draw
 from streamlit_folium import st_folium
 from shapely.geometry import box, shape
 
+# Try importing GDAL for server-side VRT generation; fallback gracefully if unavailable
+try:
+    from osgeo import gdal
+    GDAL_AVAILABLE = True
+except ImportError:
+    GDAL_AVAILABLE = False
+
 # ---------- Constants ----------
 OAM_DEFAULT_LICENSE = "CC-BY 4.0"
 OAM_MAP_URL = "https://map.openaerialmap.org/"
@@ -25,7 +32,7 @@ OAM_FIELDNAMES = [
     "item_url", "title", "platform", "sensor", "date_start", "date_end",
     "image_source_url", "provider", "tags", "license_oam_default", 
     "stac_license_reference", "longitude_risk", "reprojection_command", 
-    "provider_item_id", "oam_duplicate_status"
+    "provider_item_id", "oam_duplicate_status", "oam_existing_link"
 ]
 
 # ---------- Session State Initialization ----------
@@ -104,12 +111,26 @@ def get_item_phase(entry: dict) -> str:
     return "OTHER"
 
 # ---------- OAM Duplicate Check Helpers ----------
+def generate_oam_map_link(oam_id: str, bbox: list) -> str:
+    """Calculates the center of the bbox and generates a visual OAM frontend link."""
+    if not bbox or len(bbox) < 4:
+        # Fallback to global view if no bbox exists
+        return f"https://map.openaerialmap.org/#/0/0/2/square/{oam_id}"
+    
+    min_lon, min_lat, max_lon, max_lat = bbox
+    center_lon = (min_lon + max_lon) / 2.0
+    center_lat = (min_lat + max_lat) / 2.0
+    
+    # URL structure: /#/longitude/latitude/zoom_level/square/id
+    return f"https://map.openaerialmap.org/#/{center_lon:.5f}/{center_lat:.5f}/14/square/{oam_id}"
+
 def check_oam_duplicate(meta: dict) -> dict:
     provider_item_id = meta.get("provider_item_id", "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
     stac_geom = meta.get("geometry")
-    headers = {"User-Agent": "STAC-to-OAM-Tool/4.0"}
+    headers = {"User-Agent": "STAC-to-OAM-Tool/5.0"}
 
+    # 1. Check by Exact ID in the Title
     if provider_item_id:
         try:
             params = {"title": provider_item_id, "limit": 50}
@@ -119,15 +140,19 @@ def check_oam_duplicate(meta: dict) -> dict:
                 for item in results:
                     title = item.get("title", "")
                     if provider_item_id.lower() in title.lower():
+                        oam_id = item.get("_id")
+                        oam_bbox = item.get("bbox") or stac_bbox
                         return {
                             "exists": True,
-                            "oam_id": item.get("_id"),
+                            "oam_id": oam_id,
                             "status_str": "Already exists (Exact ID in Title)",
+                            "link": generate_oam_map_link(oam_id, oam_bbox),
                             "error": None
                         }
         except Exception:
             pass
 
+    # 2. Check by Spatial Overlap
     if stac_bbox:
         bbox_str = ",".join(str(v) for v in stac_bbox)
         params = {"bbox": bbox_str, "limit": 100}
@@ -140,16 +165,18 @@ def check_oam_duplicate(meta: dict) -> dict:
                     if oam_bbox:
                         iou = calculate_exact_iou(stac_geom, oam_bbox)
                         if iou > 0.70:
+                            oam_id = item.get("_id")
                             return {
                                 "exists": True,
-                                "oam_id": item.get("_id"),
+                                "oam_id": oam_id,
                                 "status_str": f"Already exists (Spatial Overlap {int(iou * 100)}%)",
+                                "link": generate_oam_map_link(oam_id, oam_bbox),
                                 "error": None
                             }
         except Exception as e:
-            return {"exists": False, "oam_id": None, "status_str": f"Check Failed: {e}", "error": str(e)}
+            return {"exists": False, "oam_id": None, "status_str": f"Check Failed: {e}", "link": "", "error": str(e)}
 
-    return {"exists": False, "oam_id": None, "status_str": "Not found on OAM", "error": None}
+    return {"exists": False, "oam_id": None, "status_str": "Not found on OAM", "link": "", "error": None}
 
 # ---------- STAC Crawling & Metadata Parsing ----------
 def extract_real_stac_url(browser_url: str) -> str:
@@ -270,7 +297,8 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
         "bbox": item_data.get("bbox"),
         "geometry": item_data.get("geometry"),
         "provider_item_id": item_data.get("id", ""),
-        "oam_duplicate_status": "Not checked"
+        "oam_duplicate_status": "Not checked",
+        "oam_existing_link": ""
     }
 
 def bbox_intersects(item_bbox, filter_bbox) -> bool:
@@ -486,7 +514,6 @@ if root_url_input:
                         st.info(f"No {category_name} images found in this selection.")
                         return
                     
-                    # Extract the STAC IDs for the TiTiler URL payload
                     ids = [item["provider_item_id"] for item in items if item.get("provider_item_id")]
                     if not ids:
                         st.warning("Could not extract STAC Item IDs for the selected scenes.")
@@ -528,6 +555,11 @@ if root_url_input:
                         for i, meta in enumerate(display_oam_items):
                             result = check_oam_duplicate(meta)
                             st.session_state["oam_duplicates"][meta["item_url"]] = result
+                            
+                            # Also update the meta dictionary so the CSV gets the link immediately
+                            if result.get("exists") and result.get("link"):
+                                meta["oam_existing_link"] = result["link"]
+                            
                             progress_bar.progress((i + 1) / total)
                             time.sleep(0.10)
                         progress_bar.empty()
@@ -537,6 +569,8 @@ if root_url_input:
                         dup_info = st.session_state.get("oam_duplicates", {}).get(meta["item_url"])
                         if dup_info:
                             meta["oam_duplicate_status"] = dup_info.get("status_str", "Not checked")
+                            if dup_info.get("link"):
+                                meta["oam_existing_link"] = dup_info["link"]
                         else:
                             meta["oam_duplicate_status"] = "Not checked"
 
@@ -545,6 +579,14 @@ if root_url_input:
                         with st.expander(f"{idx}. {meta['title']} | Status: [{status_label}]"):
                             if "Already exists" in status_label:
                                 st.warning(f"⚠️ {status_label}")
+                                
+                                # Dynamic button rendering based on exact vs overlap
+                                if meta.get("oam_existing_link"):
+                                    if "Exact ID" in status_label:
+                                        st.link_button("👀 View Exact Image on OAM", meta["oam_existing_link"])
+                                    else:
+                                        st.link_button("⚠️ View Overlapping Image on OAM", meta["oam_existing_link"])
+                                        
                             elif "Not found" in status_label:
                                 st.success(f"✅ {status_label} – Ready for submission.")
                             else:
