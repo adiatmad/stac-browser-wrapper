@@ -11,12 +11,18 @@ from folium.plugins import Draw
 from streamlit_folium import st_folium
 from shapely.geometry import box, shape
 
+# Try importing GDAL for server-side VRT generation; fallback gracefully if unavailable
+try:
+    from osgeo import gdal
+    GDAL_AVAILABLE = True
+except ImportError:
+    GDAL_AVAILABLE = False
+
 # ---------- Constants ----------
 OAM_DEFAULT_LICENSE = "CC-BY 4.0"
 OAM_UPLOADER_ISSUE_URL = "https://github.com/hotosm/openaerialmap/issues/296"
 OAM_MAP_URL = "https://map.openaerialmap.org/"
 OAM_META_API = "https://api.openaerialmap.org/meta"
-OAM_UPLOAD_API = "https://upload-api.openaerialmap.org/upload"
 
 DEFAULT_SAMPLE_URL = (
     "https://browser.moregeo.it/external/vantor-opendata.s3.amazonaws.com/"
@@ -105,7 +111,7 @@ def get_item_phase(entry: dict) -> str:
 
     return "OTHER"
 
-# ---------- OAM Duplicate Check & Upload Helpers ----------
+# ---------- OAM Duplicate Check Helpers ----------
 def check_oam_duplicate(meta: dict) -> dict:
     provider_item_id = meta.get("provider_item_id", "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
@@ -152,37 +158,6 @@ def check_oam_duplicate(meta: dict) -> dict:
             return {"exists": False, "oam_id": None, "status_str": f"Check Failed: {e}", "error": str(e)}
 
     return {"exists": False, "oam_id": None, "status_str": "Not found on OAM", "error": None}
-
-def upload_item_to_oam(token: str, meta: dict) -> tuple[bool, str]:
-    if not token or not token.strip():
-        return False, "OAM API Token missing. Enter your token in the sidebar."
-    
-    headers = {
-        "Authorization": f"Bearer {token.strip()}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "title": meta["title"],
-        "platform": meta["platform"].lower(),
-        "sensor": meta["sensor"],
-        "provider": meta["provider"],
-        "license": meta["license_oam_default"],
-        "acquisition_start": meta["raw_datetime"] or datetime.utcnow().isoformat() + "Z",
-        "acquisition_end": meta["raw_datetime"] or datetime.utcnow().isoformat() + "Z",
-        "remote_url": meta["image_source_url"],
-        "tags": meta["tags"] if meta["tags"] else "STAC Ingest"
-    }
-    
-    try:
-        resp = requests.post(OAM_UPLOAD_API, json=payload, headers=headers, timeout=25)
-        if resp.status_code in [200, 201, 202]:
-            upload_id = resp.json().get("upload", {}).get("_id", "Queued")
-            return True, f"Successfully submitted to OAM (Upload ID: {upload_id})"
-        else:
-            return False, f"Upload API Error ({resp.status_code}): {resp.text}"
-    except Exception as e:
-        return False, f"HTTP Exception: {str(e)}"
 
 # ---------- STAC Crawling & Metadata Parsing ----------
 def extract_real_stac_url(browser_url: str) -> str:
@@ -405,14 +380,6 @@ def run_crawl(real_url: str):
 st.set_page_config(page_title="STAC-to-OAM Tool", layout="wide")
 st.title("STAC-to-OAM Humanitarian Ingest Tool")
 
-# Sidebar - OAM Settings
-st.sidebar.header("OAM Upload Settings")
-oam_token = st.sidebar.text_input("OAM API Token (Optional)", type="password", help="Paste your OpenAerialMap token for direct 1-click uploads.")
-if oam_token:
-    st.sidebar.success("Token Loaded – Ready for Direct Uploads")
-else:
-    st.sidebar.info("Provide a token above to enable direct Streamlit-to-OAM uploads.")
-
 # Input Field
 root_url_input = st.text_input("Enter STAC Catalog / Collection / Item Browser URL", value=DEFAULT_SAMPLE_URL)
 
@@ -555,47 +522,21 @@ if root_url_input:
                     render_cloud_handoff_workflow(all_urls, "ALL")
 
             with tab3:
-                st.subheader("OpenAerialMap Ingestion & Duplicate Protection")
+                st.subheader("OpenAerialMap CSV Export & Duplicate Check")
                 st.link_button("Open OAM Map", OAM_MAP_URL)
 
                 if display_oam_items:
-                    col_check, col_batch_upload = st.columns([1, 1])
-                    with col_check:
-                        if st.button("🔍 Check duplicates on OAM"):
-                            st.session_state["oam_duplicates"] = {}
-                            progress_bar = st.progress(0, text="Checking OAM API for duplicates...")
-                            total = len(display_oam_items)
-                            for i, meta in enumerate(display_oam_items):
-                                result = check_oam_duplicate(meta)
-                                st.session_state["oam_duplicates"][meta["item_url"]] = result
-                                progress_bar.progress((i + 1) / total)
-                                time.sleep(0.10)
-                            progress_bar.empty()
-                            st.success("Duplicate check complete!")
-
-                    with col_batch_upload:
-                        if st.button("🚀 Upload All Non-Duplicates to OAM"):
-                            if not oam_token:
-                                st.error("Please enter your OAM API Token in the sidebar first.")
-                            else:
-                                upload_bar = st.progress(0, text="Submitting non-duplicate items...")
-                                total_upload = len(display_oam_items)
-                                success_count = 0
-                                
-                                for i, meta in enumerate(display_oam_items):
-                                    dup_status = st.session_state.get("oam_duplicates", {}).get(meta["item_url"], {})
-                                    if dup_status.get("exists"):
-                                        st.warning(f"Skipped '{meta['title']}' – Duplicate detected.")
-                                    else:
-                                        ok, msg = upload_item_to_oam(oam_token, meta)
-                                        if ok:
-                                            success_count += 1
-                                            st.success(f"Uploaded #{i+1}: {meta['title']}")
-                                        else:
-                                            st.error(f"Failed #{i+1}: {msg}")
-                                    upload_bar.progress((i + 1) / total_upload)
-                                upload_bar.empty()
-                                st.info(f"Batch upload finished. {success_count} item(s) submitted.")
+                    if st.button("🔍 Check duplicates on OAM"):
+                        st.session_state["oam_duplicates"] = {}
+                        progress_bar = st.progress(0, text="Checking OAM API for duplicates...")
+                        total = len(display_oam_items)
+                        for i, meta in enumerate(display_oam_items):
+                            result = check_oam_duplicate(meta)
+                            st.session_state["oam_duplicates"][meta["item_url"]] = result
+                            progress_bar.progress((i + 1) / total)
+                            time.sleep(0.10)
+                        progress_bar.empty()
+                        st.success("Duplicate check complete!")
 
                     for meta in display_oam_items:
                         dup_info = st.session_state.get("oam_duplicates", {}).get(meta["item_url"])
@@ -613,14 +554,6 @@ if root_url_input:
                                 st.success(f"✅ {status_label} – Ready for submission.")
                             else:
                                 st.caption("Click 'Check duplicates on OAM' above to refresh status.")
-
-                            if oam_token and not ("Already exists" in status_label):
-                                if st.button(f"Upload item #{idx} to OAM", key=f"btn_up_{idx}"):
-                                    ok, msg = upload_item_to_oam(oam_token, meta)
-                                    if ok:
-                                        st.success(msg)
-                                    else:
-                                        st.error(msg)
 
                             fields = [
                                 ("Title", meta["title"]),
@@ -656,5 +589,6 @@ if root_url_input:
                         label=f"📥 Download CSV Metadata ({export_csv_filename})",
                         data=csv_buffer.getvalue(),
                         file_name=export_csv_filename,
-                        mime="text/csv"
+                        mime="text/csv",
+                        help="Downloads all listed items. You can filter out duplicates in Excel before uploading to OAM."
                     )
