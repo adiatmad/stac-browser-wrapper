@@ -53,7 +53,6 @@ if "last_processed_url" not in st.session_state:
 
 # ---------- Spatial & Geometry Helpers ----------
 def parse_bbox_2d(bbox: list):
-    """Safely extract 2D bbox [west, south, east, north] from 2D or 3D STAC bounding boxes."""
     if not bbox or len(bbox) < 4:
         return None
     if len(bbox) >= 6:
@@ -61,7 +60,6 @@ def parse_bbox_2d(bbox: list):
     return [bbox[0], bbox[1], bbox[2], bbox[3]]
 
 def calculate_exact_iou(stac_geom: dict, oam_bbox: list) -> float:
-    """Calculates true spatial Intersection over Union (IoU) using Shapely geometries."""
     if not oam_bbox:
         return 0.0
     try:
@@ -87,7 +85,6 @@ def calculate_exact_iou(stac_geom: dict, oam_bbox: list) -> float:
         return 0.0
 
 def extract_event_name_from_url(url: str) -> str:
-    """Extracts event name dynamically from URL path for filenames."""
     match = re.search(r'/events/([^/]+)', url)
     if match:
         return match.group(1)
@@ -101,9 +98,7 @@ def extract_event_name_from_url(url: str) -> str:
         return last_part
     return "stac_event"
 
-# ---------- Phase Detection Helper ----------
 def get_item_phase(entry: dict) -> str:
-    """Multi-layer detection to identify PRE vs POST event imagery."""
     phase = str(entry.get("phase", "")).strip().lower()
     if phase == "pre":
         return "PRE"
@@ -118,12 +113,11 @@ def get_item_phase(entry: dict) -> str:
 
     return "OTHER"
 
-# ---------- VRT & Command Generator Helpers ----------
+# ---------- Tasking Manager Composite Command Generators ----------
 def build_fast_local_download_and_merge_cmd(tiff_urls: list[str], output_filename: str) -> str:
     """
-    Generates an optimized OSGeo4W Shell command that downloads all raw GeoTIFF files 
-    in parallel via curl -Z, builds a local VRT, translates to COG locally, 
-    and cleans up temporary files.
+    Downloads raw GeoTIFF files in parallel, builds a VRT with -addalpha to prevent 
+    JPEG compression "fuzzy fringes" on borders, and translates to a final COG.
     """
     local_filenames = [url.split("/")[-1] for url in tiff_urls if url]
     curl_flags = " ".join([f'-O "{url}"' for url in tiff_urls if url])
@@ -138,7 +132,6 @@ def build_fast_local_download_and_merge_cmd(tiff_urls: list[str], output_filenam
     )
 
 def build_osgeo4w_direct_tif_one_liner(tiff_urls: list[str], output_filename: str) -> str:
-    """Generates a single-line OSGeo4W command streaming COGs remotely via /vsicurl/."""
     vsicurl_urls = [f'"/vsicurl/{url}"' for url in tiff_urls if url]
     urls_str = " ".join(vsicurl_urls)
     temp_vrt = "temp_mosaic.vrt"
@@ -148,30 +141,7 @@ def build_osgeo4w_direct_tif_one_liner(tiff_urls: list[str], output_filename: st
         f"del {temp_vrt}"
     )
 
-def build_gdal_cli_command(tiff_urls: list[str], output_filename: str) -> str:
-    """Generates a terminal GDAL command for virtual raster (.vrt) index creation."""
-    vsicurl_urls = [f'"/vsicurl/{url}"' for url in tiff_urls if url]
-    urls_str = " ".join(vsicurl_urls)
-    return f"gdalbuildvrt -srcnodata 0 -vrtnodata 0 -addalpha {output_filename} {urls_str}"
-
-def build_python_script_query(tiff_urls: list[str], output_filename: str) -> str:
-    """Generates a ready-to-run Python query script for Google Colab or local execution."""
-    urls_json = json.dumps(tiff_urls, indent=4)
-    return f'''import os
-from osgeo import gdal
-
-urls = {urls_json}
-vsicurl_urls = [f"/vsicurl/{{u}}" for u in urls]
-
-print("Building virtual mosaic for {{len(urls)}} scenes...")
-options = gdal.BuildVRTOptions(srcNodata=0, vrtNodata=0, addAlpha=True)
-vrt_ds = gdal.BuildVRT("{output_filename}", vsicurl_urls, options=options)
-vrt_ds.FlushCache()
-print("Success! Virtual raster saved to: {output_filename}")
-'''
-
 def generate_vrt_bytes(tiff_urls: list[str]) -> str | None:
-    """Generates in-memory VRT XML using GDAL C-library if available."""
     if not GDAL_AVAILABLE or not tiff_urls:
         return None
     try:
@@ -194,7 +164,6 @@ def generate_vrt_bytes(tiff_urls: list[str]) -> str | None:
 
 # ---------- OAM Duplicate Check & Upload Helpers ----------
 def check_oam_duplicate(meta: dict) -> dict:
-    """Checks OAM for existing uploads via Title/ID and Spatial IoU match."""
     provider_item_id = meta.get("provider_item_id", "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
     stac_geom = meta.get("geometry")
@@ -242,7 +211,6 @@ def check_oam_duplicate(meta: dict) -> dict:
     return {"exists": False, "oam_id": None, "status_str": "Not found on OAM", "error": None}
 
 def upload_item_to_oam(token: str, meta: dict) -> tuple[bool, str]:
-    """Submits single imagery metadata payload to OpenAerialMap upload API."""
     if not token or not token.strip():
         return False, "OAM API Token missing. Enter your token in the sidebar."
     
@@ -494,7 +462,6 @@ def run_crawl(real_url: str):
 st.set_page_config(page_title="STAC-to-OAM Tool", layout="wide")
 st.title("STAC-to-OAM Humanitarian Ingest & Online Mosaic Tool")
 
-# Sidebar - OAM Settings
 st.sidebar.header("OAM Upload Settings")
 oam_token = st.sidebar.text_input("OAM API Token (Optional)", type="password", help="Paste your OpenAerialMap token for direct 1-click uploads.")
 if oam_token:
@@ -502,7 +469,6 @@ if oam_token:
 else:
     st.sidebar.info("Provide a token above to enable direct Streamlit-to-OAM uploads.")
 
-# Input Field
 root_url_input = st.text_input("Enter STAC Catalog / Collection / Item Browser URL", value=DEFAULT_SAMPLE_URL)
 
 if root_url_input:
@@ -584,7 +550,7 @@ if root_url_input:
                 display_tiff_links = tiff_links
                 display_oam_items = oam_items
 
-            tab1, tab2, tab3 = st.tabs(["STAC Links", "TIFF URLs & Mosaics", "OAM Metadata & Ingestion"])
+            tab1, tab2, tab3 = st.tabs(["STAC Links", "Tasking Manager Composites", "OAM Metadata & Ingestion"])
 
             with tab1:
                 st.subheader("Original STAC Links")
@@ -592,70 +558,68 @@ if root_url_input:
                     st.markdown(f"{idx}. [{link}]({link})")
 
             with tab2:
-                st.subheader("Validated GeoTIFF URLs & Online Merged Mosaics")
+                st.subheader("Create Seamless Composite Mosaics for JOSM / Tasking Manager")
                 
-                # --- Categorize Imagery Mosaics using Metadata Phase Detection ---
                 pre_urls = [e["tiff_url"] for e in display_tiff_links if get_item_phase(e) == "PRE"]
                 post_urls = [e["tiff_url"] for e in display_tiff_links if get_item_phase(e) == "POST"]
                 all_urls = [e["tiff_url"] for e in display_tiff_links]
 
-                st.markdown("### 🌐 OSGeo4W Shell Command Generators")
-                st.caption("Select your workflow below to generate ready-to-run Windows commands.")
+                st.markdown(
+                    "This workflow solves the **'fuzzy black edge'** and dynamic stacking issues seen in standard tile servers. "
+                    "It downloads raw tiles, seamlessly merges them using an alpha mask (to remove black borders completely), "
+                    "and outputs a single, clean COG ready for HOT Tasking Manager."
+                )
 
                 mosaic_tab_pre, mosaic_tab_post, mosaic_tab_all = st.tabs([
-                    f"PRE-Event ({len(pre_urls)} scenes)", 
-                    f"POST-Event ({len(post_urls)} scenes)", 
+                    f"PRE-Event Baseline ({len(pre_urls)} scenes)", 
+                    f"POST-Event Damage ({len(post_urls)} scenes)", 
                     f"ALL Scenes ({len(all_urls)} scenes)"
                 ])
 
-                def render_mosaic_queries(urls: list[str], category_name: str):
+                def render_tasking_manager_workflow(urls: list[str], category_name: str):
                     if not urls:
                         st.info(f"No {category_name} images found in this selection.")
                         return
                     
-                    vrt_filename = f"{event_prefix}_{category_name.upper()}_mosaic.vrt"
-                    tif_filename = f"{event_prefix}_{category_name.upper()}_MERGED.tif"
+                    tif_filename = f"{event_prefix}_{category_name.upper()}_COMPOSITE.tif"
 
-                    # 1. FAST Parallel Local Download + Local Merge (RECOMMENDED)
-                    st.markdown("#### ⚡ 1. Fast Parallel Local Download & Local Merge (RECOMMENDED)")
-                    st.caption(
-                        "**Step-by-step:** Open **OSGeo4W Shell**, navigate to your target folder (`cd C:\\Users\\YourName\\Downloads`), "
-                        "and run the command below. It downloads raw tiles in parallel using `curl -k -Z` (maxing out internet bandwidth) "
-                        "and merges them locally in minutes."
-                    )
+                    st.markdown("### Step 1: Download & Merge Locally")
+                    st.caption("Open **OSGeo4W Shell** and run this command to build the seamless composite in minutes:")
                     fast_cmd = build_fast_local_download_and_merge_cmd(urls, tif_filename)
                     st.code(fast_cmd, language="cmd")
 
-                    # 2. Direct HTTP Remote Streaming Command
-                    st.markdown("#### 🌐 2. Direct Remote Streaming Command (Slower Network Streaming)")
-                    st.caption("Streams uncompressed pixel blocks directly over HTTP without saving intermediate files locally:")
-                    remote_cmd = build_osgeo4w_direct_tif_one_liner(urls, tif_filename)
-                    st.code(remote_cmd, language="cmd")
+                    st.markdown("### Step 2: Host the Image")
+                    st.caption(
+                        "Take the resulting `" + tif_filename + "` and upload it to an S3 bucket or **OpenAerialMap** "
+                        "(via the adjacent tab). Once hosted, copy its direct download URL."
+                    )
 
-                    # 3. Virtual Index Command (.VRT only)
-                    st.markdown("#### 📄 3. Virtual Raster Index Command (Builds Instant 10KB .VRT)")
-                    st.caption("Creates an index file to open and view the mosaic in QGIS instantly:")
-                    vrt_cmd = build_gdal_cli_command(urls, vrt_filename)
-                    st.code(vrt_cmd, language="bash")
-
-                    # 4. Server-Side Direct VRT Download
-                    if GDAL_AVAILABLE:
-                        vrt_xml = generate_vrt_bytes(urls)
-                        if vrt_xml:
-                            st.download_button(
-                                label=f"📥 Download Merged {category_name} VRT (.vrt)",
-                                data=vrt_xml,
-                                file_name=vrt_filename,
-                                mime="application/xml",
-                                help="Open this lightweight .vrt file directly in QGIS to stream the combined imagery online."
-                            )
+                    st.markdown("### Step 3: Load into Tasking Manager / JOSM")
+                    st.caption("Replace `[YOUR_HOSTED_URL_HERE]` below with your new URL. Paste this straight into HOT Tasking Manager or JOSM:")
+                    tms_url = "https://titiler.hotosm.org/cog/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?url=[YOUR_HOSTED_URL_HERE]&bidx=1,2,3"
+                    st.code(tms_url, language="text")
+                    
+                    with st.expander("Show advanced remote processing options (Slow / VRT)"):
+                        st.markdown("**Option A: Remote Streaming Build (Slow)**")
+                        st.code(build_osgeo4w_direct_tif_one_liner(urls, tif_filename), language="cmd")
+                        
+                        st.markdown("**Option B: Download VRT Index Only**")
+                        if GDAL_AVAILABLE:
+                            vrt_xml = generate_vrt_bytes(urls)
+                            if vrt_xml:
+                                st.download_button(
+                                    label=f"📥 Download {category_name} VRT",
+                                    data=vrt_xml,
+                                    file_name=f"{event_prefix}_{category_name}.vrt",
+                                    mime="application/xml"
+                                )
 
                 with mosaic_tab_pre:
-                    render_mosaic_queries(pre_urls, "PRE")
+                    render_tasking_manager_workflow(pre_urls, "PRE")
                 with mosaic_tab_post:
-                    render_mosaic_queries(post_urls, "POST")
+                    render_tasking_manager_workflow(post_urls, "POST")
                 with mosaic_tab_all:
-                    render_mosaic_queries(all_urls, "ALL")
+                    render_tasking_manager_workflow(all_urls, "ALL")
 
                 st.markdown("---")
                 st.markdown("### Raw Individual GeoTIFF Links")
