@@ -117,7 +117,7 @@ def check_oam_duplicate(meta: dict) -> dict:
     provider_item_id = meta.get("provider_item_id", "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
     stac_geom = meta.get("geometry")
-    headers = {"User-Agent": "STAC-to-OAM-Tool/7.0"}
+    headers = {"User-Agent": "STAC-to-OAM-Tool/7.1"}
 
     if provider_item_id:
         try:
@@ -437,6 +437,7 @@ if root_url_input:
         # Dashboard Metrics
         pre_items = [e for e in display_tiff_links if get_item_phase(e) == "PRE"]
         post_items = [e for e in display_tiff_links if get_item_phase(e) == "POST"]
+        all_items = [e for e in display_tiff_links]
         
         st.subheader("📊 Imagery Found")
         m1, m2, m3 = st.columns(3)
@@ -456,26 +457,45 @@ if root_url_input:
         with tab_tm:
             st.info("🗺️ **What is this?** These links allow mapping software (like the HOT Tasking Manager, iD Editor, or JOSM) to instantly stream the satellite imagery in the background so volunteers can trace buildings and roads.")
             
-            def get_tms_url(items: list[dict]):
+            mosaic_tab_pre, mosaic_tab_post, mosaic_tab_all = st.tabs([
+                f"PRE-Event Baseline ({len(pre_items)} scenes)", 
+                f"POST-Event Damage ({len(post_items)} scenes)", 
+                f"ALL Scenes ({len(all_items)} scenes)"
+            ])
+
+            def render_instant_tms_workflow(items: list[dict], category_name: str):
+                if not items:
+                    st.info(f"No {category_name} images found in this selection.")
+                    return
+                
                 ids = [item["provider_item_id"] for item in items if item.get("provider_item_id")]
-                if not ids: return None
+                if not ids:
+                    st.warning("Could not extract STAC Item IDs for the selected scenes.")
+                    return
+                    
                 ids_str = ",".join(ids)
-                return f"https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
 
-            url_pre = get_tms_url(pre_items)
-            url_post = get_tms_url(post_items)
+                tm_url = f"https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
+                st.markdown("**1. For Tasking Manager & iD Editor:**")
+                st.caption("Copy this URL and paste it directly into the 'Custom Imagery' field.")
+                st.code(tm_url, language="text")
 
-            st.subheader("📋 Project Coordinator Handoff Brief")
-            st.markdown("Not setting up the project yourself? Copy and paste this brief to your mapping coordinator via Slack, Email, or Discord.")
-            
-            brief = f"**Imagery Handoff for: {event_prefix}**\n\n"
-            if url_pre:
-                brief += f"**PRE-Event Background Map Link ({len(pre_items)} scenes):**\n`{url_pre}`\n\n"
-            if url_post:
-                brief += f"**POST-Event Background Map Link ({len(post_items)} scenes):**\n`{url_post}`\n\n"
-            brief += "*Note: These links use the HOTOSM dynamic TiTiler. They are ready to be pasted directly into the Tasking Manager 'Custom Imagery' field. No black borders.*"
-            
-            st.code(brief, language="markdown")
+                josm_url = f"tms:https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{zoom}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
+                st.markdown("**2. For JOSM Desktop Software:**")
+                st.caption("Go to Imagery > Imagery Preferences > + TMS, and paste this URL.")
+                st.code(josm_url, language="text")
+                
+                with st.expander("🛠️ Advanced: View the exact Image IDs in this layer"):
+                    st.markdown("The images will render in this exact order (top ID renders in front).")
+                    for idx, img_id in enumerate(ids, 1):
+                        st.markdown(f"`{idx}. {img_id}`")
+
+            with mosaic_tab_pre:
+                render_instant_tms_workflow(pre_items, "PRE")
+            with mosaic_tab_post:
+                render_instant_tms_workflow(post_items, "POST")
+            with mosaic_tab_all:
+                render_instant_tms_workflow(all_items, "ALL")
 
         with tab_oam:
             st.info("🛑 **Why check for duplicates?** Uploading the exact same footprint twice clutters the global map. Use the button below to check if someone from the community has already uploaded these images before you download the final CSV.")
