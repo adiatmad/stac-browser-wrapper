@@ -11,22 +11,14 @@ from folium.plugins import Draw
 from streamlit_folium import st_folium
 from shapely.geometry import box, shape
 
-# Try importing GDAL for server-side VRT generation; fallback gracefully if unavailable
-try:
-    from osgeo import gdal
-    GDAL_AVAILABLE = True
-except ImportError:
-    GDAL_AVAILABLE = False
-
 # ---------- Constants ----------
 OAM_DEFAULT_LICENSE = "CC-BY 4.0"
-OAM_UPLOADER_ISSUE_URL = "https://github.com/hotosm/openaerialmap/issues/296"
 OAM_MAP_URL = "https://map.openaerialmap.org/"
 OAM_META_API = "https://api.openaerialmap.org/meta"
 
 DEFAULT_SAMPLE_URL = (
     "https://browser.moregeo.it/external/vantor-opendata.s3.amazonaws.com/"
-    "events/Nepal-Flooding-Aug-2026/collection.json"
+    "events/Indonesia-Earthquakes-Aug-2026/collection.json"
 )
 
 OAM_FIELDNAMES = [
@@ -116,7 +108,7 @@ def check_oam_duplicate(meta: dict) -> dict:
     provider_item_id = meta.get("provider_item_id", "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
     stac_geom = meta.get("geometry")
-    headers = {"User-Agent": "STAC-to-OAM-Tool/3.0"}
+    headers = {"User-Agent": "STAC-to-OAM-Tool/4.0"}
 
     if provider_item_id:
         try:
@@ -325,6 +317,7 @@ def process_item_data(item_url: str, item_data: dict, tiff_links: list, oam_item
         tiff_links.append({
             "item_url": item_url,
             "tiff_url": tiff_url,
+            "provider_item_id": meta["provider_item_id"],
             "guessed": is_guessed,
             "title": meta["title"],
             "phase": meta["phase"],
@@ -451,6 +444,7 @@ if root_url_input:
                             st.session_state["location_filter_bbox"] = None
                             st.session_state["pending_drawing"] = None
 
+            # Apply Spatial Filter logic
             active_filter = st.session_state["location_filter_bbox"] if group_by_location else None
             if active_filter:
                 filtered_item_urls = {
@@ -462,7 +456,7 @@ if root_url_input:
                 display_tiff_links = tiff_links
                 display_oam_items = oam_items
 
-            tab1, tab2, tab3 = st.tabs(["STAC Links", "Tasking Manager / Cloud Handoff", "OAM Metadata & Ingestion"])
+            tab1, tab2, tab3 = st.tabs(["STAC Links", "Instant Dynamic TMS", "OAM Metadata CSV"])
 
             with tab1:
                 st.subheader("Original STAC Links")
@@ -470,56 +464,57 @@ if root_url_input:
                     st.markdown(f"{idx}. [{link}]({link})")
 
             with tab2:
-                st.subheader("Request a Seamless Composite from Data Experts")
-                
-                pre_urls = [e["tiff_url"] for e in display_tiff_links if get_item_phase(e) == "PRE"]
-                post_urls = [e["tiff_url"] for e in display_tiff_links if get_item_phase(e) == "POST"]
-                all_urls = [e["tiff_url"] for e in display_tiff_links]
-
+                st.subheader("Instant Dynamic Mosaics (HOTOSM TiTiler)")
                 st.markdown(
-                    "High-resolution regional mosaics require over 100+ Gigabytes of processing memory and are best "
-                    "handled by experts on AWS Cloud instances (e.g., to remove fuzzy black boundaries automatically). "
-                    "**Use this tab to generate a ready-to-send package to the Data Team.**"
+                    "These dynamic links securely stack your selected imagery on-the-fly using the HOTOSM API. "
+                    "No downloading, GDAL processing, or server hand-offs required. "
+                    "**Simply copy and paste them directly into your editor.**"
                 )
+                
+                pre_items = [e for e in display_tiff_links if get_item_phase(e) == "PRE"]
+                post_items = [e for e in display_tiff_links if get_item_phase(e) == "POST"]
+                all_items = [e for e in display_tiff_links]
 
                 mosaic_tab_pre, mosaic_tab_post, mosaic_tab_all = st.tabs([
-                    f"PRE-Event Baseline ({len(pre_urls)} scenes)", 
-                    f"POST-Event Damage ({len(post_urls)} scenes)", 
-                    f"ALL Scenes ({len(all_urls)} scenes)"
+                    f"PRE-Event Baseline ({len(pre_items)} scenes)", 
+                    f"POST-Event Damage ({len(post_items)} scenes)", 
+                    f"ALL Scenes ({len(all_items)} scenes)"
                 ])
 
-                def render_cloud_handoff_workflow(urls: list[str], category_name: str):
-                    if not urls:
+                def render_instant_tms_workflow(items: list[dict], category_name: str):
+                    if not items:
                         st.info(f"No {category_name} images found in this selection.")
                         return
                     
-                    st.markdown("### Step 1: Download the URL List")
-                    st.caption(f"Download this text file containing the {len(urls)} raw GeoTIFF URLs.")
-                    urls_txt = "\n".join(urls)
-                    st.download_button(
-                        label=f"📥 Download {category_name}_URLs.txt",
-                        data=urls_txt,
-                        file_name=f"{event_prefix}_{category_name}_URLs.txt",
-                        mime="text/plain"
-                    )
+                    # Extract the STAC IDs for the TiTiler URL payload
+                    ids = [item["provider_item_id"] for item in items if item.get("provider_item_id")]
+                    if not ids:
+                        st.warning("Could not extract STAC Item IDs for the selected scenes.")
+                        return
+                        
+                    ids_str = ",".join(ids)
 
-                    st.markdown("### Step 2: Copy the Handoff Message")
-                    st.caption("Copy this message, attach the `.txt` file you just downloaded, and send it to the Data Team via Slack/Email.")
+                    st.markdown("### 🗺️ Ready-to-Use Background Links")
                     
-                    slack_msg = f"Hey team,\n\nCould someone with cloud processing access help merge these {len(urls)} **{category_name}**-event images into a single composite COG?\n\nI need this to set up a clean Tasking Manager project for the `{event_prefix}` activation.\n\nI've attached the text file containing the raw S3 URLs. Let me know the final hosted URL once it's baked! Thank you!"
-                    st.code(slack_msg, language="text")
+                    tm_url = f"https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
+                    st.markdown("**1. For Tasking Manager / iD Editor:**")
+                    st.code(tm_url, language="text")
 
-                    st.markdown("### Step 3: Load into Tasking Manager / JOSM")
-                    st.caption("Once the data expert replies with a final hosted `.tif` URL, replace `[HOSTED_URL]` below and paste it directly into Tasking Manager or JOSM Custom Imagery:")
-                    tms_url = "https://titiler.hotosm.org/cog/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?url=[HOSTED_URL]&bidx=1,2,3"
-                    st.code(tms_url, language="text")
+                    josm_url = f"tms:https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{zoom}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
+                    st.markdown("**2. For JOSM:**")
+                    st.code(josm_url, language="text")
+                    
+                    with st.expander(f"View {len(ids)} Indexed Image IDs"):
+                        st.markdown("The API draws the images in the exact order listed here (top ID renders in front).")
+                        for idx, img_id in enumerate(ids, 1):
+                            st.markdown(f"`{idx}. {img_id}`")
 
                 with mosaic_tab_pre:
-                    render_cloud_handoff_workflow(pre_urls, "PRE")
+                    render_instant_tms_workflow(pre_items, "PRE")
                 with mosaic_tab_post:
-                    render_cloud_handoff_workflow(post_urls, "POST")
+                    render_instant_tms_workflow(post_items, "POST")
                 with mosaic_tab_all:
-                    render_cloud_handoff_workflow(all_urls, "ALL")
+                    render_instant_tms_workflow(all_items, "ALL")
 
             with tab3:
                 st.subheader("OpenAerialMap CSV Export & Duplicate Check")
@@ -590,5 +585,5 @@ if root_url_input:
                         data=csv_buffer.getvalue(),
                         file_name=export_csv_filename,
                         mime="text/csv",
-                        help="Downloads all listed items. You can filter out duplicates in Excel before uploading to OAM."
+                        help="Downloads all listed items. You can filter out duplicates in Excel before manually uploading to OAM."
                     )
