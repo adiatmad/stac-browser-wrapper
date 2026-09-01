@@ -114,21 +114,20 @@ def get_item_phase(entry: dict) -> str:
 def generate_oam_map_link(oam_id: str, bbox: list) -> str:
     """Calculates the center of the bbox and generates a visual OAM frontend link."""
     if not bbox or len(bbox) < 4:
-        # Fallback to global view if no bbox exists
-        return f"https://map.openaerialmap.org/#/0/0/2/square/{oam_id}"
+        return "https://map.openaerialmap.org/"
     
     min_lon, min_lat, max_lon, max_lat = bbox
     center_lon = (min_lon + max_lon) / 2.0
     center_lat = (min_lat + max_lat) / 2.0
     
-    # URL structure: /#/longitude/latitude/zoom_level/square/id
-    return f"https://map.openaerialmap.org/#/{center_lon:.5f}/{center_lat:.5f}/14/square/{oam_id}"
+    # CORRECT OAM URL FORMAT: /#/longitude,latitude,zoom (comma separated)
+    return f"https://map.openaerialmap.org/#/{center_lon:.5f},{center_lat:.5f},14"
 
 def check_oam_duplicate(meta: dict) -> dict:
     provider_item_id = meta.get("provider_item_id", "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
     stac_geom = meta.get("geometry")
-    headers = {"User-Agent": "STAC-to-OAM-Tool/5.0"}
+    headers = {"User-Agent": "STAC-to-OAM-Tool/5.1"}
 
     # 1. Check by Exact ID in the Title
     if provider_item_id:
