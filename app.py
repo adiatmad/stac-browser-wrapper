@@ -20,8 +20,8 @@ except ImportError:
 
 # ---------- Constants ----------
 OAM_DEFAULT_LICENSE = "CC-BY 4.0"
-OAM_MAP_URL = "https://map.openaerialmap.org/"
-OAM_META_API = "https://api.openaerialmap.org/meta"
+OAM_V2_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
+HOTOSM_STAC_ITEMS_API = "https://api.imagery.hotosm.org/stac/collections/openaerialmap/items"
 
 DEFAULT_SAMPLE_URL = (
     "https://browser.moregeo.it/external/vantor-opendata.s3.amazonaws.com/"
@@ -117,52 +117,44 @@ def check_oam_duplicate(meta: dict) -> dict:
     provider_item_id = meta.get("provider_item_id", "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
     stac_geom = meta.get("geometry")
-    headers = {"User-Agent": "STAC-to-OAM-Tool/7.2"}
-
-    if provider_item_id:
-        try:
-            params = {"title": provider_item_id, "limit": 50}
-            resp = requests.get(OAM_META_API, params=params, headers=headers, timeout=10)
-            if resp.status_code == 200:
-                results = resp.json().get("results", [])
-                for item in results:
-                    title = item.get("title", "")
-                    if provider_item_id.lower() in title.lower():
-                        oam_id = item.get("_id")
-                        return {
-                            "exists": True,
-                            "oam_id": oam_id,
-                            "status_str": "Already exists (Exact ID match)",
-                            "link": generate_oam_map_link(oam_id),
-                            "error": None
-                        }
-        except Exception:
-            pass
+    headers = {"User-Agent": "STAC-to-OAM-Tool/8.1"}
 
     if stac_bbox:
         bbox_str = ",".join(str(v) for v in stac_bbox)
         params = {"bbox": bbox_str, "limit": 100}
         try:
-            resp = requests.get(OAM_META_API, params=params, headers=headers, timeout=10)
+            resp = requests.get(HOTOSM_STAC_ITEMS_API, params=params, headers=headers, timeout=10)
             if resp.status_code == 200:
-                results = resp.json().get("results", [])
-                for item in results:
+                features = resp.json().get("features", [])
+                
+                for item in features:
+                    stac_id = item.get("id", "")
+                    title = item.get("properties", {}).get("title", "")
+                    
+                    if provider_item_id and (provider_item_id.lower() in title.lower() or provider_item_id.lower() == stac_id.lower()):
+                        return {
+                            "exists": True,
+                            "oam_id": stac_id,
+                            "status_str": "Already exists (Exact ID match)",
+                            "link": generate_oam_map_link(stac_id),
+                            "error": None
+                        }
+                    
                     oam_bbox = item.get("bbox")
                     if oam_bbox:
                         iou = calculate_exact_iou(stac_geom, oam_bbox)
                         if iou > 0.70:
-                            oam_id = item.get("_id")
                             return {
                                 "exists": True,
-                                "oam_id": oam_id,
+                                "oam_id": stac_id,
                                 "status_str": f"Already exists (Spatial Overlap {int(iou * 100)}%)",
-                                "link": generate_oam_map_link(oam_id),
+                                "link": generate_oam_map_link(stac_id),
                                 "error": None
                             }
         except Exception as e:
             return {"exists": False, "oam_id": None, "status_str": f"Check Failed: {e}", "link": "", "error": str(e)}
 
-    return {"exists": False, "oam_id": None, "status_str": "Not found on OAM", "link": "", "error": None}
+    return {"exists": False, "oam_id": None, "status_str": "Not found in v2 database", "link": "", "error": None}
 
 # ---------- STAC Crawling & Metadata Parsing ----------
 def extract_real_stac_url(browser_url: str) -> str:
@@ -318,6 +310,19 @@ def crawl_stac(url: str, all_links: list, tiff_links: list, oam_items: list, vis
     if data is None:
         return
     
+    # Handle FeatureCollections (paginated item lists)
+    if data.get("type") == "FeatureCollection":
+        for feature in data.get("features", []):
+            item_href = url
+            for l in feature.get("links", []):
+                if l.get("rel") == "self":
+                    item_href = urljoin(url, l.get("href"))
+                    break
+            if item_href not in all_links:
+                all_links.append(item_href)
+                process_item_data(item_href, feature, tiff_links, oam_items)
+    
+    # Follow relational links for pagination and children
     links = data.get("links", [])
     for link in links:
         href = link.get("href")
@@ -325,16 +330,15 @@ def crawl_stac(url: str, all_links: list, tiff_links: list, oam_items: list, vis
         if not href:
             continue
         abs_href = urljoin(url, href)
-        if rel == "item":
+        
+        if rel == "item" and data.get("type") != "FeatureCollection":
             if abs_href not in all_links:
                 all_links.append(abs_href)
                 item_data = fetch_json(abs_href)
                 if item_data:
                     process_item_data(abs_href, item_data, tiff_links, oam_items)
-        elif rel in ["collection", "child"]:
-            if abs_href not in all_links:
-                all_links.append(abs_href)
-                crawl_stac(abs_href, all_links, tiff_links, oam_items, visited)
+        elif rel in ["collection", "child", "next"]:
+            crawl_stac(abs_href, all_links, tiff_links, oam_items, visited)
 
 @st.cache_data(show_spinner="Searching for imagery...", ttl=600)
 def run_crawl(real_url: str):
@@ -450,7 +454,7 @@ if root_url_input:
 
         tab_tm, tab_oam, tab_adv = st.tabs([
             "🎯 Goal A: Setup a Mapping Project", 
-            "🌍 Goal B: Publish to OpenAerialMap", 
+            "🌍 Goal B: Publish to OAM v2", 
             "⚙️ Advanced Data"
         ])
 
@@ -498,12 +502,13 @@ if root_url_input:
                 render_instant_tms_workflow(all_items, "ALL")
 
         with tab_oam:
-            st.info("🛑 **Why check for duplicates?** Uploading the exact same footprint twice clutters the global map. Use the button below to check if someone from the community has already uploaded these images before you download the final CSV.")
-            
+            st.info("🛑 **Why check for duplicates?** Uploading the exact same footprint twice clutters the map. Use the button below to check if someone from the community has already uploaded these images to the new OAM v2 database.")
+            st.markdown(f"**Ready to upload?** Go directly to the new [HOTOSM Uploader v2]({OAM_V2_UPLOAD_URL}) and paste your individual image URLs.")
+
             if display_oam_items:
-                if st.button("🔍 Check for Existing Map Duplicates"):
+                if st.button("🔍 Check OAM v2 for Duplicates"):
                     st.session_state["oam_duplicates"] = {}
-                    progress_bar = st.progress(0, text="Checking global database...")
+                    progress_bar = st.progress(0, text="Checking v2 STAC database...")
                     total = len(display_oam_items)
                     for i, meta in enumerate(display_oam_items):
                         result = check_oam_duplicate(meta)
@@ -554,7 +559,7 @@ if root_url_input:
                                 st.code(value, language=None)
 
                 timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                export_csv_filename = f"{event_prefix}_ready_for_oam_{timestamp_str}.csv"
+                export_csv_filename = f"{event_prefix}_audit_log_{timestamp_str}.csv"
 
                 csv_buffer = io.StringIO()
                 writer = csv.DictWriter(csv_buffer, fieldnames=OAM_FIELDNAMES, extrasaction="ignore")
@@ -564,11 +569,11 @@ if root_url_input:
 
                 st.markdown("---")
                 st.download_button(
-                    label=f"📥 Download Data for OAM Upload",
+                    label=f"📥 Download Audit Log / Checklist (CSV)",
                     data=csv_buffer.getvalue(),
                     file_name=export_csv_filename,
                     mime="text/csv",
-                    help="You can upload this file directly to the OpenAerialMap upload page."
+                    help="Use this CSV as a checklist to keep track of which URLs you have manually uploaded to OAM v2."
                 )
 
         with tab_adv:
