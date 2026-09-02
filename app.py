@@ -117,7 +117,7 @@ def check_oam_duplicate(meta: dict) -> dict:
     provider_item_id = meta.get("provider_item_id", "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
     stac_geom = meta.get("geometry")
-    headers = {"User-Agent": "STAC-to-OAM-Tool/7.1"}
+    headers = {"User-Agent": "STAC-to-OAM-Tool/7.2"}
 
     if provider_item_id:
         try:
@@ -538,8 +538,12 @@ if root_url_input:
                             st.success(f"✅ {status_label} – Ready for submission.")
                         
                         fields = [
-                            ("Image Date", meta["date_start"]),
-                            ("Satellite Provider", meta["provider"]),
+                            ("Title", meta["title"]),
+                            ("Platform", meta["platform"]),
+                            ("Sensor", meta["sensor"]),
+                            ("Date start", meta["date_start"]),
+                            ("Image source (Url)", meta["image_source_url"]),
+                            ("Provider", meta["provider"]),
                             ("Duplicate Status", meta["oam_duplicate_status"]),
                         ]
                         for label, value in fields:
