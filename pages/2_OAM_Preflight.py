@@ -4,54 +4,55 @@ import streamlit as st
 
 from utils.validate_imagery import (
     build_gdal_report_command,
-    build_reproject_command,
-    build_rgb_cog_command,
+    build_oam_ready_command,
     parse_report,
     validate_report,
 )
 
 st.set_page_config(page_title="OAM Preflight Validator", layout="wide")
 st.title("🔎 OAM Preflight Validator")
-st.caption("Local-only preflight for GeoTIFF imagery. Your raster is never uploaded to this app.")
+st.caption("Local-only preflight for visual drone imagery. Your raster is never uploaded to this app.")
 
 st.info(
-    "Current OAM ingestion accepts valid GeoTIFF input and can convert it to COG. "
-    "So COG status below is a quality check, not a hard OAM prerequisite."
+    "Workflow: copy the gdalinfo result from your own computer → paste it here → "
+    "get one PowerShell command that creates a new, lossless OAM-ready COG."
 )
 
-st.subheader("1. Inspect the local raster")
+st.subheader("1. Run GDAL locally")
 path = st.text_input(
-    "Local raster path",
+    "Local imagery path",
     placeholder=r"C:\data\orthomosaic.tif or C:\data\source.ecw",
+    help="Only the path is used to generate the local command. The raster itself stays on your computer.",
 )
-shell = st.selectbox("Your shell", ["PowerShell (Windows)", "Bash / Zsh"], index=0)
+shell = st.selectbox("Shell", ["PowerShell (Windows)", "Bash / Zsh"], index=0)
 shell_key = "powershell" if shell.startswith("PowerShell") else "bash"
 
 if path.strip():
     command = build_gdal_report_command(path, shell_key)
-    st.markdown("Run this **on your own computer** where GDAL is installed:")
+    st.markdown("Run this command **on your own computer**:")
     st.code(command, language="powershell" if shell_key == "powershell" else "bash")
-    st.caption("The command reads the local raster and returns only a compact JSON diagnostic.")
+    st.caption("Copy the complete JSON output from gdalinfo and paste it below. No imagery is sent to the app.")
 
-st.subheader("2. Paste the diagnostic result")
+st.subheader("2. Paste the gdalinfo result")
 report_text = st.text_area(
-    "GDAL diagnostic JSON",
-    height=180,
-    placeholder='{"driverShortName":"GTiff", ...}',
+    "gdalinfo -json output",
+    height=240,
+    placeholder='Paste the complete output from: gdalinfo -json "your-image.tif"',
 )
 
 if st.button("Validate imagery", type="primary"):
     if not report_text.strip():
-        st.warning("Paste the GDAL diagnostic JSON first.")
+        st.warning("Paste the gdalinfo JSON first.")
     else:
         try:
             report = parse_report(report_text)
-            result = validate_report(report)
-            st.session_state["preflight_result"] = result
+            st.session_state["preflight_report"] = validate_report(report)
+            st.session_state["preflight_raw"] = report
         except ValueError as exc:
             st.error(str(exc))
 
-result = st.session_state.get("preflight_result")
+result = st.session_state.get("preflight_report")
+raw_report = st.session_state.get("preflight_raw")
 if result:
     st.subheader("3. Preflight result")
     fail_count = sum(c.status == "FAIL" for c in result.checks)
@@ -63,11 +64,11 @@ if result:
     m3.metric("FAIL", fail_count)
 
     if fail_count:
-        st.error("❌ Not ready as a visual RGB/RGBA GeoTIFF. Fix the failed checks before OAM upload.")
+        st.error("❌ Not ready yet. Resolve the failed prerequisite(s) before upload.")
     elif warn_count:
         st.warning("⚠️ No hard preflight failure, but review the warnings before upload.")
     else:
-        st.success("✅ Preflight passed for a visual RGB/RGBA GeoTIFF.")
+        st.success("✅ Preflight passed for visual RGB/RGBA imagery.")
 
     for check in result.checks:
         icon = {"PASS": "✅", "WARNING": "⚠️", "FAIL": "❌", "INFO": "ℹ️"}.get(check.status, "•")
@@ -77,37 +78,31 @@ if result:
             if check.fix:
                 st.caption(f"Suggested action: {check.fix}")
 
-    st.subheader("4. Fix commands")
-    source = result.source
-    source_name = str(source.get("filename", path or "input.tif"))
-    default_out = source_name.rsplit(".", 1)[0] + "_cog.tif" if "." in source_name else source_name + "_cog.tif"
-    output_path = st.text_input("Output GeoTIFF path", value=default_out)
-    bands = len(source.get("bands") or [])
-    band_count = 4 if bands == 4 else 3
+    st.subheader("4. Generate ONE combined command")
+    source_name = str((raw_report or {}).get("filename") or path or "input.tif")
+    default_out = source_name.rsplit(".", 1)[0] + "_oam_ready.tif" if "." in source_name else source_name + "_oam_ready.tif"
+    output_path = st.text_input("New output filename", value=default_out, key="oam_output")
 
-    if bands in (3, 4):
-        st.markdown("**RGB/RGBA → COG**")
-        st.code(build_rgb_cog_command(source_name, output_path, band_count, shell_key), language="powershell" if shell_key == "powershell" else "bash")
-        if bands == 4:
-            st.caption("This keeps band 4 (alpha); it does not silently drop transparency.")
+    crs_check = next((c for c in result.checks if c.name == "Coordinate reference system"), None)
+    needs_epsg = crs_check is not None and crs_check.status == "FAIL"
+    target_epsg = None
+    if needs_epsg:
+        st.warning("No CRS was found. Do not guess it. Enter the CRS that the source imagery actually uses.")
+        target_epsg = st.text_input("Source EPSG", placeholder="e.g. 32751", key="source_epsg")
 
-    st.markdown("**Reproject → COG**")
-    epsg = st.text_input("Target EPSG (optional)", placeholder="e.g. 32751")
-    if epsg.strip():
-        try:
-            reproj_out = output_path.rsplit(".", 1)[0] + "_projected.tif"
-            st.code(
-                build_reproject_command(source_name, reproj_out, epsg, shell_key),
-                language="powershell" if shell_key == "powershell" else "bash",
-            )
-        except ValueError as exc:
-            st.warning(str(exc))
+    try:
+        command = build_oam_ready_command(raw_report or {}, source_name, output_path, target_epsg or None, shell_key)
+        st.success("Copy this ONE command and run it locally. The original imagery is never overwritten.")
+        st.code(command, language="powershell" if shell_key == "powershell" else "bash")
+        st.caption("The conversion uses lossless DEFLATE compression. It does not intentionally reduce the source imagery's pixel values.")
+    except ValueError as exc:
+        st.info(str(exc))
 
-    with st.expander("Raw parsed report"):
-        st.code(json.dumps(source, indent=2), language="json")
+    with st.expander("Raw gdalinfo JSON"):
+        st.code(json.dumps(raw_report, indent=2), language="json")
 
 st.divider()
 st.caption(
-    "Scope: visual RGB/RGBA imagery. ECW and other source formats can be inspected here, "
-    "but they are treated as source material that should be converted to GeoTIFF before the OAM preflight."
+    "Scope: visual RGB/RGBA drone orthomosaics. ECW and other source formats can be inspected, "
+    "then converted to a new GeoTIFF/COG. DEM, multispectral and SAR workflows are intentionally out of scope."
 )
