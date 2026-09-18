@@ -237,6 +237,38 @@ def conversion_commands(summary: dict[str, Any], input_path: Path, output_path: 
     return {"convert": translate}
 
 
+def build_oam_ready_powershell(input_path: str, output_path: str | None = None, source_epsg: int | None = None) -> str:
+    """Build one pasteable PowerShell command; never overwrites the source."""
+    src_path = Path(input_path)
+    dst = output_path or str(src_path.with_name(src_path.stem + "_oam_ready.tif"))
+    if source_epsg:
+        return (f'gdalwarp -overwrite -s_srs EPSG:{int(source_epsg)} -of COG '
+                f'-co COMPRESS=DEFLATE "{input_path}" "{dst}"')
+    return f'gdal_translate -of COG -co COMPRESS=DEFLATE "{input_path}" "{dst}"'
+
+def build_oam_recommendation(info: dict[str, Any], input_path: str, source_epsg: int | None = None, output_path: str | None = None) -> dict[str, Any]:
+    """Return a conservative local target for OAM visual RGB/RGBA imagery."""
+    bands = len(info.get("bands") or [])
+    types = band_types(info)
+    issues: list[str] = []
+    if bands not in (3, 4):
+        issues.append(f"Expected 3 or 4 bands for visual imagery; found {bands}.")
+    if types and not all(t.upper() == "BYTE" for t in types):
+        issues.append(f"Visual target normally uses Byte/uint8; found {types}.")
+    if not crs_present(info) and source_epsg is None:
+        issues.append("CRS is missing; supply the correct source EPSG before generating the command.")
+    output_path = output_path or str(Path(input_path).with_name(Path(input_path).stem + "_oam_ready.tif"))
+    command = None
+    if not issues:
+        if source_epsg:
+            command = (f'gdalwarp -overwrite -s_srs EPSG:{int(source_epsg)} -of COG '
+                       f'-co COMPRESS=DEFLATE "{input_path}" "{output_path}"')
+        else:
+            command = f'gdal_translate -of COG -co COMPRESS=DEFLATE "{input_path}" "{output_path}"'
+    return {"ready": not issues, "issues": issues, "output": output_path, "command": command,
+            "notes": ["Creates a new file and does not overwrite the source.",
+                      "Uses lossless DEFLATE so RGB and RGBA are preserved.",
+                      "COG is a local output target; OAM may still perform server-side validation/transcoding."]}
 def run_command(command: list[str]) -> int:
     print("$ " + " ".join(quote(c) if " " in c else c for c in command))
     proc = subprocess.run(command)
