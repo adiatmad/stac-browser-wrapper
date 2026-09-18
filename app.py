@@ -4,12 +4,14 @@ from urllib.parse import urlparse, unquote, urljoin
 import re
 import io
 import csv
+import json
 from datetime import datetime
 import time
 import folium
 from folium.plugins import Draw
 from streamlit_folium import st_folium
 from shapely.geometry import box, shape
+from validate_imagery import validate_info, build_oam_recommendation
 
 # Try importing GDAL for server-side VRT generation; fallback gracefully if unavailable
 try:
@@ -359,6 +361,70 @@ def run_crawl(real_url: str):
 st.set_page_config(page_title="Humanitarian Imagery Wizard", layout="wide", initial_sidebar_state="collapsed")
 st.title("🌍 Humanitarian Imagery Wizard")
 st.markdown("Transform raw satellite data into ready-to-use maps for disaster response.")
+
+# ---------- Local OAM Drone Preflight ----------
+with st.expander("🛠️ OAM Drone Preflight — paste GDAL info, get one command", expanded=True):
+    st.markdown(
+        "**Local-only workflow:** your imagery is never uploaded to this app. "
+        "Run gdalinfo -json on your computer, paste the JSON below, and this tool "
+        "will generate one PowerShell command that creates a new OAM-ready visual COG."
+    )
+    preflight_path = st.text_input(
+        "Local source path",
+        placeholder=r"C:\\drone\\orthomosaic.tif or C:\\drone\\orthomosaic.ecw",
+        key="preflight_path",
+    )
+    preflight_json = st.text_area(
+        "Paste complete gdalinfo -json output",
+        height=220,
+        placeholder='Run: gdalinfo -json "C:\\drone\\orthomosaic.ecw"',
+        key="preflight_json",
+    )
+    epsg = st.number_input(
+        "Source EPSG (only if GDAL reports no CRS)",
+        min_value=1000, max_value=999999, value=32751, step=1,
+        key="preflight_epsg",
+        help="Do not guess. Enter the CRS that the drone/processing workflow actually used.",
+    )
+
+    if preflight_json.strip():
+        try:
+            raw = preflight_json.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1] if "\n" in raw else raw
+                if raw.endswith("```"):
+                    raw = raw[:-3].strip()
+            info = json.loads(raw)
+            result = validate_info(info)
+
+            if result["status"] == "PASS":
+                st.success("Preflight: PASS")
+            elif result["status"] == "WARN":
+                st.warning("Preflight: WARN — review the diagnostics.")
+            else:
+                st.error("Preflight: FAIL — the current metadata is not enough for a safe visual OAM conversion.")
+
+            for check in result["checks"]:
+                icon = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}[check["status"]]
+                st.markdown(f"{icon} **{check['name']}** — {check['detail']}")
+
+            if preflight_path.strip():
+                source_epsg = int(epsg) if not result["summary"]["crsPresent"] else None
+                rec = build_oam_recommendation(info, preflight_path.strip(), source_epsg=source_epsg)
+                if rec["ready"]:
+                    st.success("Recommended local conversion:")
+                    st.code(rec["command"], language="powershell")
+                    st.caption(f"Output: {rec['output']} — source file is not overwritten. After it finishes, run gdalinfo on the output before uploading.")
+                else:
+                    for issue in rec["issues"]:
+                        st.error(issue)
+            else:
+                st.info("Enter the local source path to generate the final command.")
+        except json.JSONDecodeError as exc:
+            st.error(f"Invalid JSON. Paste the complete gdalinfo -json output. Parser error: {exc}")
+        except Exception as exc:
+            st.error(f"Preflight could not be processed: {exc}")
+st.header("Step 1: Fetch Event Imagery")
 
 st.header("Step 1: Fetch Event Imagery")
 st.info("💡 Paste the URL of the data catalog you found. We will automatically find all the usable map images inside it.")
