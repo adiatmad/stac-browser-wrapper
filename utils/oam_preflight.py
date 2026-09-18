@@ -16,7 +16,7 @@ from typing import Any
 @dataclass
 class Check:
     name: str
-    status: str  # PASS / WARN / FAIL
+    status: str
     detail: str
 
 
@@ -44,31 +44,11 @@ class PreflightResult:
 
 
 def _loads_gdal(text: str) -> dict[str, Any] | None:
-    text = text.strip()
-    if not text:
-        return None
     try:
-        obj = json.loads(text)
+        obj = json.loads(text.strip())
         return obj if isinstance(obj, dict) else None
     except json.JSONDecodeError:
         return None
-
-
-def _find_ci(obj: Any, keys: tuple[str, ...]) -> Any:
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k.lower() in {x.lower() for x in keys}:
-                return v
-        for v in obj.values():
-            found = _find_ci(v, keys)
-            if found is not None:
-                return found
-    elif isinstance(obj, list):
-        for v in obj:
-            found = _find_ci(v, keys)
-            if found is not None:
-                return found
-    return None
 
 
 def _text_value(text: str, pattern: str) -> str | None:
@@ -84,21 +64,18 @@ def parse_gdalinfo(text: str) -> dict[str, Any]:
         size = data.get("size") or []
         bands = data.get("bands") or []
         srs = data.get("coordinateSystem")
-        wkt = None
         epsg = None
         if isinstance(srs, dict):
-            wkt = srs.get("wkt")
-            wkt1 = srs.get("wkt1")
-            for candidate in (wkt, wkt1, json.dumps(srs)):
-                m = re.search(r'"?ID"?\s*[:(].*?EPSG[^0-9]*(\d+)', candidate or "", re.I)
-                if m:
-                    epsg = m.group(1)
-                    break
-        image_structure = data.get("metadata", {}).get("IMAGE_STRUCTURE", {}) if isinstance(data.get("metadata"), dict) else {}
+            blob = json.dumps(srs)
+            m = re.search(r'"EPSG"[^0-9]*(\d+)', blob, re.I)
+            if m:
+                epsg = m.group(1)
+        metadata = data.get("metadata") or {}
+        image_structure = metadata.get("IMAGE_STRUCTURE", {}) if isinstance(metadata, dict) else {}
         overview_count = 0
-        for b in bands:
-            if isinstance(b, dict):
-                overview_count = max(overview_count, len(b.get("overviews") or []))
+        for band in bands:
+            if isinstance(band, dict):
+                overview_count = max(overview_count, len(band.get("overviews") or []))
         return {
             "driver": driver,
             "width": size[0] if len(size) > 0 else None,
@@ -113,15 +90,13 @@ def parse_gdalinfo(text: str) -> dict[str, Any]:
             "raw_json": data,
         }
 
-    # Human-readable fallback. This is intentionally conservative.
     driver = _text_value(text, r"^Driver:\s*([^,\n]+)")
     size_match = re.search(r"^Size is\s*(\d+)\s*,\s*(\d+)", text, re.I | re.M)
     band_nums = re.findall(r"^Band\s+(\d+)", text, re.I | re.M)
     types = re.findall(r"Type=([A-Za-z0-9]+)", text, re.I)
-    crs = _text_value(text, r"^(?:Coordinate System is:|PROJCRS\[|GEOGCRS\[)(.*)$")
     epsg_match = re.search(r"(?:AUTHORITY\[\"EPSG\"\s*,\s*\"|EPSG[:\s])(\d+)", text, re.I)
     layout = _text_value(text, r"LAYOUT[=:]\s*([^\s,]+)")
-    tiled = _text_value(text, r"(?:TILED|BLOCKXSIZE)[=:]\s*([^\s,]+)")
+    tiled = _text_value(text, r"TILED[=:]\s*([^\s,]+)")
     return {
         "driver": driver,
         "width": int(size_match.group(1)) if size_match else None,
@@ -129,7 +104,7 @@ def parse_gdalinfo(text: str) -> dict[str, Any]:
         "band_count": len(band_nums),
         "data_types": types,
         "color_interpretations": [],
-        "crs": crs,
+        "crs": epsg_match.group(1) if epsg_match else None,
         "epsg": epsg_match.group(1) if epsg_match else None,
         "image_structure": {"LAYOUT": layout, "TILED": tiled},
         "overview_count": len(re.findall(r"Overviews:\s", text, re.I)),
@@ -141,45 +116,28 @@ def _quote_ps(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
-def build_command(
-    input_path: str,
-    output_path: str,
-    meta: dict[str, Any],
-    target_epsg: str | None = None,
-) -> str:
-    """Build one pasteable PowerShell command sequence.
-
-    It never overwrites input. Reprojection is performed first when requested;
-    otherwise a single COG conversion is sufficient. The output is RGB/RGBA
-    preserving: no blind -b 1/-b 2/-b 3 selection.
-    """
+def build_command(input_path: str, output_path: str, meta: dict[str, Any], target_epsg: str | None = None) -> str:
+    """Build one pasteable PowerShell command sequence; never overwrite input."""
     src = _quote_ps(input_path)
     dst = _quote_ps(output_path)
     bands = int(meta.get("band_count") or 0)
-    datatype = (meta.get("data_types") or [""])[0] or ""
-    dtype_byte = datatype.lower() == "byte"
-    if bands not in (3, 4):
+    dtypes = {str(x).lower() for x in (meta.get("data_types") or []) if x}
+    if bands not in (3, 4) or dtypes != {"byte"}:
         return ""
 
-    compression = "JPEG" if bands == 3 and dtype_byte else "DEFLATE"
+    compression = "JPEG" if bands == 3 else "DEFLATE"
     options = f'-of COG -co COMPRESS={compression} -co BIGTIFF=IF_SAFER'
     if target_epsg:
-        reproj = _quote_ps(str(target_epsg).replace("EPSG:", ""))
-        # PowerShell: the first command must succeed before COG conversion.
+        code = str(target_epsg).upper().replace("EPSG:", "")
         tmp = _quote_ps(str(Path(output_path).with_name(Path(output_path).stem + "_reprojected.tif")))
         return (
-            f'gdalwarp -t_srs EPSG:{reproj[1:-1]} -of GTiff {src} {tmp}; '
+            f'gdalwarp -t_srs EPSG:{code} -of GTiff {src} {tmp}; '
             f'if ($LASTEXITCODE -eq 0) {{ gdal_translate {options} {tmp} {dst} }}'
         )
     return f'gdal_translate {options} {src} {dst}'
 
 
-def validate_gdalinfo(
-    text: str,
-    input_path: str = "input.tif",
-    output_path: str | None = None,
-    target_epsg: str | None = None,
-) -> PreflightResult:
+def validate_gdalinfo(text: str, input_path: str = "input.tif", output_path: str | None = None, target_epsg: str | None = None) -> PreflightResult:
     meta = parse_gdalinfo(text)
     checks: list[Check] = []
     notes: list[str] = []
@@ -187,17 +145,24 @@ def validate_gdalinfo(
     driver = str(meta.get("driver") or "").lower()
     if driver in {"gtiff", "geotiff"}:
         checks.append(Check("GeoTIFF driver", "PASS", "GDAL reports GTiff."))
+    elif driver:
+        checks.append(Check("GeoTIFF driver", "WARN", f"GDAL reports '{meta['driver']}'. The source will be converted to GeoTIFF."))
     else:
-        checks.append(Check("GeoTIFF driver", "FAIL", f"GDAL reports '{meta.get('driver') or 'unknown'}'. Convert the source to GeoTIFF."))
+        checks.append(Check("GeoTIFF driver", "WARN", "Driver could not be identified from the pasted output."))
 
     ext = Path(input_path).suffix.lower()
     if ext in {".tif", ".tiff"}:
         checks.append(Check("File extension", "PASS", "The source is a TIFF/GeoTIFF."))
     else:
-        checks.append(Check("File extension", "WARN", "The source is not a .tif/.tiff; it will need conversion before OAM upload."))
+        checks.append(Check("File extension", "WARN", "The source is not a .tif/.tiff; the generated command will create one."))
 
     if meta.get("crs") or meta.get("epsg"):
-        checks.append(Check("CRS", "PASS", f"A CRS is present{f' (EPSG:{meta["epsg"]})' if meta.get('epsg') else ''}."))
+        crs_detail = "A CRS is present."
+        if meta.get("epsg"):
+            crs_detail = f"A CRS is present (EPSG:{meta['epsg']})."
+        checks.append(Check("CRS", "PASS", crs_detail))
+    elif target_epsg:
+        checks.append(Check("CRS", "WARN", f"No CRS was detected; the command will assign the user-selected EPSG:{target_epsg}. Verify this is the true source CRS."))
     else:
         checks.append(Check("CRS", "FAIL", "No CRS could be identified. Select the correct EPSG before conversion."))
 
@@ -219,31 +184,30 @@ def validate_gdalinfo(
 
     structure = {str(k).upper(): str(v).upper() for k, v in (meta.get("image_structure") or {}).items()}
     layout = structure.get("LAYOUT", "")
-    tiled = structure.get("TILED", "")
     if layout == "COG":
         checks.append(Check("COG layout", "PASS", "GDAL reports LAYOUT=COG."))
     else:
-        checks.append(Check("COG layout", "WARN", "The source is not reported as COG. This is not itself an OAM upload blocker; OAM converts imagery during processing."))
-        notes.append("Pre-existing COG compliance is informational, not a hard OAM prerequisite.")
-    if tiled in {"YES", "TRUE"} or layout == "COG":
+        checks.append(Check("COG layout", "WARN", "Source is not reported as COG. This is not itself an OAM upload blocker; OAM converts imagery during processing."))
+        notes.append("COG is treated as informational rather than a hard upload prerequisite.")
+    if structure.get("TILED", "") in {"YES", "TRUE"} or layout == "COG":
         checks.append(Check("Internal tiling", "PASS", "Tiled storage is indicated."))
     else:
-        checks.append(Check("Internal tiling", "WARN", "Internal tiling was not confirmed. OAM can convert the imagery."))
+        checks.append(Check("Internal tiling", "WARN", "Internal tiling was not confirmed; OAM conversion can create tiled output."))
 
     ov = int(meta.get("overview_count") or 0)
     if ov > 0 or layout == "COG":
-        checks.append(Check("Overviews", "PASS", "Internal/resolution-pyramid information is present or implied by COG layout."))
+        checks.append(Check("Overviews", "PASS", "Overview/resolution-pyramid information is present or implied by COG layout."))
     else:
-        checks.append(Check("Overviews", "WARN", "No internal overviews were confirmed. OAM conversion can create a COG pyramid."))
+        checks.append(Check("Overviews", "WARN", "No overviews were confirmed; OAM conversion can create the COG pyramid."))
 
     output = output_path or str(Path(input_path).with_name(Path(input_path).stem + "_oam_ready.tif"))
     command = build_command(input_path, output, meta, target_epsg=target_epsg)
-    if not command and bands not in (3, 4):
-        notes.append("No automatic conversion command was generated because the source is not 3/4-band visual imagery.")
-    elif not command and not (meta.get("crs") or meta.get("epsg")):
-        notes.append("Select the correct EPSG and run the generated conversion command after re-validating metadata.")
+    if not command:
+        if bands not in (3, 4):
+            notes.append("No automatic conversion command was generated because this tool targets 3/4-band visual imagery.")
+        elif dtypes != {"byte"}:
+            notes.append("No automatic conversion command was generated because the imagery is not Byte/8-bit. Convert the data type deliberately rather than silently changing values.")
 
-    # A missing CRS is the one case where we must not fabricate a command.
     if not (meta.get("crs") or meta.get("epsg")) and not target_epsg:
         command = ""
 
