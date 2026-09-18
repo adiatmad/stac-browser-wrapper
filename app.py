@@ -380,9 +380,9 @@ with st.expander("🛠️ OAM Drone Preflight — paste GDAL info, get one comma
         placeholder='Run: gdalinfo -json "C:\\drone\\orthomosaic.ecw"',
         key="preflight_json",
     )
-    epsg = st.number_input(
+    epsg_text = st.text_input(
         "Source EPSG (only if GDAL reports no CRS)",
-        min_value=1000, max_value=999999, value=32751, step=1,
+        placeholder="e.g. 32751",
         key="preflight_epsg",
         help="Do not guess. Enter the CRS that the drone/processing workflow actually used.",
     )
@@ -409,7 +409,12 @@ with st.expander("🛠️ OAM Drone Preflight — paste GDAL info, get one comma
                 st.markdown(f"{icon} **{check['name']}** — {check['detail']}")
 
             if preflight_path.strip():
-                source_epsg = int(epsg) if not result["summary"]["crsPresent"] else None
+                source_epsg = None
+                if not result["summary"]["crsPresent"] and epsg_text.strip():
+                    try:
+                        source_epsg = int(epsg_text.strip())
+                    except ValueError:
+                        st.error("Source EPSG must be an integer, e.g. 32751.")
                 rec = build_oam_recommendation(info, preflight_path.strip(), source_epsg=source_epsg)
                 if rec["ready"]:
                     st.success("Recommended local conversion:")
