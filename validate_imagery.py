@@ -135,6 +135,34 @@ def add_check(checks: list[dict[str, Any]], status: str, name: str, detail: str)
     checks.append({"status": status, "name": name, "detail": detail})
 
 
+def validate_info(info: dict[str, Any]) -> dict[str, Any]:
+    """Validate already-collected gdalinfo JSON without touching the raster."""
+    driver = str(info.get("driverShortName") or info.get("driver", ""))
+    bands_data = info.get("bands") or []
+    summary = {
+        "file": "", "extension": "", "driver": driver, "size": info.get("size"),
+        "bands": len(bands_data), "bandTypes": band_types(info),
+        "colorInterpretations": color_interpretations(info), "crsPresent": crs_present(info),
+        "isTiled": is_tiled(info), "hasOverviews": has_overviews(info),
+        "cogLayout": metadata_value(info, "IMAGE_STRUCTURE", "LAYOUT"),
+        "compression": metadata_value(info, "IMAGE_STRUCTURE", "COMPRESSION"),
+        "bounds": bounds_summary(info),
+    }
+    checks: list[dict[str, Any]] = []
+    d = driver.upper(); ext = ""; bands = summary["bands"]; types = summary["bandTypes"]; colors = summary["colorInterpretations"]
+    add_check(checks, "PASS" if d == "GTIFF" else "WARN", "GeoTIFF driver", "GDAL reports GTiff." if d == "GTIFF" else f"GDAL reports {d or 'unknown'}; conversion to GeoTIFF is recommended.")
+    add_check(checks, "PASS" if crs_present(info) else "FAIL", "CRS", "A coordinate reference system is present." if crs_present(info) else "No CRS was reported by GDAL.")
+    add_check(checks, "PASS" if bands in (3, 4) else "FAIL", "Band count", f"{bands} bands; suitable for visual RGB/RGBA imagery." if bands in (3,4) else f"Found {bands} bands; visual target expects 3 RGB or 4 RGBA bands.")
+    add_check(checks, "PASS" if types and all(t.upper() == "BYTE" for t in types) else "WARN", "Pixel type", "All bands are Byte/uint8." if types and all(t.upper() == "BYTE" for t in types) else f"Band types are {types or 'unknown'}; verify this is visual RGB/RGBA data.")
+    rgb_ok = colors[:3] == ["red", "green", "blue"]
+    alpha_ok = bands == 4 and len(colors) >= 4 and colors[3] in {"alpha", "undefined"}
+    add_check(checks, "PASS" if rgb_ok and (bands == 3 or alpha_ok) else "WARN", "Color interpretation", "Bands are consistent with RGB/RGBA imagery." if rgb_ok and (bands == 3 or alpha_ok) else f"GDAL reports {colors or 'unknown'}; verify the bands.")
+    add_check(checks, "PASS" if str(summary["cogLayout"]).upper() == "COG" else "WARN", "COG layout", "GDAL reports IMAGE_STRUCTURE LAYOUT=COG." if str(summary["cogLayout"]).upper() == "COG" else "Not reported as COG; the generated local output can create a COG.")
+    add_check(checks, "PASS" if summary["isTiled"] else "WARN", "Internal tiling", "Raster blocks are tiled." if summary["isTiled"] else "Raster is not reported as internally tiled.")
+    add_check(checks, "PASS" if summary["hasOverviews"] else "WARN", "Overviews", "All bands contain overviews." if summary["hasOverviews"] else "One or more bands have no reported overviews.")
+    add_check(checks, "PASS" if summary["bounds"]["wgs84Extent"] else "WARN", "Geographic extent", "GDAL produced a WGS84 extent." if summary["bounds"]["wgs84Extent"] else "No WGS84 extent was reported; inspect georeferencing.")
+    overall = max((STATUS_ORDER[x["status"]] for x in checks), default=2)
+    return {"status": {0:"PASS",1:"WARN",2:"FAIL"}[overall], "summary": summary, "checks": checks}
 def validate(path: Path) -> dict[str, Any]:
     info = run_gdalinfo(path)
     summary = inspect(path)
