@@ -57,8 +57,6 @@ def _is_tiled(report: dict[str, Any]) -> bool | None:
         return None
     if not isinstance(size, list) or len(size) != 2:
         return None
-    # A block smaller than the full raster is a useful indication of tiling.
-    # We intentionally do not require 256x256 or 512x512 blocks.
     return block[0] < size[0] or block[1] < size[1]
 
 
@@ -67,7 +65,6 @@ def _has_overviews(report: dict[str, Any]) -> bool:
 
 
 def _bounds(report: dict[str, Any]) -> list[float] | None:
-    # Prefer WGS84 extent when present, then GDAL corner coordinates.
     extent = report.get("wgs84Extent") or {}
     geometry = extent.get("coordinates") if isinstance(extent, dict) else None
     if geometry:
@@ -92,7 +89,6 @@ def _bounds(report: dict[str, Any]) -> list[float] | None:
 
 
 def parse_report(text: str) -> dict[str, Any]:
-    """Parse the compact JSON emitted by the local GDAL command."""
     try:
         value = json.loads(text.strip())
     except json.JSONDecodeError as exc:
@@ -118,9 +114,9 @@ def validate_report(report: dict[str, Any]) -> ValidationReport:
 
     checks.append(CheckResult(
         "GeoTIFF input",
-        "PASS" if driver in {"GTIFF", "COG"} else "FAIL",
+        "PASS" if driver in {"GTIFF", "COG"} else "WARNING",
         f"Driver: {driver or 'unknown'}; file: {filename or 'not reported'}.",
-        "Convert the source to GeoTIFF before OAM preflight." if driver not in {"GTIFF", "COG"} else "",
+        "The final command will convert the source to GeoTIFF/COG." if driver not in {"GTIFF", "COG"} else "",
     ))
 
     has_crs = bool(crs and (crs.get("wkt") or crs.get("projjson") or crs.get("authority"))) if isinstance(crs, dict) else bool(crs)
@@ -128,7 +124,7 @@ def validate_report(report: dict[str, Any]) -> ValidationReport:
         "Coordinate reference system",
         "PASS" if has_crs else "FAIL",
         "A CRS is present." if has_crs else "No CRS was reported.",
-        "Use gdalwarp -t_srs EPSG:<EPSG_CODE> to assign/reproject a known CRS." if not has_crs else "",
+        "Select the true source CRS (EPSG code) before generating the final command." if not has_crs else "",
     ))
 
     valid_size = len(size) == 2 and all(isinstance(v, (int, float)) and v > 0 for v in size)
@@ -148,13 +144,13 @@ def validate_report(report: dict[str, Any]) -> ValidationReport:
         status = "PASS"
         fix = ""
     elif len(bands) not in (3, 4):
-        detail = f"Found {len(bands)} bands; visual OAM uploads normally use 3 RGB or 4 RGBA bands."
+        detail = f"Found {len(bands)} bands; this preflight targets 3 RGB or 4 RGBA visual bands."
         status = "FAIL"
         fix = "Inspect the source and select/export the visual RGB(A) bands."
     elif types and not byte_bands:
-        detail = f"Band types: {', '.join(types)}. Non-Byte data is not a normal visual RGB(A) input."
-        status = "WARNING"
-        fix = "If this is visual imagery, convert to Byte RGB(A); keep native types for elevation/other products."
+        detail = f"Band types: {', '.join(types)}. Visual OAM imagery should be Byte/8-bit."
+        status = "FAIL"
+        fix = "Convert the visual imagery deliberately to Byte RGB(A); do not silently change non-visual products."
     else:
         detail = "Band layout needs manual review for visual RGB(A) use."
         status = "WARNING"
@@ -167,12 +163,7 @@ def validate_report(report: dict[str, Any]) -> ValidationReport:
     else:
         cog_status = "WARNING"
         cog_detail = "The report does not identify the file as a COG. This is informational: current OAM ingestion can convert valid GeoTIFF input to COG."
-    checks.append(CheckResult(
-        "COG layout",
-        cog_status,
-        cog_detail,
-        "gdal_translate -of COG ..." if cog_status == "WARNING" else "",
-    ))
+    checks.append(CheckResult("COG layout", cog_status, cog_detail, ""))
 
     if tiled is True:
         tile_status = "PASS"
@@ -189,7 +180,7 @@ def validate_report(report: dict[str, Any]) -> ValidationReport:
         "Overviews",
         "PASS" if overviews else "WARNING",
         "Overviews are reported by GDAL." if overviews else "No overviews are reported.",
-        "Use a COG conversion workflow that builds internal overviews if the source lacks them." if not overviews else "",
+        "The final COG conversion will build the required internal pyramid." if not overviews else "",
     ))
 
     if bounds is None:
@@ -208,7 +199,7 @@ def validate_report(report: dict[str, Any]) -> ValidationReport:
 
 
 def build_gdal_report_command(path: str, shell: str = "powershell") -> str:
-    """Build a compact, local-only GDAL inspection command."""
+    """Build a compact local GDAL inspection command."""
     if not path.strip():
         raise ValueError("A local raster path is required.")
     escaped = path.replace("'", "''")
@@ -227,13 +218,12 @@ def build_gdal_report_command(path: str, shell: str = "powershell") -> str:
 
 
 def build_rgb_cog_command(input_path: str, output_path: str, band_count: int = 3, shell: str = "powershell") -> str:
-    """Build a visual COG conversion command; use lossless compression for RGBA."""
+    """Build a lossless visual COG conversion; never overwrite the input."""
     if band_count == 4:
         bands = " -b 1 -b 2 -b 3 -b 4"
-        compression = "DEFLATE"
     else:
         bands = " -b 1 -b 2 -b 3"
-        compression = "JPEG"
+    compression = "DEFLATE"
     if shell.lower() == "powershell":
         return f'gdal_translate -of COG -co COMPRESS={compression}{bands} "{input_path}" "{output_path}"'
     return f"gdal_translate -of COG -co COMPRESS={compression}{bands} '{input_path}' '{output_path}'"
@@ -244,5 +234,58 @@ def build_reproject_command(input_path: str, output_path: str, epsg: str, shell:
     if not epsg_clean.isdigit():
         raise ValueError("EPSG must be numeric, e.g. 32751.")
     if shell.lower() == "powershell":
-        return f'gdalwarp -t_srs EPSG:{epsg_clean} -of COG -co COMPRESS=JPEG "{input_path}" "{output_path}"'
-    return f"gdalwarp -t_srs EPSG:{epsg_clean} -of COG -co COMPRESS=JPEG '{input_path}' '{output_path}'"
+        return f'gdalwarp -t_srs EPSG:{epsg_clean} -of COG -co COMPRESS=DEFLATE "{input_path}" "{output_path}"'
+    return f"gdalwarp -t_srs EPSG:{epsg_clean} -of COG -co COMPRESS=DEFLATE '{input_path}' '{output_path}'"
+
+
+def build_oam_ready_command(
+    report: dict[str, Any],
+    input_path: str,
+    output_path: str,
+    target_epsg: str | None = None,
+    shell: str = "powershell",
+) -> str:
+    """Return one pasteable command sequence that creates a lossless OAM-ready COG.
+
+    A missing CRS requires an explicit target/source EPSG from the user. If a CRS
+    is already present, no reprojection is performed unless target_epsg is supplied.
+    The original file is never overwritten.
+    """
+    bands = report.get("bands") or []
+    types = _band_types(report)
+    if len(bands) not in (3, 4):
+        raise ValueError("Automatic OAM visual conversion requires 3 RGB or 4 RGBA bands.")
+    if not types or any(t != "BYTE" for t in types):
+        raise ValueError("Automatic visual conversion requires Byte/8-bit bands.")
+
+    crs = report.get("coordinateSystem")
+    has_crs = bool(crs and (crs.get("wkt") or crs.get("projjson") or crs.get("authority"))) if isinstance(crs, dict) else bool(crs)
+    if not has_crs and not target_epsg:
+        raise ValueError("No CRS was reported. Select the true source EPSG before generating a command.")
+
+    epsg = str(target_epsg).strip().upper().replace("EPSG:", "") if target_epsg else ""
+    if epsg and not epsg.isdigit():
+        raise ValueError("EPSG must be numeric, e.g. 32751.")
+
+    if shell.lower() == "powershell":
+        src = f'"{input_path}"'
+        dst = f'"{output_path}"'
+        if epsg:
+            tmp = f'"{output_path.rsplit(".", 1)[0]}_reprojected.tif"'
+            return (
+                f'gdalwarp -t_srs EPSG:{epsg} -of GTiff {src} {tmp}; '
+                f'if ($LASTEXITCODE -eq 0) {{ gdal_translate -of COG -co COMPRESS=DEFLATE'
+                f' -b 1 -b 2 -b 3{(" -b 4" if len(bands) == 4 else "")} {tmp} {dst} }}'
+            )
+        return build_rgb_cog_command(input_path, output_path, len(bands), shell)
+
+    src = f"'{input_path}'"
+    dst = f"'{output_path}'"
+    if epsg:
+        tmp = f"'{output_path.rsplit('.', 1)[0]}_reprojected.tif'"
+        return (
+            f"gdalwarp -t_srs EPSG:{epsg} -of GTiff {src} {tmp} && "
+            f"gdal_translate -of COG -co COMPRESS=DEFLATE -b 1 -b 2 -b 3"
+            f"{(' -b 4' if len(bands) == 4 else '')} {tmp} {dst}"
+        )
+    return build_rgb_cog_command(input_path, output_path, len(bands), shell)
