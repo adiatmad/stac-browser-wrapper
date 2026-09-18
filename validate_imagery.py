@@ -290,6 +290,30 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0 if result["status"] != "FAIL" else 2
 
 
+def cmd_recommend(args: argparse.Namespace) -> int:
+    path = Path(args.input).expanduser()
+    if not path.exists():
+        return fail(f"Input does not exist: {path}")
+    try:
+        info = run_gdalinfo(path)
+        rec = build_oam_recommendation(info, str(path), args.source_epsg, args.output)
+    except Exception as exc:
+        return fail(str(exc))
+    if args.json:
+        print(json.dumps(rec, indent=2))
+    else:
+        print("OAM VISUAL PREFLIGHT")
+        print("STATUS: READY TO CONVERT" if rec["ready"] else "STATUS: INPUT NEEDS ATTENTION")
+        for issue in rec["issues"]:
+            print(f"- {issue}")
+        if rec["ready"]:
+            print("\nONE COMBINED POWERSHELL COMMAND:\n" + rec["command"])
+            for note in rec["notes"]:
+                print(f"- {note}")
+        elif args.source_epsg is None and not crs_present(info):
+            print(f'\nThen rerun:\npython validate_imagery.py recommend "{path}" --source-epsg <EPSG>')
+    return 0 if rec["ready"] else 2
+
 def cmd_convert(args: argparse.Namespace) -> int:
     input_path = Path(args.input).expanduser()
     output_path = Path(args.output).expanduser()
@@ -349,6 +373,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("input")
     p.add_argument("--json", action="store_true", help="Print machine-readable JSON diagnostics.")
     p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("recommend", help="Inspect a raster and print one pasteable OAM-ready PowerShell command.")
+    p.add_argument("input")
+    p.add_argument("--source-epsg", type=int, help="Correct source EPSG when input CRS is missing.")
+    p.add_argument("--output", help="Output path; defaults to *_oam_ready.tif.")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_recommend)
 
     p = sub.add_parser("convert", help="Convert a 3/4-band raster to a COG locally.")
     p.add_argument("input")
