@@ -11,7 +11,7 @@
 - [x] RGB/RGBA bands are preserved.
 - [x] Lossy compression is not introduced silently.
 - [x] Plain GDAL output is accepted without requiring a different command.
-- [ ] Generated PowerShell command has been executed successfully against real imagery.
+- [x] Generated PowerShell command has been executed successfully against real imagery.
 
 ## Behavior
 - [x] Valid 3/4-band Byte visual imagery gets a clear result.
