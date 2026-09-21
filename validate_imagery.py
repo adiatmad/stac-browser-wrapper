@@ -184,6 +184,14 @@ def parse_gdalinfo_text(text: str) -> dict[str, Any]:
     )
     has_corners = bool(wgs_match)
 
+    image_structure_match = search(
+        r"^Image Structure Metadata:\s*$\\n(?P<meta>(?:\\s+[^\\r\\n]+\\n?)*)",
+        re.MULTILINE,
+    )
+    image_structure = image_structure_match.group("meta") if image_structure_match else ""
+    layout_match = re.search(r"LAYOUT=([^\\s\\r\\n]+)", image_structure)
+    compression_match = re.search(r"COMPRESSION=([^\\s\\r\\n]+)", image_structure)
+
     return {
         "driverShortName": driver,
         "size": size,
@@ -194,7 +202,12 @@ def parse_gdalinfo_text(text: str) -> dict[str, Any]:
         "bands": bands,
         "cornerCoordinates": {"present": True} if has_corners else {},
         "wgs84Extent": {"epsg": epsg} if has_corners and epsg == 4326 else ({"present": True} if has_corners and crs_present_text else None),
-        "metadata": {},
+        "metadata": {
+            "IMAGE_STRUCTURE": {
+                "LAYOUT": layout_match.group(1) if layout_match else "",
+                "COMPRESSION": compression_match.group(1) if compression_match else "",
+            }
+        },
     }
 
 
