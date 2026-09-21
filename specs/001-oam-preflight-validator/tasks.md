@@ -21,7 +21,7 @@
 ## Convergence
 - [x] Run the focused automated regression suite.
 - [x] Run `gdalinfo` against the user's real ECW locally after configuring the QGIS GDAL environment.
-- [ ] Run the generated conversion command against the user's real ECW locally.
+- [x] Run the generated conversion command against the user's real ECW locally.
 - [ ] Inspect the generated output with GDAL.
 - [ ] Re-run the validator on the generated output.
 - [x] Compare the preflight behavior against the current OAM visual validation semantics.
