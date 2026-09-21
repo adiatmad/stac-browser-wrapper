@@ -5,8 +5,8 @@ This feature is a local pre-upload helper for visual drone orthomosaics.
 ## Workflow
 
 1. Keep the raster on the user's computer.
-2. Run the displayed `gdalinfo -json` command locally.
-3. Paste the JSON result into the Streamlit preflight page.
+2. Run `gdalinfo` locally; plain text or `gdalinfo -json` output is accepted.
+3. Paste the complete output into the Streamlit preflight page.
 4. Review PASS / WARNING / FAIL checks.
 5. If the metadata is sufficient, copy one generated PowerShell command.
 6. The command creates a new lossless COG GeoTIFF and never overwrites the source.
@@ -22,7 +22,7 @@ The first version targets visual orthomosaics:
 - valid CRS
 - non-zero raster extent
 - GeoTIFF as the final output
-- COG output for efficient downstream access
+- COG output for efficient downstream access when local preparation is requested
 
 DEM, multispectral, SAR and other non-visual products are intentionally outside this workflow.
 
@@ -67,7 +67,7 @@ The representative test file supplied for this feature is readable through QGIS 
 - WGS84 geographic extent
 - `ColorInterp=Undefined` for all four bands
 
-The last point is intentionally surfaced as a warning: GDAL's metadata does not prove that the four bands are RGB + alpha. The preflight therefore does not claim RGBA semantics automatically.
+The last point is intentionally surfaced as a warning: GDAL's metadata does not prove that the four bands are RGB + alpha. The preflight therefore does not claim RGBA semantics automatically. The same warning remains after COG conversion unless the source already carries explicit RGB/RGBA color interpretation.
 
 The decoded-size estimate is about 2.7 GB, comfortably below the current 130 GB OAM validation limit. This is an estimate from dimensions, band count and Byte storage, not the compressed ECW file size.
 
@@ -75,4 +75,4 @@ The decoded-size estimate is about 2.7 GB, comfortably below the current 130 GB 
 
 Automated regression tests cover the representative ECW metadata and command generation.
 
-Manual verification has confirmed that the real ECW can be opened with GDAL after the QGIS environment is configured. The remaining convergence step is to execute the generated conversion command against that real ECW, inspect the resulting GeoTIFF/COG with GDAL, and feed that output back through the preflight.
+Manual verification has confirmed that the real ECW can be opened with GDAL after the QGIS environment is configured. The real ECW has now been converted locally to a GeoTIFF/COG. The generated output reports GTiff, 26482 × 25891, four Byte bands, 512 × 512 blocks, and seven overview levels per band. GDAL still reports `ColorInterp=Undefined`, so the preflight must keep this as a verification warning rather than asserting RGBA semantics. The final convergence step is to feed the complete output `gdalinfo` back through the preflight and review the final diff.
