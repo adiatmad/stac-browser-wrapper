@@ -363,82 +363,85 @@ st.title("🌍 Humanitarian Imagery Wizard")
 st.markdown("Transform raw satellite data into ready-to-use maps for disaster response.")
 
 # ---------- Local OAM Drone Preflight ----------
-with st.expander("🛠️ OAM Drone Preflight — paste GDAL info, get one command", expanded=True):
-    st.markdown(
-        "**Local-only workflow:** your imagery is never uploaded to this app. "
-        "Run gdalinfo (plain text or -json) on your computer, paste the complete output below, and this tool "
-        "will generate one PowerShell command that creates a new OAM-ready visual COG."
-    )
+st.header("🛩️ OAM Drone Image Check")
+st.caption("Check a local drone orthomosaic before uploading it to OpenAerialMap. Your imagery stays on your computer.")
+
+with st.container(border=True):
+    st.markdown("**1 · Get the local GDAL report**")
+    st.code('gdalinfo "C:\\drone\\orthomosaic.tif"', language="powershell")
+    st.caption("Run this on your computer, then paste the result below. This app receives only the text report — never the raster.")
+
     preflight_path = st.text_input(
-        "Local source path",
+        "Local image path",
         placeholder=r"C:\\drone\\orthomosaic.tif or C:\\drone\\orthomosaic.ecw",
         key="preflight_path",
+        help="Used only to build a local command. The app does not open or upload this file.",
     )
     preflight_text = st.text_area(
-        "Paste complete gdalinfo output",
-        height=220,
-        placeholder='Run: gdalinfo "C:\\drone\\orthomosaic.ecw"',
+        "GDAL report",
+        height=180,
+        placeholder="Paste the output from gdalinfo here…",
         key="preflight_text",
     )
     epsg_text = st.text_input(
-        "Source EPSG (only if GDAL reports no CRS)",
-        placeholder="e.g. 32751",
+        "Source EPSG — only if the report has no CRS",
+        placeholder="Example: 32751",
         key="preflight_epsg",
-        help="Do not guess. Enter the CRS that the drone/processing workflow actually used.",
+        help="Enter the CRS actually used by your drone/processing workflow. Do not guess.",
     )
 
-    if preflight_text.strip():
-        try:
-            raw = preflight_text.strip()
-            if raw.startswith("```"):
-                raw = raw.split("\n", 1)[1] if "\n" in raw else raw
-                if raw.endswith("```"):
-                    raw = raw[:-3].strip()
-            if raw.lstrip().startswith("{"):
-                info = json.loads(raw)
-                evidence_format = "gdalinfo -json"
-            else:
-                info = parse_gdalinfo_text(raw)
-                evidence_format = "plain gdalinfo"
+if preflight_text.strip():
+    try:
+        raw = preflight_text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw
+            if raw.endswith("```"):
+                raw = raw[:-3].strip()
+        if raw.lstrip().startswith("{"):
+            info = json.loads(raw)
+            evidence_format = "gdalinfo -json"
+        else:
+            info = parse_gdalinfo_text(raw)
+            evidence_format = "gdalinfo"
 
-            result = validate_info(info)
-            hard_fails = [c for c in result["checks"] if c["status"] == "FAIL"]
-            warnings = [c for c in result["checks"] if c["status"] == "WARN"]
+        result = validate_info(info)
+        hard_fails = [c for c in result["checks"] if c["status"] == "FAIL"]
+        warnings = [c for c in result["checks"] if c["status"] == "WARN"]
 
-            st.markdown("### OAM visual compatibility")
-            if hard_fails:
-                st.error("❌ NOT READY — at least one current OAM requirement is not satisfied.")
-            else:
-                st.success("✅ OAM REQUIREMENTS CHECK — no hard failure detected.")
-                if warnings:
-                    st.caption("Warnings are recommendations or things GDAL cannot prove from metadata alone.")
-            st.caption(f"Evidence parsed: {evidence_format}. The raster itself never leaves your computer.")
+        st.markdown("### 2 · OAM readiness")
+        if hard_fails:
+            st.error("❌ **Not ready** — fix the required item(s) below before upload.")
+        elif warnings:
+            st.warning("⚠️ **Review before upload** — no hard OAM requirement failed, but GDAL cannot confirm everything from this report.")
+        else:
+            st.success("✅ **Ready based on the supplied report** — no OAM preflight checks failed.")
+        st.caption(f"Parsed from {evidence_format}. Raster data was not uploaded.")
 
-            for check in result["checks"]:
-                icon = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}[check["status"]]
-                st.markdown(f"{icon} **{check['name']}** — {check['detail']}")
+        for check in result["checks"]:
+            icon = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}[check["status"]]
+            st.markdown(f"{icon} **{check['name']}**  \n{check['detail']}")
 
-            if preflight_path.strip():
-                source_epsg = None
-                if not result["summary"]["crsPresent"] and epsg_text.strip():
-                    try:
-                        source_epsg = int(epsg_text.strip())
-                    except ValueError:
-                        st.error("Source EPSG must be an integer, e.g. 32751.")
+        if preflight_path.strip():
+            source_epsg = None
+            if not result["summary"]["crsPresent"] and epsg_text.strip():
+                try:
+                    source_epsg = int(epsg_text.strip())
+                except ValueError:
+                    st.error("Source EPSG must be an integer, e.g. 32751.")
+
+            needs_conversion = result["summary"]["driver"].upper() != "GTIFF"
+            has_valid_crs = result["summary"]["crsPresent"] or source_epsg is not None
+            if needs_conversion and not hard_fails and has_valid_crs:
                 rec = build_oam_recommendation(info, preflight_path.strip(), source_epsg=source_epsg)
                 if rec["ready"]:
-                    st.markdown("### Optional local preparation")
-                    st.code(rec["command"], language="powershell")
-                    st.caption(f"Output: {rec['output']} — source file is not overwritten. After it finishes, run gdalinfo on the output and paste it here for final verification.")
-                else:
-                    for issue in rec["issues"]:
-                        st.error(issue)
-            else:
-                st.info("Enter the local source path to generate the final command.")
-        except json.JSONDecodeError as exc:
-            st.error(f"Could not parse the GDAL output: {exc}")
-        except Exception as exc:
-            st.error(f"Preflight could not be processed: {exc}")
+                    with st.expander("Optional · create a new GeoTIFF/COG locally"):
+                        st.caption("Use this only if you want a new upload-ready GeoTIFF. The original file is never overwritten.")
+                        st.code(rec["command"], language="powershell")
+                        st.caption(f"Output: {rec['output']}")
+    except json.JSONDecodeError as exc:
+        st.error(f"Could not parse the GDAL report: {exc}")
+    except Exception as exc:
+        st.error(f"Preflight could not be processed: {exc}")
 st.header("Step 1: Fetch Event Imagery")
 st.info("💡 Paste the URL of the data catalog you found. We will automatically find all the usable map images inside it.")
 
