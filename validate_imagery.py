@@ -327,7 +327,7 @@ def conversion_commands(summary: dict[str, Any], input_path: Path, output_path: 
         compression = "DEFLATE"
     else:
         band_args = "-b 1 -b 2 -b 3"
-        compression = "JPEG"
+        compression = "DEFLATE"
 
     inp = quote(str(input_path))
     out = quote(str(output_path))
@@ -463,7 +463,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
             compression = "DEFLATE"
         elif bands == 3:
             band_args = ["-b", "1", "-b", "2", "-b", "3"]
-            compression = "JPEG"
+            compression = "DEFLATE"
         else:
             return fail(f"Expected 3 or 4 bands for visual conversion; found {bands}.")
 
@@ -485,7 +485,7 @@ def cmd_reproject(args: argparse.Namespace) -> int:
         summary = inspect(input_path)
         require_command("gdalwarp")
         bands = summary["bands"]
-        compression = "DEFLATE" if bands == 4 else "JPEG"
+        compression = "DEFLATE"
         command = [
             "gdalwarp", "-t_srs", f"EPSG:{args.epsg}", "-of", "COG",
             "-co", f"COMPRESS={compression}", str(input_path), str(output_path),
