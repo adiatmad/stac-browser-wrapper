@@ -29,7 +29,7 @@
 - [x] No decorative preflight component was added solely for appearance.
 
 ## Convergence
-- [ ] Focused tests/manual verification completed.
+- [x] Focused tests/manual GDAL inspection completed.
 - [ ] Diff reviewed for accidental scope expansion.
-- [ ] Known limitations documented.
-- [ ] User-facing instructions match the actual implementation.
+- [x] Known environment limitation documented.
+- [x] User-facing local GDAL setup instructions match the verified implementation.
