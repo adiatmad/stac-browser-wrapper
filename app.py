@@ -11,7 +11,7 @@ import folium
 from folium.plugins import Draw
 from streamlit_folium import st_folium
 from shapely.geometry import box, shape
-from validate_imagery import validate_info, build_oam_recommendation
+from validate_imagery import validate_info, parse_gdalinfo_text, build_oam_recommendation
 
 # Try importing GDAL for server-side VRT generation; fallback gracefully if unavailable
 try:
@@ -374,11 +374,11 @@ with st.expander("🛠️ OAM Drone Preflight — paste GDAL info, get one comma
         placeholder=r"C:\\drone\\orthomosaic.tif or C:\\drone\\orthomosaic.ecw",
         key="preflight_path",
     )
-    preflight_json = st.text_area(
-        "Paste complete gdalinfo -json output",
+    preflight_text = st.text_area(
+        "Paste complete gdalinfo output",
         height=220,
-        placeholder='Run: gdalinfo -json "C:\\drone\\orthomosaic.ecw"',
-        key="preflight_json",
+        placeholder='Run: gdalinfo "C:\\drone\\orthomosaic.ecw"',
+        key="preflight_text",
     )
     epsg_text = st.text_input(
         "Source EPSG (only if GDAL reports no CRS)",
@@ -387,22 +387,32 @@ with st.expander("🛠️ OAM Drone Preflight — paste GDAL info, get one comma
         help="Do not guess. Enter the CRS that the drone/processing workflow actually used.",
     )
 
-    if preflight_json.strip():
+    if preflight_text.strip():
         try:
-            raw = preflight_json.strip()
+            raw = preflight_text.strip()
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[1] if "\n" in raw else raw
                 if raw.endswith("```"):
                     raw = raw[:-3].strip()
-            info = json.loads(raw)
-            result = validate_info(info)
-
-            if result["status"] == "PASS":
-                st.success("Preflight: PASS")
-            elif result["status"] == "WARN":
-                st.warning("Preflight: WARN — review the diagnostics.")
+            if raw.lstrip().startswith("{"):
+                info = json.loads(raw)
+                evidence_format = "gdalinfo -json"
             else:
-                st.error("Preflight: FAIL — the current metadata is not enough for a safe visual OAM conversion.")
+                info = parse_gdalinfo_text(raw)
+                evidence_format = "plain gdalinfo"
+
+            result = validate_info(info)
+            hard_fails = [c for c in result["checks"] if c["status"] == "FAIL"]
+            warnings = [c for c in result["checks"] if c["status"] == "WARN"]
+
+            st.markdown("### OAM visual compatibility")
+            if hard_fails:
+                st.error("❌ NOT READY — at least one current OAM requirement is not satisfied.")
+            else:
+                st.success("✅ OAM REQUIREMENTS CHECK — no hard failure detected.")
+                if warnings:
+                    st.caption("Warnings are recommendations or things GDAL cannot prove from metadata alone.")
+            st.caption(f"Evidence parsed: {evidence_format}")
 
             for check in result["checks"]:
                 icon = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}[check["status"]]
@@ -417,20 +427,18 @@ with st.expander("🛠️ OAM Drone Preflight — paste GDAL info, get one comma
                         st.error("Source EPSG must be an integer, e.g. 32751.")
                 rec = build_oam_recommendation(info, preflight_path.strip(), source_epsg=source_epsg)
                 if rec["ready"]:
-                    st.success("Recommended local conversion:")
+                    st.markdown("### Optional local preparation")
                     st.code(rec["command"], language="powershell")
-                    st.caption(f"Output: {rec['output']} — source file is not overwritten. After it finishes, run gdalinfo on the output before uploading.")
+                    st.caption(f"Output: {rec['output']} — source file is not overwritten. After it finishes, run gdalinfo on the output and paste it here for final verification.")
                 else:
                     for issue in rec["issues"]:
                         st.error(issue)
             else:
                 st.info("Enter the local source path to generate the final command.")
         except json.JSONDecodeError as exc:
-            st.error(f"Invalid JSON. Paste the complete gdalinfo -json output. Parser error: {exc}")
+            st.error(f"Could not parse the GDAL output: {exc}")
         except Exception as exc:
             st.error(f"Preflight could not be processed: {exc}")
-st.header("Step 1: Fetch Event Imagery")
-
 st.header("Step 1: Fetch Event Imagery")
 st.info("💡 Paste the URL of the data catalog you found. We will automatically find all the usable map images inside it.")
 
