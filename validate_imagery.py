@@ -186,7 +186,7 @@ def parse_gdalinfo_text(text: str) -> dict[str, Any]:
 
     image_structure = "\\n".join(
         f"{key}={value}" for key, value in re.findall(
-            r"^\\s+(LAYOUT|COMPRESSION)=([^\\s\\r\\n]+)",
+            r"^\s+(LAYOUT|COMPRESSION)=([^\s\r\n]+)",
             raw,
             re.MULTILINE,
         )
