@@ -20,7 +20,7 @@
 - [x] ECW can be inspected without uploading it.
 - [x] COG state is treated according to verified OAM behavior.
 - [x] OAM decoded-size limit is surfaced when estimable.
-- [ ] Final generated output has been inspected with GDAL.
+- [x] Final generated output has been inspected with GDAL.
 
 ## UI / anti-slop
 - [x] Every preflight UI element has a concrete job.
@@ -30,6 +30,6 @@
 
 ## Convergence
 - [x] Focused tests/manual GDAL inspection completed.
-- [ ] Diff reviewed for accidental scope expansion.
+- [x] Diff reviewed for accidental scope expansion.
 - [x] Known environment limitation documented.
 - [x] User-facing local GDAL setup instructions match the verified implementation.
