@@ -1,3 +1,5 @@
+import unittest
+
 from validate_imagery import build_oam_recommendation, parse_gdalinfo_text, validate_info
 
 
@@ -24,29 +26,29 @@ Band 4 Block=256x256 Type=Byte, ColorInterp=Undefined
 """
 
 
-def test_plain_gdalinfo_parses_visual_ecw():
-    info = parse_gdalinfo_text(ECW_GDALINFO)
-    assert info["driverShortName"].startswith("ECW")
-    assert info["size"] == [26482, 25891]
-    assert len(info["bands"]) == 4
-    assert all(b["type"] == "Byte" for b in info["bands"])
-    assert info["coordinateSystem"]["epsg"] == 4326
-    assert info["wgs84Extent"]
+class OAMPreflightTests(unittest.TestCase):
+    def test_plain_gdalinfo_parses_visual_ecw(self):
+        info = parse_gdalinfo_text(ECW_GDALINFO)
+        self.assertTrue(info["driverShortName"].startswith("ECW"))
+        self.assertEqual(info["size"], [26482, 25891])
+        self.assertEqual(len(info["bands"]), 4)
+        self.assertTrue(all(b["type"] == "Byte" for b in info["bands"]))
+        self.assertEqual(info["coordinateSystem"]["epsg"], 4326)
+        self.assertTrue(info["wgs84Extent"])
+
+    def test_visual_ecw_has_no_hard_oam_failure(self):
+        info = parse_gdalinfo_text(ECW_GDALINFO)
+        result = validate_info(info)
+        self.assertFalse([c for c in result["checks"] if c["status"] == "FAIL"])
+
+    def test_ecw_gets_local_cog_command_without_uploading(self):
+        info = parse_gdalinfo_text(ECW_GDALINFO)
+        rec = build_oam_recommendation(info, r"C:\drone\orthomosaic.ecw")
+        self.assertTrue(rec["ready"])
+        self.assertIn("gdal_translate -of COG", rec["command"])
+        self.assertIn("COMPRESS=DEFLATE", rec["command"])
+        self.assertIn(r"C:\drone\orthomosaic_oam_ready.tif", rec["command"])
 
 
-def test_visual_ecw_has_no_hard_oam_failure():
-    info = parse_gdalinfo_text(ECW_GDALINFO)
-    result = validate_info(info)
-    assert not [c for c in result["checks"] if c["status"] == "FAIL"]
-
-
-def test_ecw_gets_local_cog_command_without_uploading():
-    info = parse_gdalinfo_text(ECW_GDALINFO)
-    rec = build_oam_recommendation(
-        info,
-        r"C:\drone\orthomosaic.ecw",
-    )
-    assert rec["ready"] is True
-    assert "gdal_translate -of COG" in rec["command"]
-    assert "COMPRESS=DEFLATE" in rec["command"]
-    assert r"C:\drone\orthomosaic_oam_ready.tif" in rec["command"]
+if __name__ == "__main__":
+    unittest.main()
