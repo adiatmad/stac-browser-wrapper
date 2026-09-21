@@ -65,6 +65,16 @@ Image Structure Metadata:
         cog_check = next(c for c in result["checks"] if c["name"] == "COG layout")
         self.assertEqual(cog_check["status"], "PASS")
 
+    def test_color_warning_does_not_recommend_reconversion(self):
+        info = parse_gdalinfo_text(ECW_GDALINFO + r"""
+Image Structure Metadata:
+  COMPRESSION=DEFLATE
+  INTERLEAVE=PIXEL
+  LAYOUT=COG
+""")
+        result = validate_info(info)
+        self.assertEqual(result["status"], "WARN")
+
     def test_ecw_gets_local_cog_command_without_uploading(self):
         info = parse_gdalinfo_text(ECW_GDALINFO)
         rec = build_oam_recommendation(info, r"C:\drone\orthomosaic.ecw")
