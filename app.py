@@ -366,7 +366,7 @@ st.markdown("Transform raw satellite data into ready-to-use maps for disaster re
 with st.expander("🛠️ OAM Drone Preflight — paste GDAL info, get one command", expanded=True):
     st.markdown(
         "**Local-only workflow:** your imagery is never uploaded to this app. "
-        "Run gdalinfo -json on your computer, paste the JSON below, and this tool "
+        "Run gdalinfo (plain text or -json) on your computer, paste the complete output below, and this tool "
         "will generate one PowerShell command that creates a new OAM-ready visual COG."
     )
     preflight_path = st.text_input(
@@ -412,7 +412,7 @@ with st.expander("🛠️ OAM Drone Preflight — paste GDAL info, get one comma
                 st.success("✅ OAM REQUIREMENTS CHECK — no hard failure detected.")
                 if warnings:
                     st.caption("Warnings are recommendations or things GDAL cannot prove from metadata alone.")
-            st.caption(f"Evidence parsed: {evidence_format}")
+            st.caption(f"Evidence parsed: {evidence_format}. The raster itself never leaves your computer.")
 
             for check in result["checks"]:
                 icon = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}[check["status"]]
