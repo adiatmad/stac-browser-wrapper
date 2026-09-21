@@ -51,6 +51,20 @@ class OAMPreflightTests(unittest.TestCase):
         self.assertEqual(color_check["status"], "WARN")
         self.assertIn("undefined", color_check["detail"].lower())
 
+    def test_plain_gdalinfo_parses_generated_cog_metadata(self):
+        cog = ECW_GDALINFO + r"""
+Image Structure Metadata:
+  COMPRESSION=DEFLATE
+  INTERLEAVE=PIXEL
+  LAYOUT=COG
+"""
+        info = parse_gdalinfo_text(cog)
+        self.assertEqual(info["metadata"]["IMAGE_STRUCTURE"]["LAYOUT"], "COG")
+        self.assertEqual(info["metadata"]["IMAGE_STRUCTURE"]["COMPRESSION"], "DEFLATE")
+        result = validate_info(info)
+        cog_check = next(c for c in result["checks"] if c["name"] == "COG layout")
+        self.assertEqual(cog_check["status"], "PASS")
+
     def test_ecw_gets_local_cog_command_without_uploading(self):
         info = parse_gdalinfo_text(ECW_GDALINFO)
         rec = build_oam_recommendation(info, r"C:\drone\orthomosaic.ecw")
