@@ -135,6 +135,69 @@ def add_check(checks: list[dict[str, Any]], status: str, name: str, detail: str)
     checks.append({"status": status, "name": name, "detail": detail})
 
 
+def parse_gdalinfo_text(text: str) -> dict[str, Any]:
+    """Parse standard plain-text gdalinfo output without requiring JSON."""
+    import re
+
+    raw = text.strip()
+    if not raw:
+        raise ValueError("No gdalinfo output was provided.")
+
+    def search(pattern: str, flags: int = re.MULTILINE):
+        return re.search(pattern, raw, flags)
+
+    driver_match = search(r"^Driver:\s*([^/\r\n]+)")
+    driver = driver_match.group(1).strip() if driver_match else ""
+
+    size_match = search(r"^Size is\s+(\d+)\s*,\s*(\d+)")
+    size = [int(size_match.group(1)), int(size_match.group(2))] if size_match else None
+
+    crs_present_text = bool(search(r"^Coordinate System is:\s*$", re.MULTILINE))
+    epsg_match = search(r'ID\["EPSG",\s*(\d+)\]')
+    epsg = int(epsg_match.group(1)) if epsg_match else None
+
+    block_matches = re.findall(
+        r"^Band\s+(\d+)\s+Block=(\d+)x(\d+)\s+Type=([^,\r\n]+),\s*ColorInterp=([^\r\n]+)",
+        raw,
+        re.MULTILINE,
+    )
+    bands: list[dict[str, Any]] = []
+    for number, bx, by, dtype, color in block_matches:
+        bands.append({
+            "band": int(number),
+            "block": [int(bx), int(by)],
+            "type": dtype.strip(),
+            "colorInterpretation": color.strip(),
+            "overviews": [],
+        })
+
+    # Plain gdalinfo prints overview dimensions on the line after each band.
+    # Attach them by walking band sections rather than assuming a fixed count.
+    sections = re.split(r"(?=^Band\s+\d+\s+)", raw, flags=re.MULTILINE)[1:]
+    for band, section in zip(bands, sections):
+        overview_match = re.search(r"^\s*Overviews:\s*(.+)$", section, re.MULTILINE)
+        if overview_match:
+            band["overviews"] = [x.strip() for x in overview_match.group(1).split(",") if x.strip()]
+
+    wgs_match = search(
+        r"^(?:Upper Left|Lower Left|Upper Right|Lower Right)\s+\([^\r\n]+\)"
+    )
+    has_corners = bool(wgs_match)
+
+    return {
+        "driverShortName": driver,
+        "size": size,
+        "coordinateSystem": {
+            "wkt": "present" if crs_present_text else "",
+            "epsg": epsg,
+        } if crs_present_text else None,
+        "bands": bands,
+        "cornerCoordinates": {"present": True} if has_corners else {},
+        "wgs84Extent": {"epsg": epsg} if has_corners and epsg == 4326 else ({"present": True} if has_corners and crs_present_text else None),
+        "metadata": {},
+    }
+
+
 def validate_info(info: dict[str, Any]) -> dict[str, Any]:
     """Validate already-collected gdalinfo JSON without touching the raster."""
     driver = str(info.get("driverShortName") or info.get("driver", ""))
