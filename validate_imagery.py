@@ -184,11 +184,13 @@ def parse_gdalinfo_text(text: str) -> dict[str, Any]:
     )
     has_corners = bool(wgs_match)
 
-    image_structure_match = search(
-        r"^Image Structure Metadata:\s*$\\n(?P<meta>(?:\\s+[^\\r\\n]+\\n?)*)",
-        re.MULTILINE,
+    image_structure = "\\n".join(
+        f"{key}={value}" for key, value in re.findall(
+            r"^\\s+(LAYOUT|COMPRESSION)=([^\\s\\r\\n]+)",
+            raw,
+            re.MULTILINE,
+        )
     )
-    image_structure = image_structure_match.group("meta") if image_structure_match else ""
     layout_match = re.search(r"LAYOUT=([^\\s\\r\\n]+)", image_structure)
     compression_match = re.search(r"COMPRESSION=([^\\s\\r\\n]+)", image_structure)
 
