@@ -425,18 +425,25 @@ def cmd_validate(args: argparse.Namespace) -> int:
     else:
         print_result(result)
         print()
-        print("Suggested local GDAL action:")
         summary = result["summary"]
-        if summary["driver"].upper() != "GTIFF":
-            output = path.with_suffix(".tif")
-            for label, command in conversion_commands(summary, path, output).items():
-                print(f"  {label}: {command}")
-        elif result["status"] != "PASS":
-            output = path.with_name(path.stem + "_cog.tif")
-            for label, command in conversion_commands(summary, path, output).items():
-                print(f"  {label}: {command}")
-        else:
+        hard_fails = [c for c in result["checks"] if c["status"] == "FAIL"]
+        if result["status"] == "PASS":
+            print("Suggested local GDAL action:")
             print("  No conversion is required by this preflight.")
+        elif not hard_fails and any(c["name"] == "Color interpretation" and c["status"] == "WARN" for c in result["checks"]):
+            print("Suggested local GDAL action:")
+            print("  No automatic conversion is required for the reported OAM checks.")
+            print("  Review the band order/color semantics before upload; conversion will not resolve undefined color interpretation.")
+        else:
+            print("Suggested local GDAL action:")
+            if summary["driver"].upper() != "GTIFF":
+                output = path.with_suffix(".tif")
+                for label, command in conversion_commands(summary, path, output).items():
+                    print(f"  {label}: {command}")
+            else:
+                output = path.with_name(path.stem + "_cog.tif")
+                for label, command in conversion_commands(summary, path, output).items():
+                    print(f"  {label}: {command}")
     return 0 if result["status"] != "FAIL" else 2
 
 
