@@ -74,6 +74,9 @@ Image Structure Metadata:
 """)
         result = validate_info(info)
         self.assertEqual(result["status"], "WARN")
+        rec = build_oam_recommendation(info, r"C:\\drone\\orthomosaic.tif")
+        self.assertTrue(rec["ready"])
+        self.assertIsNotNone(rec["command"])
 
     def test_ecw_gets_local_cog_command_without_uploading(self):
         info = parse_gdalinfo_text(ECW_GDALINFO)
