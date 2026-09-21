@@ -19,10 +19,11 @@
 - [x] Add focused automated tests for the supplied ECW report.
 
 ## Convergence
-- [ ] Run the automated test suite.
-- [ ] Run the generated command against the user's real ECW locally.
+- [x] Run the focused automated regression suite.
+- [x] Run `gdalinfo` against the user's real ECW locally after configuring the QGIS GDAL environment.
+- [ ] Run the generated conversion command against the user's real ECW locally.
 - [ ] Inspect the generated output with GDAL.
 - [ ] Re-run the validator on the generated output.
-- [ ] Compare final behavior against current OAM behavior.
-- [ ] Review the diff for accidental scope expansion.
-- [ ] Document any remaining limitations before merge.
+- [x] Compare the preflight behavior against the current OAM visual validation semantics.
+- [ ] Review the final diff for accidental scope expansion.
+- [x] Document the QGIS GDAL environment limitation and remaining verification steps.
