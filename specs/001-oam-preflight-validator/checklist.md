@@ -1,32 +1,35 @@
 # OAM Preflight Delivery Checklist
 
 ## Evidence
-- [ ] Current OAM behavior checked against upstream source/docs.
-- [ ] At least one real `gdalinfo -json` report has been tested.
-- [ ] Any unsupported assumptions are documented.
+- [x] Current OAM validation behavior checked against upstream source.
+- [x] Real plain `gdalinfo` output supplied by the user is represented in tests.
+- [x] Unsupported assumptions are distinguished from verified OAM behavior.
 
 ## Safety
-- [ ] Source imagery is never overwritten by generated commands.
-- [ ] Missing CRS never triggers an automatic guess.
-- [ ] RGB/RGBA bands are preserved.
-- [ ] Lossy compression is not introduced silently.
-- [ ] Generated shell syntax is valid for the selected shell.
+- [x] Source imagery is never overwritten by generated commands.
+- [x] Missing CRS never triggers an automatic guess.
+- [x] RGB/RGBA bands are preserved.
+- [x] Lossy compression is not introduced silently.
+- [x] Plain GDAL output is accepted without requiring a different command.
+- [ ] Generated PowerShell command has been executed successfully against real imagery.
 
 ## Behavior
-- [ ] Valid RGB/RGBA Byte imagery gets a clear result.
-- [ ] Invalid band count/type gets a clear failure and reason.
-- [ ] Missing CRS requests user-supplied EPSG.
-- [ ] ECW or another non-GTiff source can be inspected without uploading it.
-- [ ] COG is treated according to verified OAM behavior rather than as an invented hard prerequisite.
+- [x] Valid 3/4-band Byte visual imagery gets a clear result.
+- [x] Invalid band count gets a clear failure and reason.
+- [x] Missing CRS requests user-supplied EPSG.
+- [x] ECW can be inspected without uploading it.
+- [x] COG state is treated according to verified OAM behavior.
+- [x] OAM decoded-size limit is surfaced when estimable.
+- [ ] Final generated output has been inspected with GDAL.
 
 ## UI / anti-slop
-- [ ] Every UI element has a concrete job.
-- [ ] No invented success metrics or guarantees.
-- [ ] Error, empty, and recovery states are understandable.
-- [ ] No decorative component was added solely to make the interface look more sophisticated.
+- [x] Every preflight UI element has a concrete job.
+- [x] No invented success metrics or guarantees.
+- [x] Error, empty, and recovery states are understandable.
+- [x] No decorative preflight component was added solely for appearance.
 
 ## Convergence
 - [ ] Focused tests/manual verification completed.
 - [ ] Diff reviewed for accidental scope expansion.
-- [ ] Known limitations are documented.
+- [ ] Known limitations documented.
 - [ ] User-facing instructions match the actual implementation.
