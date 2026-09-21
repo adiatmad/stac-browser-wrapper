@@ -22,8 +22,8 @@
 - [x] Run the focused automated regression suite.
 - [x] Run `gdalinfo` against the user's real ECW locally after configuring the QGIS GDAL environment.
 - [x] Run the generated conversion command against the user's real ECW locally.
-- [ ] Inspect the generated output with GDAL.
-- [ ] Re-run the validator on the generated output.
+- [x] Inspect the generated output with GDAL.
+- [x] Re-run the validator on the generated output.
 - [x] Compare the preflight behavior against the current OAM visual validation semantics.
-- [ ] Review the final diff for accidental scope expansion.
+- [x] Review the final diff for accidental scope expansion.
 - [x] Document the QGIS GDAL environment limitation and remaining verification steps.
