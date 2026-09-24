@@ -12,6 +12,20 @@ from folium.plugins import Draw
 from streamlit_folium import st_folium
 from shapely.geometry import box, shape
 from validate_imagery import validate_info, parse_gdalinfo_text, build_oam_recommendation
+from utils.oam_sources import (
+    OAM_UPLOAD_URL,
+    SPACE_EYE_LICENSE,
+    SPACE_EYE_PLATFORM,
+    SPACE_EYE_PROVIDER,
+    SPACE_EYE_SENSOR,
+    build_oam_prefill_url,
+    filter_tiff_objects,
+    format_bytes,
+    list_public_s3_objects,
+    parse_s3_browser_url,
+    public_s3_object_url,
+    spaceeye_oam_prefill,
+)
 
 # Try importing GDAL for server-side VRT generation; fallback gracefully if unavailable
 try:
@@ -449,12 +463,63 @@ if preflight_text.strip():
         st.error(f"Could not parse the GDAL output: {exc}")
     except Exception as exc:
         st.error(f"Preflight could not be processed: {exc}")
+st.header("Remote source import")
+source_mode = st.radio(
+    "Source type",
+    ["STAC catalog / item", "Public S3 bucket folder"],
+    horizontal=True,
+    key="source_mode",
+)
+
+if source_mode == "Public S3 bucket folder":
+    st.caption("For public S3 Open Data buckets. The bucket-browser #prefix is read in your browser; imagery is never downloaded by this app.")
+    s3_browser_url = st.text_input(
+        "S3 bucket-browser URL",
+        value="http://st-vvhr-opendata.s3-website.us-west-2.amazonaws.com/#prefix=disasters%2FFlood%20in%20Nepal%20(Disasters%20Charter%20Activation%201052)%2C%202026%2F",
+        key="s3_browser_url",
+    )
+    exclude_masks = st.checkbox("Exclude MASKS/LINEAGE folders", value=True, key="exclude_s3_artifacts")
+
+    bucket, region, prefix = parse_s3_browser_url(s3_browser_url)
+    if not bucket:
+        st.error("Use an AWS S3 website browser URL with a #prefix= fragment.")
+    elif st.button("List public GeoTIFFs", type="primary"):
+        try:
+            with st.spinner(f"Listing s3://{bucket}/{prefix} ..."):
+                objects = list_public_s3_objects(bucket, region, prefix)
+            tiffs = filter_tiff_objects(objects, exclude_masks_lineage=exclude_masks)
+            st.session_state["remote_s3_results"] = {
+                "bucket": bucket, "region": region, "prefix": prefix, "objects": tiffs,
+                "browser_url": s3_browser_url,
+            }
+        except Exception as exc:
+            st.error(f"Could not list the public S3 prefix: {exc}")
+
+    s3_results = st.session_state.get("remote_s3_results")
+    if s3_results and s3_results.get("objects"):
+        st.success(f"Found {len(s3_results['objects'])} GeoTIFF object(s).")
+        st.caption("Source facts are limited to the public S3 object listing. Last modified is shown for reference only and is not treated as acquisition time.")
+        for idx, obj in enumerate(s3_results["objects"], 1):
+            key = obj["key"]
+            object_url = public_s3_object_url(s3_results["bucket"], s3_results["region"], key)
+            with st.expander(f"{idx}. {key.rsplit('/', 1)[-1]} — {format_bytes(obj.get('size_bytes'))}"):
+                st.code(object_url, language=None)
+                st.caption(f"S3 last modified: {obj.get('last_modified') or 'not reported'}")
+                st.markdown(f"Provider: **{SPACE_EYE_PROVIDER}** · Platform: **{SPACE_EYE_PLATFORM}** · Sensor: **{SPACE_EYE_SENSOR}** · License: **{SPACE_EYE_LICENSE}**")
+                prefill = spaceeye_oam_prefill(
+                    key=key, object_url=object_url, source_browser_url=s3_results["browser_url"]
+                )
+                st.link_button("Prepare OAM v2 upload", prefill)
+                st.caption("The handoff uses OAM's documented source_url flow. Review the title and metadata in OAM before submitting; acquisition time is intentionally left unset because the S3 listing's LastModified is not proof of capture time.")
+    elif s3_results is not None:
+        st.info("No GeoTIFFs matched this prefix and filter.")
+
 st.header("Step 1: Fetch Event Imagery")
 st.info("💡 Paste the URL of the data catalog you found. We will automatically find all the usable map images inside it.")
 
-root_url_input = st.text_input("Data Catalog URL:", value=DEFAULT_SAMPLE_URL)
+root_url_input = st.text_input("Data Catalog URL:", value=DEFAULT_SAMPLE_URL, disabled=source_mode != "STAC catalog / item")
 
-if root_url_input:
+if source_mode == "STAC catalog / item" and root_url_input:
     real_url = extract_real_stac_url(root_url_input)
     event_prefix = extract_event_name_from_url(real_url)
 
@@ -592,7 +657,7 @@ if root_url_input:
 
         with tab_oam:
             st.info("🛑 **Why check for duplicates?** Uploading the exact same footprint twice clutters the map. Use the button below to check if someone from the community has already uploaded these images to the new OAM v2 database.")
-            st.markdown(f"**Ready to upload?** Go directly to the new [HOTOSM Uploader v2]({OAM_V2_UPLOAD_URL}) and paste your individual image URLs.")
+            st.markdown("**Ready to upload?** Use the prefilled OAM v2 handoff for each selected scene. The source GeoTIFF stays at its public URL; OAM fetches it server-side.")
 
             if display_oam_items:
                 if st.button("🔍 Check OAM v2 for Duplicates"):
@@ -631,6 +696,22 @@ if root_url_input:
                         elif "Not found" in status_label:
                             st.success(f"✅ {status_label} – Ready for submission.")
                         
+                        if meta.get("image_source_url"):
+                            prefill = build_oam_prefill_url(
+                                title=meta["title"],
+                                source_url=meta["image_source_url"],
+                                provider=meta.get("provider") or None,
+                                platform=meta.get("platform") or None,
+                                sensor=meta.get("sensor") or None,
+                                license=meta.get("stac_license_reference") or None,
+                                acquisition_start=meta.get("raw_datetime") or None,
+                                acquisition_end=meta.get("raw_datetime") or None,
+                                external_id=meta.get("provider_item_id") or None,
+                                external_url=meta.get("item_url") or None,
+                            )
+                            st.link_button("Prepare OAM v2 upload", prefill)
+                            st.caption("Review the prefilled metadata in OAM before submitting. The source URL is passed to OAM; this app does not download the imagery.")
+
                         fields = [
                             ("Title", meta["title"]),
                             ("Platform", meta["platform"]),
