@@ -30,6 +30,12 @@ For each selected source image, the app should:
 - External/source ID derived from the stable S3 object key.
 - No acquisition date inferred from S3 LastModified.
 
+## Live AWS CLI evidence
+
+On 2026-09-24, the public bucket was independently checked with AWS CLI v2 using recursive, unsigned S3 listing. The supplied Nepal activation prefix exposed preview objects and five ZIP product objects across `1st/`, `2nd/`, `3rd/`, and `4st/`; the recursive listing exposed no `.tif`/`.tiff` object. A subsequent `aws s3 sync` was started only as an exploratory check and was cancelled after preview files began downloading. The feature must not require or perform that bulk sync: the application uses ListObjectsV2 metadata discovery and does not download the imagery.
+
+This independently corroborates the feature's `ARCHIVE_ONLY` classification: **no direct TIFF object is exposed by S3 listing**. It does not establish that the ZIPs contain no TIFFs.
+
 ## Verified archive-member evidence
 
 For the supplied Nepal SpaceEye-T sample, local GDAL inspection verified that the public ZIP contains this primary GeoTIFF member:
