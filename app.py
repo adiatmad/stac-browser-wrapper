@@ -483,7 +483,7 @@ if source_mode == "Public S3 bucket folder":
     bucket, region, prefix = parse_s3_browser_url(s3_browser_url)
     if not bucket:
         st.error("Use an AWS S3 website browser URL with a #prefix= fragment.")
-    elif st.button("List public GeoTIFFs", type="primary"):
+    elif st.button("List public imagery objects", type="primary"):
         try:
             with st.spinner(f"Listing s3://{bucket}/{prefix} ..."):
                 objects = list_public_s3_objects(bucket, region, prefix)
