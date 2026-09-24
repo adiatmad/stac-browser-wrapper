@@ -17,6 +17,8 @@ from utils.oam_sources import (
     SPACE_EYE_PLATFORM,
     SPACE_EYE_PROVIDER,
     SPACE_EYE_SENSOR,
+    SPACE_EYE_VERIFIED_TIFF_DATETIME,
+    spaceeye_verified_archive_member,
     build_oam_prefill_url,
     build_remote_vsizip_path,
     classify_s3_source_objects,
@@ -541,10 +543,21 @@ if source_mode == "Public S3 bucket folder":
                     "The app does not extract or upload the archive."
                 )
                 st.code(build_remote_vsizip_path(archive_url), language="text")
-                st.caption(
-                    "Append the exact path inside the ZIP after the final `/` once you inspect the archive. "
-                    "This is a local GDAL/QGIS access path, not an OAM `source_url`."
-                )
+                verified_member = spaceeye_verified_archive_member(archive_key)
+                if verified_member:
+                    st.markdown("**Verified archive member**")
+                    st.code(build_remote_vsizip_path(archive_url, verified_member), language="text")
+                    st.caption(
+                        "This exact member was verified with GDAL as a GeoTIFF (29,560 × 36,720, "
+                        "WGS 84 / EPSG:4326). Its TIFF acquisition timestamp is "
+                        f"`{SPACE_EYE_VERIFIED_TIFF_DATETIME}`; the source output does not state a timezone, "
+                        "so the app does not pass this timestamp to OAM."
+                    )
+                else:
+                    st.caption(
+                        "Append the exact path inside the ZIP after the final `/` once you inspect the archive. "
+                        "This is a local GDAL/QGIS access path, not an OAM `source_url`."
+                    )
             st.info(
                 "No OAM handoff is generated for this source. That is a capability limitation of the current "
                 "OAM remote-source contract, not evidence that the archive contains no TIFF. "
