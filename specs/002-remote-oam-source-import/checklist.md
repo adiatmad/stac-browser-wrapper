@@ -26,3 +26,4 @@
 - [x] No decorative UI without a job.
 - [x] Copy states concrete source facts and limitations.
 - [x] No invented metrics or upload guarantees.
+- [x] Saved GDAL JSON is parsed in Python rather than relying on PowerShell object deserialization.
