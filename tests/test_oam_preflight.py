@@ -1,6 +1,9 @@
 import unittest
+from pathlib import Path
+import json
+import tempfile
 
-from validate_imagery import build_oam_recommendation, parse_gdalinfo_text, validate_info
+from validate_imagery import build_oam_recommendation, load_gdalinfo_json, parse_gdalinfo_text, validate_info
 
 
 ECW_GDALINFO = r"""Driver: ECW/ERDAS Compressed Wavelets (SDK 5.5)
@@ -27,6 +30,27 @@ Band 4 Block=256x256 Type=Byte, ColorInterp=Undefined
 
 
 class OAMPreflightTests(unittest.TestCase):
+    def test_saved_gdalinfo_json_with_empty_metadata_key_is_supported(self):
+        report = {
+            "driverShortName": "GTiff",
+            "size": [100, 100],
+            "coordinateSystem": {"wkt": "WGS 84", "projjson": {}, "id": "EPSG:4326"},
+            "geoTransform": [0, 1, 0, 0, 0, -1],
+            "metadata": {"": {"AREA_OR_POINT": "Area"}},
+            "cornerCoordinates": {},
+            "wgs84Extent": {"type": "Polygon", "coordinates": []},
+            "bands": [
+                {"type": "Byte", "colorInterpretation": "Red", "block": [16, 16], "overviews": []},
+                {"type": "Byte", "colorInterpretation": "Green", "block": [16, 16], "overviews": []},
+                {"type": "Byte", "colorInterpretation": "Blue", "block": [16, 16], "overviews": []},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "gdalinfo.json"
+            path.write_text(json.dumps(report), encoding="utf-8")
+            loaded = load_gdalinfo_json(path)
+        self.assertIn("", loaded["metadata"])
+        self.assertEqual(validate_info(loaded)["summary"]["bands"], 3)
     def test_plain_gdalinfo_parses_real_ecw_shape(self):
         info = parse_gdalinfo_text(ECW_GDALINFO)
         self.assertTrue(info["driverShortName"].startswith("ECW"))
