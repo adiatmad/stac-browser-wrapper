@@ -33,9 +33,10 @@ For each selected source image, the app should:
 ## Source capability rules
 
 - `DIRECT_RASTER`: a public `.tif`/`.tiff` object is exposed; it may receive an OAM remote-source handoff.
-- `ARCHIVE_ONLY`: the prefix exposes an archive such as ZIP but no direct raster object; no OAM handoff is generated.
+- `ARCHIVE_ONLY`: the prefix exposes an archive such as ZIP but no direct raster object. The archive may contain raster data; the listing alone does not inspect archive members. No OAM direct-source handoff is generated.
 - `EMPTY`: no supported raster/archive object is exposed.
 - Arbitrary imagery ZIP extraction is deliberately not implemented here because current OAM does not accept arbitrary ZIP source URLs.
+- For archive-based sources, the app may expose a GDAL `/vsizip//vsicurl/` access path so users can stream a known public archive member locally without downloading the full archive; this is not an OAM `source_url`.
 
 ## Out of scope
 
