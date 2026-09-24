@@ -15,6 +15,7 @@
 - [x] Add SpaceEye-T verified metadata profile.
 - [x] Add remote source UI to existing app.
 - [x] Prevent OAM handoff for arbitrary archive-only sources.
+- [x] Expose a read-only GDAL `/vsizip//vsicurl/` path for public imagery ZIPs without extracting them in the app.
 - [x] Add focused tests — 16/16 passing locally.
 - [x] Add saved `gdalinfo -json` validation so users do not need PowerShell JSON parsing.
 
@@ -24,3 +25,4 @@
 - [ ] Confirm a direct TIFF URL is publicly reachable (not applicable to the supplied archive-only prefix; required before claiming a live direct-raster handoff).
 - [ ] Inspect one generated OAM prefill link manually in the browser.
 - [x] Review diff for scope expansion and unsupported claims.
+- [x] Distinguish archive contents from direct OAM-compatible object discovery.
