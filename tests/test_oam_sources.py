@@ -105,6 +105,15 @@ class OAMSourceTests(unittest.TestCase):
             build_remote_vsizip_path(archive_url, "IMG_01_ST1_PMS/example.tif"),
             "/vsizip//vsicurl/" + archive_url + "/IMG_01_ST1_PMS/example.tif",
         )
+        verified_member = (
+            "ST1_20260830_043751_SEN_SSI1_001/"
+            "IMG_01_ST1_PMS/"
+            "IMG_ST1_202608300437518_PMS_SEN_LWO_202608_03698_001.TIF"
+        )
+        self.assertEqual(
+            build_remote_vsizip_path(archive_url, verified_member),
+            "/vsizip//vsicurl/" + archive_url + "/" + verified_member,
+        )
 
     def test_public_s3_object_url_encodes_object_key(self):
         url = public_s3_object_url(
