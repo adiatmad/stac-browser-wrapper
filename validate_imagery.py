@@ -8,6 +8,8 @@ Examples:
     python validate_imagery.py inspect input.ecw
     python validate_imagery.py validate input.tif
     python validate_imagery.py validate input.tif --json
+    python validate_imagery.py validate-json gdalinfo.json
+    python validate_imagery.py recommend-json gdalinfo.json input.tif
     python validate_imagery.py convert input.ecw output.tif
     python validate_imagery.py convert input.tif output_cog.tif
     python validate_imagery.py reproject input.tif output_cog.tif --epsg 32751
@@ -411,6 +413,59 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def load_gdalinfo_json(path: Path) -> dict[str, Any]:
+    """Load a saved gdalinfo -json report without invoking GDAL.
+
+    Python's JSON parser accepts metadata keys that some PowerShell
+    ConvertFrom-Json versions reject, including an empty property name.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid gdalinfo JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError("gdalinfo JSON must contain a top-level object.")
+    return data
+
+
+def cmd_validate_json(args: argparse.Namespace) -> int:
+    path = Path(args.input).expanduser()
+    if not path.exists():
+        return fail(f"Input does not exist: {path}")
+    try:
+        result = validate_info(load_gdalinfo_json(path))
+    except Exception as exc:
+        return fail(str(exc))
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print_result(result)
+    return 0 if result["status"] != "FAIL" else 2
+
+
+def cmd_recommend_json(args: argparse.Namespace) -> int:
+    path = Path(args.input).expanduser()
+    if not path.exists():
+        return fail(f"Input does not exist: {path}")
+    try:
+        info = load_gdalinfo_json(path)
+        rec = build_oam_recommendation(info, args.raster, args.source_epsg, args.output)
+    except Exception as exc:
+        return fail(str(exc))
+    if args.json:
+        print(json.dumps(rec, indent=2))
+    else:
+        print("OAM VISUAL PREFLIGHT FROM SAVED GDAL JSON")
+        print("STATUS: READY TO CONVERT" if rec["ready"] else "STATUS: INPUT NEEDS ATTENTION")
+        for issue in rec["issues"]:
+            print(f"- {issue}")
+        if rec["ready"]:
+            print("\nONE COMBINED POWERSHELL COMMAND:\n" + rec["command"])
+            for note in rec["notes"]:
+                print(f"- {note}")
+    return 0 if rec["ready"] else 2
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     path = Path(args.input).expanduser()
     if not path.exists():
@@ -530,6 +585,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("input")
     p.add_argument("--json", action="store_true", help="Print machine-readable JSON diagnostics.")
     p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("validate-json", help="Validate an existing gdalinfo -json report without running GDAL.")
+    p.add_argument("input")
+    p.add_argument("--json", action="store_true", help="Print machine-readable JSON diagnostics.")
+    p.set_defaults(func=cmd_validate_json)
+
+    p = sub.add_parser("recommend-json", help="Build one OAM-ready command from a saved gdalinfo -json report.")
+    p.add_argument("input", help="Path to saved gdalinfo JSON.")
+    p.add_argument("raster", help="Path to the original raster the command will read.")
+    p.add_argument("--source-epsg", type=int, help="Correct source EPSG when the saved report has no CRS.")
+    p.add_argument("--output", help="Output path; defaults to *_oam_ready.tif.")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_recommend_json)
 
     p = sub.add_parser("recommend", help="Inspect a raster and print one pasteable OAM-ready PowerShell command.")
     p.add_argument("input")
