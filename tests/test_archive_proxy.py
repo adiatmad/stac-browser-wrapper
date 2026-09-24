@@ -17,7 +17,7 @@ class ArchiveProxyTests(unittest.TestCase):
 
     def test_find_member_rejects_missing_member(self):
         with patch("archive_proxy._head", return_value=22), patch(
-            "archive_proxy._central_directory", return_value=b"PK\\x01\\x02" + b"\\x00" * 42
+            "archive_proxy._central_directory", return_value=bytes.fromhex("504b0102") + b"\\x00" * 42
         ):
             with self.assertRaises(Exception):
                 find_member("https://example.s3.us-west-2.amazonaws.com/a.zip", "missing.tif")
