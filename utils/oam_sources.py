@@ -119,6 +119,19 @@ def public_s3_object_url(bucket: str, region: str, key: str) -> str:
     return f"https://{bucket}.s3.{region}.amazonaws.com/{quote(key, safe='/')}"
 
 
+def build_remote_vsizip_path(archive_url: str, member_path: str | None = None) -> str:
+    """Build a GDAL /vsizip//vsicurl/ path for a public ZIP object.
+
+    This is a read-only access path: GDAL can stream a selected member from
+    the remote archive without this app downloading or extracting the archive.
+    The member path is optional so callers can first inspect the archive.
+    """
+    base = f"/vsizip//vsicurl/{archive_url}"
+    if member_path:
+        return f"{base}/{member_path.lstrip('/')}"
+    return base
+
+
 def format_bytes(size: int | None) -> str:
     if size is None:
         return ""
