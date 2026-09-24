@@ -508,7 +508,7 @@ if source_mode == "Public S3 bucket folder":
                     key=key, object_url=object_url, source_browser_url=s3_results["browser_url"]
                 )
                 st.link_button("Prepare OAM v2 upload", prefill)
-                st.caption("The handoff uses OAM's documented source_url flow. Review the title and metadata in OAM before submitting; acquisition time is intentionally left unset because the S3 listing's LastModified is not proof of capture time.")
+                st.caption("The handoff uses OAM's documented source_url flow. OAM requires a valid acquisition date before submission; this app leaves it blank unless source evidence provides one. S3 LastModified is not treated as capture time.")
     elif s3_results is not None:
         st.info("No GeoTIFFs matched this prefix and filter.")
 
