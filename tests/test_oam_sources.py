@@ -1,6 +1,7 @@
 import unittest
 
 from utils.oam_sources import (
+    classify_s3_source_objects,
     filter_tiff_objects,
     build_oam_prefill_url,
     parse_s3_browser_url,
@@ -43,6 +44,20 @@ class OAMSourceTests(unittest.TestCase):
                 "event/MASKS/image.tif",
                 "event/LINEAGE/image.tiff",
             ],
+        )
+
+    def test_classify_archive_only_prefix(self):
+        objects = [{"key": "event/product.zip"}, {"key": "event/preview.png"}]
+        self.assertEqual(classify_s3_source_objects(objects), "ARCHIVE_ONLY")
+
+    def test_classify_direct_raster_prefix(self):
+        objects = [{"key": "event/product.zip"}, {"key": "event/product.tif"}]
+        self.assertEqual(classify_s3_source_objects(objects), "DIRECT_RASTER")
+
+    def test_classify_empty_prefix(self):
+        self.assertEqual(
+            classify_s3_source_objects([{"key": "event/readme.txt"}]),
+            "EMPTY",
         )
 
     def test_public_s3_object_url_encodes_object_key(self):
