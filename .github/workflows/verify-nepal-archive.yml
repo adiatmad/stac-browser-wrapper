@@ -1,0 +1,41 @@
+name: verify Nepal archive format
+
+on:
+  push:
+    branches: ["feature/oam-archive-tiff-proxy"]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependency
+        run: python -m pip install --disable-pip-version-check "requests>=2.31.0"
+      - name: Inspect ZIP central directory without downloading the archive
+        run: |
+          python - <<'PY'
+          from archive_proxy import _central_directory, _head, find_member
+
+          archive_url = "https://st-vvhr-opendata.s3.us-west-2.amazonaws.com/disasters/Flood%20in%20Nepal%20%28Disasters%20Charter%20Activation%201052%29%2C%202026/1st/ST1_20260830_043751_SEN_SSI1_001.zip"
+          member = "ST1_20260830_043751_SEN_SSI1_001/IMG_01_ST1_PMS/IMG_ST1_202608300437518_PMS_SEN_LWO_202608_03698_001.TIF"
+
+          size = _head(archive_url)
+          metadata = find_member(archive_url, member)
+
+          print(f"archive_size={size}")
+          print(f"member={metadata['name']}")
+          print(f"compression_method={metadata['method']}")
+          print(f"compressed_size={metadata['compressed_size']}")
+          print(f"uncompressed_size={metadata['uncompressed_size']}")
+          print(f"local_offset={metadata['local_offset']}")
+
+          if metadata["method"] not in (0, 8):
+              raise SystemExit(
+                  f"Unsupported ZIP compression method {metadata['method']}; "
+                  "do not expose this archive through the proxy."
+              )
+          PY
