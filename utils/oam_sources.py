@@ -154,6 +154,20 @@ def spaceeye_verified_archive_member(archive_key: str) -> str | None:
     return None
 
 
+def build_archive_proxy_url(
+    proxy_base_url: str, archive_url: str, member_path: str
+) -> str:
+    """Build the public HTTPS URL served by the deployed archive proxy.
+
+    This is only an OAM source URL when the proxy itself is publicly reachable
+    by OAM. The proxy streams the selected ZIP member using HTTP Range requests
+    rather than exposing a GDAL virtual path.
+    """
+    base = proxy_base_url.rstrip("/")
+    query = urlencode({"archive_url": archive_url, "member": member_path}, quote_via=quote)
+    return f"{base}/tiff?{query}"
+
+
 def format_bytes(size: int | None) -> str:
     if size is None:
         return ""
