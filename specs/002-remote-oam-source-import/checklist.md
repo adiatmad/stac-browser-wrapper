@@ -7,7 +7,7 @@
 - [x] S3 source is treated as public object storage, not an HTML scraping target.
 
 ## Safety
-- [x] No imagery download is performed by the feature.
+- [x] No imagery download or archive extraction is performed by the feature.
 - [x] No source file is overwritten.
 - [x] No acquisition date is guessed from LastModified.
 - [x] Generic sources do not receive invented licenses.
@@ -16,10 +16,12 @@
 ## Behavior
 - [x] S3 browser URL parses bucket, region, and prefix.
 - [x] TIFF filtering works.
+- [x] Archive-only sources are identified without extracting or downloading the archive.
 - [x] Object URLs encode spaces and punctuation correctly.
-- [x] OAM prefill carries source_url and verified SpaceEye-T metadata.
+- [x] OAM prefill carries source_url and verified SpaceEye-T metadata for direct TIFF objects only.
 - [x] STAC workflow can create the same kind of handoff.
 - [ ] Live source listing verified against the public bucket.
+- [x] Current OAM behavior checked: arbitrary imagery ZIP URLs are not accepted.
 - [ ] Returned TIFF URL publicly reachable.
 - [ ] One generated OAM v2 prefill link manually inspected.
 - [x] OAM acquisition-date requirement is reflected in the handoff UX.
