@@ -20,6 +20,8 @@
 - [x] Archive-only sources are identified without extracting or downloading the archive.
 - [x] Archive-only wording does not imply that the archive contains no raster; it means no direct raster object was exposed by S3 listing.
 - [x] A read-only GDAL `/vsizip//vsicurl/` path is offered for local streaming of public archive members.
+- [x] Supplied SpaceEye-T ZIP member path verified with GDAL: primary GeoTIFF, 29,560 × 36,720, WGS 84 / EPSG:4326.
+- [x] Embedded TIFF timestamp `2026-08-30 04:37:53` recorded as source evidence without inventing a timezone or OAM acquisition timestamp.
 - [x] Object URLs encode spaces and punctuation correctly.
 - [x] OAM prefill carries source_url and verified SpaceEye-T metadata for direct TIFF objects only.
 - [x] STAC workflow can create the same kind of handoff.
