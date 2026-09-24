@@ -63,7 +63,7 @@ def _head(url: str) -> int:
 
 
 def _find_eocd(tail: bytes, absolute_start: int) -> tuple[int, int]:
-    signature = b"PK\\x05\\x06"
+    signature = bytes.fromhex("504b0506")
     pos = tail.rfind(signature)
     if pos < 0 or len(tail) - pos < 22:
         raise ArchiveError("ZIP end-of-central-directory record not found")
@@ -107,7 +107,7 @@ def find_member(url: str, member_name: str) -> dict:
         signature = stream.read(4)
         if not signature:
             break
-        if signature != b"PK\\x01\\x02":
+        if signature != bytes.fromhex("504b0102"):
             raise ArchiveError("Malformed ZIP central directory")
         fixed = stream.read(42)
         if len(fixed) != 42:
@@ -151,7 +151,7 @@ def member_data_offset(url: str, member: dict) -> int:
         header = response.content
     finally:
         response.close()
-    if len(header) != 30 or header[:4] != b"PK\\x03\\x04":
+    if len(header) != 30 or header[:4] != bytes.fromhex("504b0304"):
         raise ArchiveError("Invalid ZIP local-file header")
     name_len, extra_len = struct.unpack_from("<HH", header, 26)
     return member["local_offset"] + 30 + name_len + extra_len
