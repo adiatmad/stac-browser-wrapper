@@ -154,8 +154,8 @@ def spaceeye_verified_archive_member(archive_key: str) -> str | None:
     return None
 
 
-(size: int | None) -> str:
-def format_bytes    if size is None:
+def format_bytes(size: int | None) -> str:
+    if size is None:
         return ""
     value = float(size)
     for unit in ("B", "KB", "MB", "GB", "TB"):
