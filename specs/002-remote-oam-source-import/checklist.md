@@ -20,6 +20,7 @@
 - [x] OAM prefill carries source_url and verified SpaceEye-T metadata.
 - [x] STAC workflow can create the same kind of handoff.
 - [ ] Live source listing verified after merge.
+- [x] OAM acquisition-date requirement is reflected in the handoff UX.
 
 ## Anti-slop
 - [x] No new abstraction duplicates the existing preflight validator.
