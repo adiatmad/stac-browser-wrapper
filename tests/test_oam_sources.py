@@ -60,6 +60,37 @@ class OAMSourceTests(unittest.TestCase):
             "EMPTY",
         )
 
+    def test_spaceeye_live_listing_shape_is_archive_only(self):
+        """Regression guard for the verified Nepal prefix observed on 2026-09-24.
+
+        The raw ListObjectsV2 response exposed the product ZIP plus preview and
+        DIMAP companion objects, but no direct TIFF object. The application must
+        therefore refuse to manufacture an OAM remote-raster handoff.
+        """
+        objects = [
+            {
+                "key": (
+                    "disasters/Flood in Nepal (Disasters Charter Activation 1052), 2026/"
+                    " "
+                    "1st/ST1_20260830_043751_SEN_SSI1_001.zip"
+                )
+            },
+            {
+                "key": (
+                    "disasters/Flood in Nepal (Disasters Charter Activation 1052), 2026/"
+                    "1st/PREVIEW_ST1_202608300437518_PMS_SEN_LWO_202608_03698_001.PNG"
+                )
+            },
+            {
+                "key": (
+                    "disasters/Flood in Nepal (Disasters Charter Activation 1052), 2026/"
+                    "1st/PREVIEW_ST1_202608300437518_PMS_SEN_LWO_202608_03698_001.PGW"
+                )
+            },
+        ]
+        self.assertEqual(classify_s3_source_objects(objects), "ARCHIVE_ONLY")
+        self.assertEqual(filter_tiff_objects(objects), [])
+
     def test_public_s3_object_url_encodes_object_key(self):
         url = public_s3_object_url(
             "st-vvhr-opendata",
