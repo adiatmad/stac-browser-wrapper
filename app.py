@@ -18,6 +18,7 @@ from utils.oam_sources import (
     SPACE_EYE_PROVIDER,
     SPACE_EYE_SENSOR,
     build_oam_prefill_url,
+    classify_s3_source_objects,
     filter_tiff_objects,
     format_bytes,
     list_public_s3_objects,
@@ -485,9 +486,11 @@ if source_mode == "Public S3 bucket folder":
         try:
             with st.spinner(f"Listing s3://{bucket}/{prefix} ..."):
                 objects = list_public_s3_objects(bucket, region, prefix)
+            source_kind = classify_s3_source_objects(objects, exclude_masks_lineage=exclude_masks)
             tiffs = filter_tiff_objects(objects, exclude_masks_lineage=exclude_masks)
             st.session_state["remote_s3_results"] = {
                 "bucket": bucket, "region": region, "prefix": prefix, "objects": tiffs,
+                "all_objects": objects, "source_kind": source_kind,
                 "browser_url": s3_browser_url,
             }
         except Exception as exc:
@@ -510,7 +513,25 @@ if source_mode == "Public S3 bucket folder":
                 st.link_button("Prepare OAM v2 upload", prefill)
                 st.caption("The handoff uses OAM's documented source_url flow. OAM requires a valid acquisition date before submission; this app leaves it blank unless source evidence provides one. S3 LastModified is not treated as capture time.")
     elif s3_results is not None:
-        st.info("No GeoTIFFs matched this prefix and filter.")
+        if s3_results.get("source_kind") == "ARCHIVE_ONLY":
+            archive_names = [
+                obj["key"].rsplit("/", 1)[-1]
+                for obj in s3_results.get("all_objects", [])
+                if str(obj.get("key", "")).lower().endswith(".zip")
+            ]
+            st.warning(
+                "This public prefix is archive-only: it exposes ZIP package(s), not a direct TIFF object. "
+                "OAM v2 accepts direct public TIFF URLs and a narrow ODM `all.zip` special case; it does not "
+                "accept arbitrary imagery ZIP archives."
+            )
+            if archive_names:
+                st.caption("Detected archive(s): " + ", ".join(archive_names[:5]))
+            st.info(
+                "No OAM handoff is generated for this source. Do not download the archive into this app just "
+                "to unpack it; that would duplicate OAM ingestion behavior."
+            )
+        else:
+            st.info("No GeoTIFFs matched this prefix and filter.")
 
 st.header("Step 1: Fetch Event Imagery")
 st.info("💡 Paste the URL of the data catalog you found. We will automatically find all the usable map images inside it.")
