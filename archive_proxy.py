@@ -24,7 +24,7 @@ MAX_DIRECTORY_BYTES = 16 * 1024 * 1024
 CHUNK_SIZE = 1024 * 1024
 REQUEST_TIMEOUT = 60
 ALLOWED_S3_HOST_RE = __import__("re").compile(
-    r"^[a-z0-9][a-z0-9.-]*\\.s3(?:[.-][a-z0-9-]+)?\\.amazonaws\\.com$",
+    r"^[a-z0-9][a-z0-9.-]*\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com$",
     __import__("re").IGNORECASE,
 )
 
