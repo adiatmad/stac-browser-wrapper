@@ -18,6 +18,8 @@
 - [x] S3 browser URL parses bucket, region, and prefix.
 - [x] TIFF filtering works.
 - [x] Archive-only sources are identified without extracting or downloading the archive.
+- [x] Archive-only wording does not imply that the archive contains no raster; it means no direct raster object was exposed by S3 listing.
+- [x] A read-only GDAL `/vsizip//vsicurl/` path is offered for local streaming of public archive members.
 - [x] Object URLs encode spaces and punctuation correctly.
 - [x] OAM prefill carries source_url and verified SpaceEye-T metadata for direct TIFF objects only.
 - [x] STAC workflow can create the same kind of handoff.
