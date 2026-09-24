@@ -19,7 +19,9 @@
 - [x] Object URLs encode spaces and punctuation correctly.
 - [x] OAM prefill carries source_url and verified SpaceEye-T metadata.
 - [x] STAC workflow can create the same kind of handoff.
-- [ ] Live source listing verified after merge.
+- [ ] Live source listing verified against the public bucket.
+- [ ] Returned TIFF URL publicly reachable.
+- [ ] One generated OAM v2 prefill link manually inspected.
 - [x] OAM acquisition-date requirement is reflected in the handoff UX.
 
 ## Anti-slop
