@@ -21,10 +21,11 @@
 
 ## Convergence
 - [x] Run focused tests in the repository environment — 16/16 passing.
-- [x] Exercise the supplied live SpaceEye-T prefix — 22 objects, 0 direct TIFFs; classified as archive-only.
+- [x] Exercise the supplied live SpaceEye-T prefix via ListObjectsV2/AWS CLI — recursive listing exposes ZIP products and no direct TIFF object; classified as archive-only.
 - [ ] Confirm a direct TIFF URL is publicly reachable (not applicable to the supplied archive-only prefix; required before claiming a live direct-raster handoff).
 - [ ] Inspect one generated OAM prefill link manually in the browser.
 - [x] Review diff for scope expansion and unsupported claims.
 - [x] Distinguish archive contents from direct OAM-compatible object discovery.
 - [x] Verify the supplied SpaceEye-T ZIP contains a primary GeoTIFF member via remote GDAL `/vsizip//vsicurl/` access.
 - [x] Record the verified member path and embedded TIFF timestamp without treating the timestamp as timezone-qualified OAM acquisition metadata.
+- [x] Cross-check the public prefix with AWS CLI recursive listing; do not introduce a bulk `aws s3 sync` dependency.
