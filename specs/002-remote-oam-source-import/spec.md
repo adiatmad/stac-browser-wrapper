@@ -30,6 +30,16 @@ For each selected source image, the app should:
 - External/source ID derived from the stable S3 object key.
 - No acquisition date inferred from S3 LastModified.
 
+## Verified archive-member evidence
+
+For the supplied Nepal SpaceEye-T sample, local GDAL inspection verified that the public ZIP contains this primary GeoTIFF member:
+
+`ST1_20260830_043751_SEN_SSI1_001/IMG_01_ST1_PMS/IMG_ST1_202608300437518_PMS_SEN_LWO_202608_03698_001.TIF`
+
+The member is remotely readable through `/vsizip//vsicurl/` and reports GeoTIFF, 29,560 × 36,720, WGS 84 / EPSG:4326, and TIFF acquisition timestamp `2026-08-30 04:37:53`. The timestamp has no timezone in the inspected TIFF metadata, so it is evidence for provenance display only and is not passed to OAM as an acquisition timestamp.
+
+This is a verified sample-member fact, not a generic ZIP extraction rule. The app does not infer arbitrary member paths or add arbitrary archive URLs to OAM.
+
 ## Source capability rules
 
 - `DIRECT_RASTER`: a public `.tif`/`.tiff` object is exposed; it may receive an OAM remote-source handoff.
