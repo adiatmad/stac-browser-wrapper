@@ -18,7 +18,7 @@
 - [x] Add saved `gdalinfo -json` validation so users do not need PowerShell JSON parsing.
 
 ## Convergence
-- [ ] Run focused tests in the repository environment.
+- [x] Run focused tests in the repository environment — 12/12 passing.
 - [ ] Exercise the supplied live SpaceEye-T prefix.
 - [ ] Confirm a returned TIFF URL is publicly reachable.
 - [ ] Inspect one generated OAM prefill link manually.
