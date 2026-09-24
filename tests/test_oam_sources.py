@@ -71,7 +71,6 @@ class OAMSourceTests(unittest.TestCase):
             {
                 "key": (
                     "disasters/Flood in Nepal (Disasters Charter Activation 1052), 2026/"
-                    " "
                     "1st/ST1_20260830_043751_SEN_SSI1_001.zip"
                 )
             },
