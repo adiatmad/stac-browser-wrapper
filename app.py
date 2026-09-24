@@ -34,7 +34,7 @@ except ImportError:
     GDAL_AVAILABLE = False
 
 # ---------- Constants ----------
-OAM_DEFAULT_LICENSE = "CC-BY 4.0"
+OAM_DEFAULT_LICENSE = ""
 HOTOSM_STAC_ITEMS_API = "https://api.imagery.hotosm.org/stac/collections/openaerialmap/items"
 
 DEFAULT_SAMPLE_URL = (
@@ -249,7 +249,7 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
         "phase": properties.get("phase") or properties.get("odp:phase") or "",
         "provider": guess_provider_name(item_data, item_url),
         "tags": "",
-        "license_oam_default": OAM_DEFAULT_LICENSE,
+        "license_oam_default": stac_license,
         "stac_license_reference": stac_license,
         "image_source_url": tiff_url or "",
         "longitude_risk": False,
