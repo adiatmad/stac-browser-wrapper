@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from urllib.parse import quote, unquote, urlencode, urlsplit
 
-import requests
 import xml.etree.ElementTree as ET
 
 OAM_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
@@ -43,6 +42,8 @@ def list_public_s3_objects(
     bucket: str, region: str, prefix: str, timeout: int = 30
 ) -> list[dict]:
     """List public S3 objects under a prefix using ListObjectsV2."""
+    import requests
+
     endpoint = f"https://{bucket}.s3.{region}.amazonaws.com/"
     objects: list[dict] = []
     token: str | None = None
