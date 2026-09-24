@@ -17,6 +17,16 @@ SPACE_EYE_LICENSE = "CC-BY 4.0"
 SPACE_EYE_PROVIDER = "SI Imaging Services"
 SPACE_EYE_PLATFORM = "satellite"
 SPACE_EYE_SENSOR = "SpaceEye-T"
+SPACE_EYE_VERIFIED_ARCHIVE_KEY = (
+    "disasters/Flood in Nepal (Disasters Charter Activation 1052), 2026/"
+    "1st/ST1_20260830_043751_SEN_SSI1_001.zip"
+)
+SPACE_EYE_VERIFIED_ARCHIVE_MEMBER = (
+    "ST1_20260830_043751_SEN_SSI1_001/"
+    "IMG_01_ST1_PMS/"
+    "IMG_ST1_202608300437518_PMS_SEN_LWO_202608_03698_001.TIF"
+)
+SPACE_EYE_VERIFIED_TIFF_DATETIME = "2026-08-30 04:37:53"
 
 _S3_WEBSITE_RE = re.compile(
     r"^https?://(?P<bucket>[^./]+)\.s3-website[.-](?P<region>[a-z0-9-]+)\.amazonaws\.com/?$",
@@ -133,8 +143,19 @@ def build_remote_vsizip_path(archive_url: str, member_path: str | None = None) -
     return base
 
 
-def format_bytes(size: int | None) -> str:
-    if size is None:
+def spaceeye_verified_archive_member(archive_key: str) -> str | None:
+    """Return the verified TIFF member for the known SpaceEye-T sample archive.
+
+    The member path is evidence-backed for this specific public object only;
+    it is not a generic ZIP extraction rule.
+    """
+    if archive_key == SPACE_EYE_VERIFIED_ARCHIVE_KEY:
+        return SPACE_EYE_VERIFIED_ARCHIVE_MEMBER
+    return None
+
+
+(size: int | None) -> str:
+def format_bytes    if size is None:
         return ""
     value = float(size)
     for unit in ("B", "KB", "MB", "GB", "TB"):
