@@ -13,7 +13,6 @@ from streamlit_folium import st_folium
 from shapely.geometry import box, shape
 from validate_imagery import validate_info, parse_gdalinfo_text, build_oam_recommendation
 from utils.oam_sources import (
-    OAM_UPLOAD_URL,
     SPACE_EYE_LICENSE,
     SPACE_EYE_PLATFORM,
     SPACE_EYE_PROVIDER,
@@ -36,7 +35,6 @@ except ImportError:
 
 # ---------- Constants ----------
 OAM_DEFAULT_LICENSE = "CC-BY 4.0"
-OAM_V2_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
 HOTOSM_STAC_ITEMS_API = "https://api.imagery.hotosm.org/stac/collections/openaerialmap/items"
 
 DEFAULT_SAMPLE_URL = (
