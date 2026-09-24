@@ -5,6 +5,7 @@ from utils.oam_sources import (
     filter_tiff_objects,
     build_oam_prefill_url,
     build_remote_vsizip_path,
+    build_archive_proxy_url,
     SPACE_EYE_VERIFIED_ARCHIVE_KEY,
     SPACE_EYE_VERIFIED_ARCHIVE_MEMBER,
     SPACE_EYE_VERIFIED_TIFF_DATETIME,
@@ -119,6 +120,16 @@ class OAMSourceTests(unittest.TestCase):
             "/vsizip//vsicurl/" + archive_url + "/" + verified_member,
         )
 
+    def test_build_archive_proxy_url_is_real_https_endpoint(self):
+        url = build_archive_proxy_url(
+            "https://proxy.example.org",
+            "https://st-vvhr-opendata.s3.us-west-2.amazonaws.com/event/product.zip",
+            "folder/image.tif",
+        )
+        self.assertTrue(url.startswith("https://proxy.example.org/tiff?"))
+        self.assertIn("archive_url=https%3A%2F%2Fst-vvhr-opendata.s3.us-west-2.amazonaws.com%2Fevent%2Fproduct.zip", url)
+        self.assertIn("member=folder%2Fimage.tif", url)
+        self.assertNotIn("/vsizip/", url)
     def test_verified_spaceeye_archive_member_is_exact_and_scoped(self):
         self.assertEqual(
             spaceeye_verified_archive_member(SPACE_EYE_VERIFIED_ARCHIVE_KEY),
