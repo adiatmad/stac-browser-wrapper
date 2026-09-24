@@ -15,10 +15,11 @@
 - [x] Add SpaceEye-T verified metadata profile.
 - [x] Add remote source UI to existing app.
 - [x] Add focused tests.
+- [x] Add saved `gdalinfo -json` validation so users do not need PowerShell JSON parsing.
 
 ## Convergence
 - [ ] Run focused tests in the repository environment.
 - [ ] Exercise the supplied live SpaceEye-T prefix.
 - [ ] Confirm a returned TIFF URL is publicly reachable.
 - [ ] Inspect one generated OAM prefill link manually.
-- [ ] Review diff for scope expansion and unsupported claims.
+- [x] Review diff for scope expansion and unsupported claims.
