@@ -18,6 +18,7 @@ from utils.oam_sources import (
     SPACE_EYE_PROVIDER,
     SPACE_EYE_SENSOR,
     build_oam_prefill_url,
+    build_remote_vsizip_path,
     classify_s3_source_objects,
     filter_tiff_objects,
     format_bytes,
@@ -520,15 +521,34 @@ if source_mode == "Public S3 bucket folder":
                 if str(obj.get("key", "")).lower().endswith(".zip")
             ]
             st.warning(
-                "This public prefix is archive-only: it exposes ZIP package(s), not a direct TIFF object. "
+                "This public prefix exposes an imagery archive, not a direct TIFF object. "
+                "The archive may contain GeoTIFF imagery, but the S3 object listing cannot see inside it. "
                 "OAM v2 accepts direct public TIFF URLs and a narrow ODM `all.zip` special case; it does not "
-                "accept arbitrary imagery ZIP archives."
+                "accept arbitrary commercial imagery ZIP archives."
             )
             if archive_names:
                 st.caption("Detected archive(s): " + ", ".join(archive_names[:5]))
+                archive_key = next(
+                    obj["key"] for obj in s3_results.get("all_objects", [])
+                    if str(obj.get("key", "")).lower().endswith(".zip")
+                )
+                archive_url = public_s3_object_url(
+                    s3_results["bucket"], s3_results["region"], archive_key
+                )
+                st.markdown("**Remote GDAL access (no full ZIP download)**")
+                st.caption(
+                    "GDAL can stream a member from this public ZIP through `/vsicurl/` + `/vsizip/`. "
+                    "The app does not extract or upload the archive."
+                )
+                st.code(build_remote_vsizip_path(archive_url), language="text")
+                st.caption(
+                    "Append the exact path inside the ZIP after the final `/` once you inspect the archive. "
+                    "This is a local GDAL/QGIS access path, not an OAM `source_url`."
+                )
             st.info(
-                "No OAM handoff is generated for this source. Do not download the archive into this app just "
-                "to unpack it; that would duplicate OAM ingestion behavior."
+                "No OAM handoff is generated for this source. That is a capability limitation of the current "
+                "OAM remote-source contract, not evidence that the archive contains no TIFF. "
+                "Do not download the archive into this app just to unpack it."
             )
         else:
             st.info("No GeoTIFFs matched this prefix and filter.")
