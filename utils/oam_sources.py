@@ -85,9 +85,10 @@ def classify_s3_source_objects(
 ) -> str:
     """Classify a public S3 prefix by the object types it actually exposes.
 
-    DIRECT_RASTER means OAM can be handed a public TIFF object URL.
-    ARCHIVE_ONLY means the prefix exposes archives but no direct raster object;
-    arbitrary archives are not an OAM remote-source contract.
+    DIRECT_RASTER means a public TIFF object URL is exposed and can receive the
+    OAM direct-source handoff. ARCHIVE_ONLY means an archive object is exposed
+    but no direct TIFF object is exposed by the listing; the archive may still
+    contain TIFF imagery.
     EMPTY means no supported raster/archive object was found.
     """
     tiffs = filter_tiff_objects(objects, exclude_masks_lineage)
