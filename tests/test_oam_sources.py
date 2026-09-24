@@ -55,7 +55,7 @@ def test_spaceeye_prefill_contains_verified_metadata_and_source_url():
     )
     assert url.startswith("https://upload.imagery.hotosm.org/#")
     assert "provider=SI%20Imaging%20Services" in url
-    assert "platform=Satellite" in url
+    assert "platform=satellite" in url
     assert "sensor=SpaceEye-T" in url
     assert "license=CC-BY%204.0" in url
     assert "source_url=https%3A%2F%2Fst-vvhr-opendata.s3.us-west-2.amazonaws.com%2F" in url
