@@ -198,10 +198,13 @@ def stream_member(url: str, member: dict):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OAMArchiveProxy/0.1"
+    server_version = "OAMArchiveProxy/0.2"
 
     def _params(self):
-        params = parse_qs(urlsplit(self.path).query)
+        parsed = urlsplit(self.path)
+        if parsed.path != "/tiff":
+            raise ArchiveError("only /tiff is supported")
+        params = parse_qs(parsed.query)
         archive_url = params.get("archive_url", [None])[0]
         member = params.get("member", [None])[0]
         if not archive_url or not member:
@@ -211,51 +214,92 @@ class Handler(BaseHTTPRequestHandler):
             raise ArchiveError("member must be a TIFF path")
         return archive_url, member
 
+    @staticmethod
+    def _parse_single_range(value: str | None, size: int) -> tuple[int, int] | None:
+        if not value:
+            return None
+        if not value.startswith("bytes=") or "," in value:
+            raise ArchiveError("only a single bytes= range is supported")
+        spec = value[6:]
+        if "-" not in spec:
+            raise ArchiveError("invalid Range header")
+        start_text, end_text = spec.split("-", 1)
+        if start_text:
+            start = int(start_text)
+            end = int(end_text) if end_text else size - 1
+        else:
+            suffix = int(end_text)
+            if suffix <= 0:
+                raise ArchiveError("invalid suffix range")
+            start = max(0, size - suffix)
+            end = size - 1
+        if start < 0 or start >= size or end < start:
+            raise ArchiveError("requested range is not satisfiable")
+        return start, min(end, size - 1)
+
+    def _member(self):
+        archive_url, member_name = self._params()
+        member = find_member(archive_url, member_name)
+        if member["method"] not in (0, 8):
+            raise ArchiveError(f"unsupported ZIP compression method: {member['method']}")
+        return archive_url, member_name, member
+
+    def _send_headers(self, member: dict, status: int, start: int | None = None, end: int | None = None):
+        size = member["uncompressed_size"]
+        self.send_response(status)
+        self.send_header("Content-Type", "image/tiff")
+        self.send_header("Accept-Ranges", "bytes" if member["method"] == 0 else "none")
+        self.send_header("Content-Length", str(end - start + 1 if start is not None else size))
+        self.send_header(
+            "Content-Disposition",
+            f'inline; filename="{quote(member["name"].rsplit("/", 1)[-1])}"',
+        )
+        self.send_header("Cache-Control", "public, max-age=300")
+        if start is not None and end is not None:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.end_headers()
+
     def do_HEAD(self):
         try:
-            archive_url, member_name = self._params()
-            member = find_member(archive_url, member_name)
-            if member["method"] not in (0, 8):
-                raise ArchiveError(f"Unsupported ZIP compression method: {member['method']}")
-            self.send_response(200)
-            self.send_header("Content-Type", "image/tiff")
-            self.send_header("Content-Length", str(member["uncompressed_size"]))
-            self.send_header("Content-Disposition", f'inline; filename="{quote(member_name.rsplit("/", 1)[-1])}"')
-            self.end_headers()
-        except Exception as exc:
+            _archive_url, _member_name, member = self._member()
+            self._send_headers(member, 200)
+        except (ArchiveError, ValueError) as exc:
             self.send_error(400, str(exc))
 
     def do_GET(self):
         try:
-            archive_url, member_name = self._params()
-            member = find_member(archive_url, member_name)
-            if member["method"] not in (0, 8):
-                raise ArchiveError(f"Unsupported ZIP compression method: {member['method']}")
-            self.send_response(200)
-            self.send_header("Content-Type", "image/tiff")
-            self.send_header("Content-Length", str(member["uncompressed_size"]))
-            self.send_header("Cache-Control", "public, max-age=300")
-            self.end_headers()
+            archive_url, _member_name, member = self._member()
+            requested = self._parse_single_range(
+                self.headers.get("Range"), member["uncompressed_size"]
+            )
+            if requested and member["method"] != 0:
+                # A deflated member has no linear mapping from TIFF byte offsets
+                # to ZIP byte offsets. Stream the complete decompressed TIFF
+                # rather than returning a misleading partial response.
+                requested = None
+
+            if requested:
+                start, end = requested
+                offset = member_data_offset(archive_url, member)
+                self._send_headers(member, 206, start, end)
+                response = _range_get(archive_url, offset + start, offset + end)
+                try:
+                    for chunk in response.iter_content(CHUNK_SIZE):
+                        if chunk:
+                            self.wfile.write(chunk)
+                finally:
+                    response.close()
+                return
+
+            self._send_headers(member, 200)
             for chunk in stream_member(archive_url, member):
                 self.wfile.write(chunk)
-        except Exception as exc:
-            if not self.wfile.closed:
-                try:
-                    self.send_error(400, str(exc))
-                except Exception:
-                    pass
+        except (ArchiveError, ValueError) as exc:
+            try:
+                self.send_error(416 if "not satisfiable" in str(exc).lower() else 400, str(exc))
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def log_message(self, format: str, *args):
         print(format % args)
 
-
-def main() -> None:
-    host = os.getenv("OAM_ARCHIVE_PROXY_HOST", "0.0.0.0")
-    port = int(os.getenv("OAM_ARCHIVE_PROXY_PORT", "8080"))
-    server = ThreadingHTTPServer((host, port), Handler)
-    print(f"OAM archive proxy listening on {host}:{port}")
-    server.serve_forever()
-
-
-if __name__ == "__main__":
-    main()
