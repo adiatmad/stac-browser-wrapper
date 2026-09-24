@@ -5,6 +5,10 @@ from utils.oam_sources import (
     filter_tiff_objects,
     build_oam_prefill_url,
     build_remote_vsizip_path,
+    SPACE_EYE_VERIFIED_ARCHIVE_KEY,
+    SPACE_EYE_VERIFIED_ARCHIVE_MEMBER,
+    SPACE_EYE_VERIFIED_TIFF_DATETIME,
+    spaceeye_verified_archive_member,
     parse_s3_browser_url,
     public_s3_object_url,
     spaceeye_oam_prefill,
@@ -113,6 +117,19 @@ class OAMSourceTests(unittest.TestCase):
         self.assertEqual(
             build_remote_vsizip_path(archive_url, verified_member),
             "/vsizip//vsicurl/" + archive_url + "/" + verified_member,
+        )
+
+    def test_verified_spaceeye_archive_member_is_exact_and_scoped(self):
+        self.assertEqual(
+            spaceeye_verified_archive_member(SPACE_EYE_VERIFIED_ARCHIVE_KEY),
+            SPACE_EYE_VERIFIED_ARCHIVE_MEMBER,
+        )
+        self.assertEqual(
+            SPACE_EYE_VERIFIED_TIFF_DATETIME,
+            "2026-08-30 04:37:53",
+        )
+        self.assertIsNone(
+            spaceeye_verified_archive_member("event/other_product.zip")
         )
 
     def test_public_s3_object_url_encodes_object_key(self):
