@@ -7,11 +7,11 @@ from archive_proxy import _find_eocd, find_member
 
 class ArchiveProxyTests(unittest.TestCase):
     def test_find_eocd_reads_standard_zip_footer(self):
-        footer = b"PK\\x05\\x06" + b"\\x00\\x00\\x00\\x00\\x01\\x00\\x01\\x00" + (123).to_bytes(4, "little") + (456).to_bytes(4, "little") + b"\\x00\\x00"
+        footer = bytes.fromhex("504b0506") + bytes.fromhex("0000000001000100") + (123).to_bytes(4, "little") + (456).to_bytes(4, "little") + bytes.fromhex("0000")
         self.assertEqual(_find_eocd(footer, 0), (456, 123))
 
     def test_find_eocd_rejects_zip64(self):
-        footer = b"PK\\x05\\x06" + b"\\x00\\x00\\x00\\x00" + b"\\xff\\xff\\xff\\xff" + (0xFFFFFFFF).to_bytes(4, "little") + (0xFFFFFFFF).to_bytes(4, "little") + b"\\x00\\x00"
+        footer = bytes.fromhex("504b0506") + bytes.fromhex("00000000") + bytes.fromhex("ffffffff") + (0xFFFFFFFF).to_bytes(4, "little") + (0xFFFFFFFF).to_bytes(4, "little") + bytes.fromhex("0000")
         with self.assertRaises(Exception):
             _find_eocd(footer, 0)
 
