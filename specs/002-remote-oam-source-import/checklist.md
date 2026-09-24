@@ -5,6 +5,7 @@
 - [x] OAM current ingestion/schema docs checked.
 - [x] SpaceEye-T AWS Open Data registry checked.
 - [x] S3 source is treated as public object storage, not an HTML scraping target.
+- [x] Supplied Nepal prefix live-listed: 22 objects, 0 direct TIFFs on 2026-09-24.
 
 ## Safety
 - [x] No imagery download or archive extraction is performed by the feature.
@@ -20,10 +21,10 @@
 - [x] Object URLs encode spaces and punctuation correctly.
 - [x] OAM prefill carries source_url and verified SpaceEye-T metadata for direct TIFF objects only.
 - [x] STAC workflow can create the same kind of handoff.
-- [ ] Live source listing verified against the public bucket.
+- [x] Supplied Nepal prefix is verified archive-only; no OAM handoff is generated for it.
 - [x] Current OAM behavior checked: arbitrary imagery ZIP URLs are not accepted.
-- [ ] Returned TIFF URL publicly reachable.
-- [ ] One generated OAM v2 prefill link manually inspected.
+- [ ] Returned direct-TIFF URL publicly reachable under the OAM remote-source contract (no direct TIFF was exposed by the supplied prefix).
+- [ ] One generated OAM v2 prefill link manually inspected in the browser.
 - [x] OAM acquisition-date requirement is reflected in the handoff UX.
 
 ## Anti-slop
