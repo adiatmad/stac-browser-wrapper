@@ -4,6 +4,7 @@ from utils.oam_sources import (
     classify_s3_source_objects,
     filter_tiff_objects,
     build_oam_prefill_url,
+    build_remote_vsizip_path,
     parse_s3_browser_url,
     public_s3_object_url,
     spaceeye_oam_prefill,
@@ -89,6 +90,21 @@ class OAMSourceTests(unittest.TestCase):
         ]
         self.assertEqual(classify_s3_source_objects(objects), "ARCHIVE_ONLY")
         self.assertEqual(filter_tiff_objects(objects), [])
+
+    def test_build_remote_vsizip_path(self):
+        archive_url = (
+            "https://st-vvhr-opendata.s3.us-west-2.amazonaws.com/"
+            "disasters/Flood%20in%20Nepal%20(Disasters%20Charter%20Activation%201052)%2C%202026/1st/"
+            "ST1_20260830_043751_SEN_SSI1_001.zip"
+        )
+        self.assertEqual(
+            build_remote_vsizip_path(archive_url),
+            "/vsizip//vsicurl/" + archive_url,
+        )
+        self.assertEqual(
+            build_remote_vsizip_path(archive_url, "IMG_01_ST1_PMS/example.tif"),
+            "/vsizip//vsicurl/" + archive_url + "/IMG_01_ST1_PMS/example.tif",
+        )
 
     def test_public_s3_object_url_encodes_object_key(self):
         url = public_s3_object_url(
