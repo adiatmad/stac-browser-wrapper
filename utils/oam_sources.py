@@ -80,6 +80,24 @@ def list_public_s3_objects(
             return objects
 
 
+def classify_s3_source_objects(
+    objects: list[dict], exclude_masks_lineage: bool = True
+) -> str:
+    """Classify a public S3 prefix by the object types it actually exposes.
+
+    DIRECT_RASTER means OAM can be handed a public TIFF object URL.
+    ARCHIVE_ONLY means the prefix exposes archives but no direct raster object;
+    arbitrary archives are not an OAM remote-source contract.
+    EMPTY means no supported raster/archive object was found.
+    """
+    tiffs = filter_tiff_objects(objects, exclude_masks_lineage)
+    if tiffs:
+        return "DIRECT_RASTER"
+    if any(str(obj.get("key", "")).lower().endswith(".zip") for obj in objects):
+        return "ARCHIVE_ONLY"
+    return "EMPTY"
+
+
 def filter_tiff_objects(
     objects: list[dict], exclude_masks_lineage: bool = True
 ) -> list[dict]:
