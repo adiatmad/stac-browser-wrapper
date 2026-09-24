@@ -26,3 +26,5 @@
 - [ ] Inspect one generated OAM prefill link manually in the browser.
 - [x] Review diff for scope expansion and unsupported claims.
 - [x] Distinguish archive contents from direct OAM-compatible object discovery.
+- [x] Verify the supplied SpaceEye-T ZIP contains a primary GeoTIFF member via remote GDAL `/vsizip//vsicurl/` access.
+- [x] Record the verified member path and embedded TIFF timestamp without treating the timestamp as timezone-qualified OAM acquisition metadata.
