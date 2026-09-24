@@ -5,6 +5,7 @@ import re
 import io
 import csv
 import json
+import os
 from datetime import datetime
 import time
 import folium
@@ -21,6 +22,7 @@ from utils.oam_sources import (
     spaceeye_verified_archive_member,
     build_oam_prefill_url,
     build_remote_vsizip_path,
+    build_archive_proxy_url,
     classify_s3_source_objects,
     filter_tiff_objects,
     format_bytes,
@@ -544,6 +546,7 @@ if source_mode == "Public S3 bucket folder":
                 )
                 st.code(build_remote_vsizip_path(archive_url), language="text")
                 verified_member = spaceeye_verified_archive_member(archive_key)
+                proxy_base_url = os.getenv("OAM_ARCHIVE_PROXY_BASE_URL", "").strip()
                 if verified_member:
                     st.markdown("**Verified archive member**")
                     st.code(build_remote_vsizip_path(archive_url, verified_member), language="text")
@@ -553,15 +556,41 @@ if source_mode == "Public S3 bucket folder":
                         f"`{SPACE_EYE_VERIFIED_TIFF_DATETIME}`; the source output does not state a timezone, "
                         "so the app does not pass this timestamp to OAM."
                     )
+                    if proxy_base_url:
+                        proxy_url = build_archive_proxy_url(proxy_base_url, archive_url, verified_member)
+                        st.markdown("**OAM-ready HTTPS TIFF URL**")
+                        st.code(proxy_url, language="text")
+                        st.caption(
+                            "This URL is OAM-ready only when the configured archive proxy is publicly "
+                            "reachable by OAM. The proxy streams the selected TIFF member from S3 using "
+                            "HTTP Range requests; it does not expose the GDAL virtual path."
+                        )
+                        prefill = build_oam_prefill_url(
+                            title="SpaceEye-T " + archive_key.rsplit("/", 1)[-1],
+                            source_url=proxy_url,
+                            provider=SPACE_EYE_PROVIDER,
+                            platform=SPACE_EYE_PLATFORM,
+                            sensor=SPACE_EYE_SENSOR,
+                            license=SPACE_EYE_LICENSE,
+                            external_id=f"spaceeye-t:{archive_key}:{verified_member}",
+                            external_url=s3_results["browser_url"],
+                        )
+                        st.link_button("Prepare OAM v2 upload", prefill)
+                    else:
+                        st.info(
+                            "Archive proxy not configured. Set OAM_ARCHIVE_PROXY_BASE_URL to the public "
+                            "HTTPS base URL of the standalone archive proxy to enable the direct TIFF URL "
+                            "and OAM handoff. No fake .TIF URL is generated."
+                        )
                 else:
                     st.caption(
                         "Append the exact path inside the ZIP after the final `/` once you inspect the archive. "
                         "This is a local GDAL/QGIS access path, not an OAM `source_url`."
                     )
             st.info(
-                "No OAM handoff is generated for this source. That is a capability limitation of the current "
-                "OAM remote-source contract, not evidence that the archive contains no TIFF. "
-                "Do not download the archive into this app just to unpack it."
+                "The ZIP itself is not an OAM source_url. When an archive proxy is configured, the app can "
+                "hand OAM a real HTTPS URL that serves the verified TIFF member. Without that deployment, "
+                "no misleading OAM handoff is generated. The app never bulk-downloads the archive."
             )
         else:
             st.info("No GeoTIFFs matched this prefix and filter.")
