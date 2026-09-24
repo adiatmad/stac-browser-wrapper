@@ -53,11 +53,12 @@ For each selected source image, the app should:
 3. MASKS/LINEAGE artifacts can be excluded without hiding normal TIFFs.
 4. Each selected SpaceEye-T object gets a prefilled OAM v2 link using its direct object URL.
 5. The prefill includes only verified provider/platform/sensor/license values.
-6. Acquisition start/end are absent unless the source supplies an acquisition timestamp.
-7. The app never downloads the raster merely to prepare the OAM handoff.
-8. STAC uploads continue to work and can use the same OAM prefill mechanism.
-9. Unit tests cover URL parsing, object filtering, URL encoding, and metadata handoff.
-10. The feature does not claim that a preflight or prefill guarantees OAM ingestion.
+6. The UI makes clear that OAM requires a valid acquisition date; SpaceEye-T does not receive one unless source evidence provides it.
+7. Acquisition start/end are absent unless the source supplies an acquisition timestamp.
+8. The app never downloads the raster merely to prepare the OAM handoff.
+9. STAC uploads continue to work and can use the same OAM prefill mechanism.
+10. Unit tests cover URL parsing, object filtering, URL encoding, and metadata handoff.
+11. The feature does not claim that a preflight or prefill guarantees OAM ingestion.
 
 ## Verification
 
