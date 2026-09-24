@@ -16,6 +16,8 @@
 - [x] Add remote source UI to existing app.
 - [x] Prevent OAM handoff for arbitrary archive-only sources.
 - [x] Expose a read-only GDAL `/vsizip//vsicurl/` path for public imagery ZIPs without extracting them in the app.
+- [x] Add a standalone HTTPS archive proxy that resolves a verified TIFF member and streams it without materializing the ZIP.
+- [x] Translate HTTP Range requests for ZIP STORE members; explicitly avoid false byte-range semantics for compressed members.
 - [x] Add focused tests — 16/16 passing locally.
 - [x] Add saved `gdalinfo -json` validation so users do not need PowerShell JSON parsing.
 
@@ -24,6 +26,9 @@
 - [x] Exercise the supplied live SpaceEye-T prefix via ListObjectsV2/AWS CLI — recursive listing exposes ZIP products and no direct TIFF object; classified as archive-only.
 - [ ] Confirm a direct TIFF URL is publicly reachable (not applicable to the supplied archive-only prefix; required before claiming a live direct-raster handoff).
 - [ ] Inspect one generated OAM prefill link manually in the browser.
+- [ ] Deploy the archive proxy at a public HTTPS endpoint reachable by OAM.
+- [ ] Verify the supplied SpaceEye-T TIFF member compression method and live proxy `HEAD`/`GET`/`Range` behavior.
+- [ ] Verify OAM v2 can fetch the proxy-served TIFF end-to-end.
 - [x] Review diff for scope expansion and unsupported claims.
 - [x] Distinguish archive contents from direct OAM-compatible object discovery.
 - [x] Verify the supplied SpaceEye-T ZIP contains a primary GeoTIFF member via remote GDAL `/vsizip//vsicurl/` access.
