@@ -12,7 +12,9 @@ The application includes functionality for:
 - checking OpenAerialMap for possible existing imagery using provider item IDs and spatial overlap;
 - filtering STAC items spatially;
 - preparing OAM-oriented metadata fields;
-- displaying spatial information with Folium.
+- displaying spatial information with Folium;
+- discovering GeoTIFFs under public S3 Open Data prefixes;
+- preparing OAM v2 remote-source handoffs without downloading the raster into the app.
 
 The application can use GDAL when available for server-side VRT-related processing, while the main application also works without the optional GDAL import.
 
@@ -26,6 +28,17 @@ Python 3 and the packages listed in `requirements.txt`.
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+## Local GDAL preflight
+
+The validator can consume either a raster directly or a saved `gdalinfo -json` report. The JSON path is useful when GDAL is available in QGIS/OSGeo4W but not on the current PowerShell `PATH`:
+
+```bash
+python validate_imagery.py validate-json gdalinfo.json
+python validate_imagery.py recommend-json gdalinfo.json input.tif
+```
+
+Python's JSON parser is used for saved GDAL reports so metadata keys that PowerShell's `ConvertFrom-Json` may reject (including an empty key) do not block validation.
 
 ## Notes
 
