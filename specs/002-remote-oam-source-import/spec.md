@@ -18,9 +18,10 @@ For each selected source image, the app should:
 - Existing STAC item/asset workflow.
 - Public S3 bucket-browser URLs containing an encoded `#prefix=` fragment.
 - Public S3 ListObjectsV2 discovery.
+- Explicit source capability classification: `DIRECT_RASTER`, `ARCHIVE_ONLY`, or `EMPTY`.
 - GeoTIFF filtering.
 - Optional exclusion of `MASKS/` and `LINEAGE/` paths.
-- OAM uploader fragment prefill using the documented `source_url` handoff.
+- OAM uploader fragment prefill using the documented `source_url` handoff only for direct raster objects.
 - SpaceEye-T VVHR Open Data as a verified source profile:
   - provider: SI Imaging Services;
   - platform: satellite;
@@ -28,6 +29,13 @@ For each selected source image, the app should:
   - license: CC-BY 4.0.
 - External/source ID derived from the stable S3 object key.
 - No acquisition date inferred from S3 LastModified.
+
+## Source capability rules
+
+- `DIRECT_RASTER`: a public `.tif`/`.tiff` object is exposed; it may receive an OAM remote-source handoff.
+- `ARCHIVE_ONLY`: the prefix exposes an archive such as ZIP but no direct raster object; no OAM handoff is generated.
+- `EMPTY`: no supported raster/archive object is exposed.
+- Arbitrary imagery ZIP extraction is deliberately not implemented here because current OAM does not accept arbitrary ZIP source URLs.
 
 ## Out of scope
 
@@ -48,14 +56,14 @@ For each selected source image, the app should:
 
 ## Acceptance criteria
 
-1. The user can paste the supplied SpaceEye-T S3 browser URL and list GeoTIFF objects under its prefix.
-2. S3 object URLs are generated as HTTPS public object URLs with correct key encoding.
+1. The user can paste the supplied SpaceEye-T S3 browser URL and classify the objects exposed under its prefix.
+2. A direct-raster prefix produces HTTPS public object URLs with correct key encoding; an archive-only prefix produces no OAM handoff.
 3. MASKS/LINEAGE artifacts can be excluded without hiding normal TIFFs.
-4. Each selected SpaceEye-T object gets a prefilled OAM v2 link using its direct object URL.
+4. Each selected direct SpaceEye-T TIFF object gets a prefilled OAM v2 link using its direct object URL.
 5. The prefill includes only verified provider/platform/sensor/license values.
 6. The UI makes clear that OAM requires a valid acquisition date; SpaceEye-T does not receive one unless source evidence provides it.
 7. Acquisition start/end are absent unless the source supplies an acquisition timestamp.
-8. The app never downloads the raster merely to prepare the OAM handoff.
+8. The app never downloads or extracts an archive merely to prepare the OAM handoff.
 9. STAC uploads continue to work and can use the same OAM prefill mechanism.
 10. Unit tests cover URL parsing, object filtering, URL encoding, and metadata handoff.
 11. The feature does not claim that a preflight or prefill guarantees OAM ingestion.
