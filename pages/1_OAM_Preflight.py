@@ -5,7 +5,6 @@ pasted by the user to explain what the source contains and what to do next.
 """
 
 import json
-from pathlib import Path
 
 import streamlit as st
 
@@ -116,12 +115,15 @@ if report_text.strip():
         else:
             st.success("✅ **Ready based on the supplied report.**")
 
-        if visual["status"] == "PASS":
+        needs_local_conversion = (
+            detailed["driver"].upper().startswith("GTIFF") is False
+            or result["summary"].get("cogLayout", "").upper() != "COG"
+            or not result["summary"].get("isTiled", False)
+            or not result["summary"].get("hasOverviews", False)
+        )
+        if visual["status"] == "PASS" and needs_local_conversion:
             st.markdown("### 5 · One combined local preparation command")
-            if detailed["epsg"]:
-                rec = build_oam_recommendation(info, path.strip(), source_epsg=None)
-            else:
-                rec = build_oam_recommendation(info, path.strip(), source_epsg=None)
+            rec = build_oam_recommendation(info, path.strip(), source_epsg=None)
             if rec["ready"] and rec["command"]:
                 output = rec["output"]
                 combined = (
@@ -130,8 +132,8 @@ if report_text.strip():
                 )
                 st.code(combined, language="powershell")
                 st.caption("This creates a new local COG and verifies it with gdalinfo. The source file is not overwritten.")
-            else:
-                st.info("No conversion command is required from the current evidence.")
+        elif visual["status"] == "PASS":
+            st.info("No local conversion command is needed from the supplied report. The source already matches the visual COG checks used here.")
 
     except Exception as exc:
         st.error(f"Could not process the GDAL report: {exc}")
