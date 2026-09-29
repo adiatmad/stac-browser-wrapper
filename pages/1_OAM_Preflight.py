@@ -5,11 +5,36 @@ pasted by the user to explain what the source contains and what to do next.
 """
 
 import json
+import os
 
 import streamlit as st
 
 from validate_imagery import build_oam_recommendation, parse_gdalinfo_text, validate_info
 from utils.gdal_report import parse_detailed_gdalinfo, visual_assessment
+
+
+def _visual_conversion_command(path: str, detailed: dict) -> str | None:
+    """Build a copy-only visual conversion command when the report supports it.
+
+    This is intentionally an explicit *candidate* action for 3/4-band non-Byte
+    or non-RGB data. The report alone cannot prove that arbitrary bands are RGB,
+    so the UI must warn the user before they run it.
+    """
+    bands = detailed.get("bands") or []
+    if len(bands) not in (3, 4):
+        return None
+
+    source = path.strip()
+    root, _ = os.path.splitext(source)
+    output = f"{root}_OAM.tif"
+    selected = "-b 1 -b 2 -b 3"
+    colorinterp = "-colorinterp red,green,blue"
+    return (
+        f'$out="{output}"; if (Test-Path $out) {{ Remove-Item $out -Force }}; '
+        f'gdal_translate -of COG -ot Byte {selected} {colorinterp} -scale -a_nodata 0 '
+        f'-co COMPRESS=DEFLATE "{source}" "$out"; '
+        f'if ($LASTEXITCODE -eq 0) {{ gdalinfo "$out" }}'
+    )
 
 
 st.set_page_config(page_title="OAM Preflight", layout="wide")
@@ -121,6 +146,7 @@ if report_text.strip():
             or not result["summary"].get("isTiled", False)
             or not result["summary"].get("hasOverviews", False)
         )
+
         if visual["status"] == "PASS" and needs_local_conversion:
             st.markdown("### 5 · One combined local preparation command")
             rec = build_oam_recommendation(info, path.strip(), source_epsg=None)
@@ -134,6 +160,16 @@ if report_text.strip():
                 st.caption("This creates a new local COG and verifies it with gdalinfo. The source file is not overwritten.")
         elif visual["status"] == "PASS":
             st.info("No local conversion command is needed from the supplied report. The source already matches the visual COG checks used here.")
+        else:
+            candidate = _visual_conversion_command(path.strip(), detailed) if path.strip() else None
+            if candidate:
+                st.markdown("### 5 · If this is intended to be a visual RGB orthomosaic")
+                st.warning(
+                    "The report does not prove that bands 1–3 are RGB. Converting Float32/other bands to Byte with `-scale` changes the raster values. "
+                    "Only run the command below if you know this source is a visual orthomosaic and bands 1–3 are the intended visible channels."
+                )
+                st.code(candidate, language="powershell")
+                st.caption("The command creates a new *_OAM.tif copy and automatically runs gdalinfo on the result. It never overwrites the source.")
 
     except Exception as exc:
         st.error(f"Could not process the GDAL report: {exc}")
