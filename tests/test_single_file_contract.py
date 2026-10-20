@@ -71,3 +71,54 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
             namespace["build_oam_recommendation"](parsed_inline, "input.tif"),
             original_recommend(parsed_original, "input.tif"),
         )
+
+    def test_inlined_oam_helpers_match_existing_module(self):
+        import re
+        from urllib.parse import quote, unquote, urlencode, urlsplit
+        import xml.etree.ElementTree as ET
+        import utils.oam_sources as original
+
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        tree = ast.parse(source, filename="app.py")
+        wanted = {
+            "parse_s3_browser_url", "classify_s3_source_objects", "filter_tiff_objects",
+            "public_s3_object_url", "build_remote_vsizip_path",
+            "spaceeye_verified_archive_member", "build_archive_proxy_url",
+            "format_bytes", "build_oam_prefill_url", "spaceeye_oam_prefill",
+        }
+        constants = {
+            "OAM_UPLOAD_URL", "SPACE_EYE_LICENSE", "SPACE_EYE_PROVIDER",
+            "SPACE_EYE_PLATFORM", "SPACE_EYE_SENSOR",
+            "SPACE_EYE_VERIFIED_ARCHIVE_KEY", "SPACE_EYE_VERIFIED_ARCHIVE_MEMBER",
+            "SPACE_EYE_VERIFIED_TIFF_DATETIME", "_S3_WEBSITE_RE",
+        }
+        body = []
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in wanted:
+                body.append(node)
+            elif isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id in constants
+                for target in node.targets
+            ):
+                body.append(node)
+        namespace = {
+            "re": re, "quote": quote, "unquote": unquote,
+            "urlencode": urlencode, "urlsplit": urlsplit, "ET": ET,
+        }
+        exec(compile(ast.Module(body=body, type_ignores=[]), "app.py", "exec"), namespace)
+
+        examples = [
+            ("parse_s3_browser_url", ("https://example-bucket.s3-website-us-west-2.amazonaws.com/#prefix=imagery%2F",), {}),
+            ("classify_s3_source_objects", ([{"key": "imagery/scene.tif"}],), {}),
+            ("filter_tiff_objects", ([{"key": "imagery/scene.tif"}, {"key": "imagery/MASKS/mask.tif"}],), {}),
+            ("public_s3_object_url", ("example-bucket", "us-west-2", "imagery/scene one.tif"), {}),
+            ("build_remote_vsizip_path", ("https://example.org/archive.zip", "scene/image.tif"), {}),
+            ("spaceeye_verified_archive_member", (original.SPACE_EYE_VERIFIED_ARCHIVE_KEY,), {}),
+            ("build_archive_proxy_url", ("https://proxy.example.org", "https://example.org/a.zip", "scene/a.tif"), {}),
+            ("format_bytes", (1536,), {}),
+            ("build_oam_prefill_url", (), {"title": "Sample", "source_url": "https://example.org/a.tif", "license": "CC-BY 4.0"}),
+            ("spaceeye_oam_prefill", (), {"key": "sample.tif", "object_url": "https://example.org/sample.tif", "source_browser_url": "https://example.org/"}),
+        ]
+        for name, args, kwargs in examples:
+            with self.subTest(helper=name):
+                self.assertEqual(namespace[name](*args, **kwargs), getattr(original, name)(*args, **kwargs))
