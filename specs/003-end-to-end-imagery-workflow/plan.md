@@ -2,9 +2,9 @@
 
 ## Strategy
 
-Keep `stac-browser-wrapper` as the user-facing Streamlit application. The user has selected Streamlit hosting and exactly one project Python source file, `app.py`. Adapt required STAC/OAM helper functions and DroneTM processing functions into that file; do not add project-specific Python modules, worker services, or API services.
+Keep `stac-browser-wrapper` as the user-facing Streamlit application with exactly one hosted project Python source file, `app.py`. Preserve its STAC/OAM features by inlining the required project-specific helper implementations. DroneTM raster processing stays in `adiatmad/dronetm-progress-mosaic` and is run by the user on their own computer. The hosted app provides a local-workflow handoff section; it does not download DroneTM imagery, process rasters, or ask for DroneTM credentials.
 
-This is a deliberate trade-off: the first release uses bounded, user-triggered processing in the Streamlit app process and temporary storage. It does not promise durable asynchronous jobs or cross-session state. Before enabling real project processing, establish conservative limits using synthetic and representative raster tests in the actual hosted environment.
+This split is intentional: large raster work stays local, where the existing cache, Windows launcher and OSGeo4W/COG workflow already live. The hosted app does not promise access to local files or persistent processing.
 
 ## Evidence inspected
 
@@ -40,19 +40,17 @@ This is a deliberate trade-off: the first release uses bounded, user-triggered p
 - Identify which functions must be inlined and any naming collisions.
 - Do not change application behavior until baseline results and compatibility requirements are recorded.
 
-### Phase B — Single-file processing functions
-- Adapt DroneTM processing functions into `app.py) with clear section boundaries and type hints.
-- Inline only the STAC/OAM helpers needed by the existing UI, preserving existing feature behavior.
-- Reconcile `requirements.txt` with the combined dependency set.
-- Add synthetic raster tests for validation, mosaic output, invalid candidates, and output metadata.
-- Add a static check that the app has no project-specific Python imports.
+### Phase B — Single-file hosted app and local handoff
+- Inline the STAC/OAM helper implementations required by `app.py`, preserving existing feature behavior and tests.
+- Add the DroneTM local-workflow section with links and concise launch/COG instructions.
+- Keep hosted requirements limited to dependencies used by the STAC/OAM app; do not add rasterio/numpy/Pillow solely for local DroneTM processing.
+- Add a static check that `app.py` has no project-specific Python imports.
 
-### Phase C — Streamlit integration and limits
-- Add project/task review, explicit confirmation, bounded download/build operations, and output review/downloads.
-- Keep processing synchronous and bounded; do not imply persistent background jobs.
-- Add clear ephemeral-storage, interruption, and file-size/runtime limitation messages.
+### Phase C — Local workflow handoff and documentation
+- Make it explicit that DroneTM downloads and raster processing run on the user's computer.
+- Explain the distinction between launching/updating the local DroneTM app and rebuilding a COG from existing local orthophotos.
 - Preserve all existing STAC/OAM screens and explicit handoff behavior.
-- Avoid unnecessary full-file memory copies and ensure cleanup is scoped to the run workspace.
+- Do not imply that the hosted app can access local Windows files, local cache, or OSGeo4W.
 
 ### Phase D — Regression and hosted acceptance
 - Run existing STAC/OAM tests and existing DroneTM processing/launcher-contract tests.
@@ -64,9 +62,8 @@ This is a deliberate trade-off: the first release uses bounded, user-triggered p
 
 ## Main risks and mitigations
 
-- **Large rasters exceed Streamlit limits:** benchmark and enforce caps; fail early with a clear message. Preserve the local OSGeo4W workflow as fallback.
-- **Long-running operations interrupt:** do not promise persistent background execution; show progress and report incomplete work accurately.
-- **Ephemeral disk/session state:** use temporary scoped workspaces and prompt users to download results promptly.
+- **Large rasters exceed Streamlit limits:** keep DroneTM raster processing local; do not move it into Streamlit hosting.
+- **Confusion about where work runs:** label the local DroneTM handoff clearly and link to the maintained repository.
 - **Single file becomes hard to maintain:** use clear sections, small functions, explicit contracts, and tests; do not add unrelated features.
 - **Inlining changes behavior:** baseline tests first and regression tests for existing STAC/OAM and DroneTM behaviors.
 - **Credential leakage:** password inputs/server-side secrets, URL validation, sanitized exceptions, and redaction tests.
@@ -74,4 +71,4 @@ This is a deliberate trade-off: the first release uses bounded, user-triggered p
 
 ## Exit gate
 
-Do not claim implementation complete until both baseline suites and new tests have actual recorded results, the single-file check passes, synthetic raster tests pass, and the hosted app starts successfully. Do not claim real-project or large-raster readiness until a controlled hosted acceptance test records dimensions and resource use.
+Do not claim implementation complete until existing STAC/OAM tests and local DroneTM tests have actual recorded results, the hosted `app.py` has no project-specific Python imports, the UI handoff is accurate, and the hosted app starts successfully. Keep the local DroneTM project's own acceptance requirements visible; do not claim its real-project behavior was tested by the hosted app.
