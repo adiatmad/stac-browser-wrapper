@@ -1,52 +1,48 @@
-# Tasks: Hosted End-to-End Imagery Workflow
+# Tasks: Single-File Hosted End-to-End Imagery Workflow
 
-Tasks are intentionally gated. Do not start production deployment or migrate imagery until the relevant acceptance gate passes.
+Tasks are gated. Do not claim production readiness, process large production imagery, or migrate any user data before the relevant acceptance gate passes.
 
 ## 1. Baseline and discovery
-- [ ] 1.1 Identify and document the exact existing test commands and CI workflows in both repositories.
-- [ ] 1.2 Run both baseline test suites and record pass/fail results and environment versions.
-- [ ] 1.3 Trace DroneTM task discovery, download/cache, raster validation, mosaic, report, and output replacement call paths.
-- [ ] 1.4 Identify code that depends on Streamlit/Tkinter, Windows paths, OSGeo4W, local environment files, or persistent local directories.
-- [ ] 1.5 Decide the target hosting/worker/storage/authentication approach from evidence; document quotas and estimated costs before implementation.
+- [ ] 1.1 Identify and document exact existing test commands and CI workflows in both repositories.
+- [ ] 1.2 Run both baseline test suites and record actual pass/fail results and environment versions.
+- [ ] 1.3 Trace the STAC/OAM UI imports and the DroneTM task discovery, download/cache, raster validation, mosaic, report, and output validation call paths.
+- [ ] 1.4 List all project-specific Python imports required by the existing app and map each to the implementation that must be inlined or preserved.
+- [ ] 1.5 Identify current behavior that relies on persistent local files, Windows paths, OSGeo4W, Tkinter, or external services.
+- [ ] 1.6 Record realistic Streamlit hosting constraints and define provisional caps; do not invent persistence guarantees.
 
-## 2. Define and verify the processing boundary
-- [ ] 2.1 Define a UI-independent request/result contract for a processing job.
-- [ ] 2.2 Keep task selection, CRS decisions, band handling, resampling, overlap behavior, and output naming explicit.
-- [ ] 2.3 Add unit tests around the extracted interface before changing its callers.
-- [ ] 2.4 Verify existing local app and launcher workflows remain usable.
-- [ ] 2.5 Confirm source imagery, local caches, credentials, and existing outputs are untouched by tests and refactoring.
+## 2. Single-file processing functions
+- [ ] 2.1 Adapt DroneTM functions from `mosaic_core.py` into `app.py` without changing API, retry, normalization, CRS, band, resampling, overlap, or report semantics without evidence.
+- [ ] 2.2 Inline the required functions from `validate_imagery.py` and `utils/oam_sources.py` while preserving current STAC/OAM behavior.
+- [ ] 2.3 Reconcile third-party dependencies in `requirements.txt` and verify compatible versions for Streamlit hosting.
+- [ ] 2.4 Add synthetic GeoTIFF tests for valid/invalid inputs, output metadata, mosaic correctness, and candidate validation.
+- [ ] 2.5 Add a static test that deployed `app.py` does not import project-specific Python modules.
+- [ ] 2.6 Verify no code path calls an OAM upload or publish endpoint.
 
-## 3. Worker proof of concept
-- [ ] 3.1 Build the smallest worker that accepts a validated synthetic-raster job.
-- [ ] 3.2 Implement persistent job status and authorized artifact retrieval.
-- [ ] 3.3 Implement scoped workspace creation and safe cleanup for a disposable test job.
-- [ ] 3.4 Enforce runtime, disk, file-size, and concurrency limits.
-- [ ] 3.5 Add sanitized error reporting and verify secrets never enter client responses/logs.
-- [ ] 3.6 Run the synthetic job in the actual candidate hosting environment and record measured resource use.
-- [ ] 3.7 **Gate:** stop if the host cannot support representative raster size or safe persistent storage.
+## 3. Bounded Streamlit workflow
+- [ ] 3.1 Add project configuration and secure token entry without exposing credentials.
+- [ ] 3.2 Add task discovery, task-status review, explicit selection, and explicit user confirmation before downloads.
+- [ ] 3.3 Add bounded downloads with visible progress and accurate partial-failure reporting.
+- [ ] 3.4 Add safe temporary workspace creation and cleanup scoped only to the current run.
+- [ ] 3.5 Add candidate mosaic generation and validate the output before success.
+- [ ] 3.6 Add metadata, preview, validation summary, and task-report downloads without unnecessary full-file memory copies.
+- [ ] 3.7 Display honest warnings about ephemeral files/session state, interrupted operations, and tested limits.
+- [ ] 3.8 Verify existing STAC/OAM screens, source discovery, metadata preflight, and explicit handoff still work.
 
-## 4. Integrate the hosted UI
-- [ ] 4.1 Add a DroneTM workflow entry to the existing Streamlit application without duplicating STAC/OAM behavior.
-- [ ] 4.2 Add project/task review and explicit user confirmation before a job starts.
-- [ ] 4.3 Add queued/running/succeeded/failed state handling and refresh-safe progress.
-- [ ] 4.4 Add output metadata, validation summary, preview, and report downloads.
-- [ ] 4.5 Keep OAM remote-source handoff separate and never invoke upload/publish automatically.
-- [ ] 4.6 Add UI tests for empty, loading, success, failure, expired-job, and access-denied states.
+## 4. Regression and safety verification
+- [ ] 4.1 Run all existing STAC/OAM tests and document results.
+- [ ] 4.2 Run all existing DroneTM processing and launcher-contract tests and document results.
+- [ ] 4.3 Test failed downloads, corrupt inputs, missing CRS, incompatible raster dimensions/bands, and invalid outputs.
+- [ ] 4.4 Test that invalid candidates never replace a previously validated artifact.
+- [ ] 4.5 Test task-count, file-size, runtime, raster-dimension, and available-disk limits.
+- [ ] 4.6 Test credential redaction in UI errors, logs, reports, and failure paths.
+- [ ] 4.7 Test temporary cleanup cannot target unrelated folders or source imagery.
+- [ ] 4.8 Assert the workflow makes no OAM upload/publish calls.
+- [ ] 4.9 Inspect diffs for accidental changes to existing STAC/OAM behavior, local data assumptions, and unrelated features.
 
-## 5. Regression and safety verification
-- [ ] 5.1 Run all existing STAC/OAM tests.
-- [ ] 5.2 Run all existing DroneTM processing and launcher-contract tests.
-- [ ] 5.3 Test download failure, corrupt input, incompatible CRS/bands, and invalid output.
-- [ ] 5.4 Test that invalid candidates never replace a previous validated artifact.
-- [ ] 5.5 Test job persistence, authorization, expiry, and cleanup isolation.
-- [ ] 5.6 Test file-size/runtime/disk limits and concurrent job behavior.
-- [ ] 5.7 Test secret redaction in logs, exceptions, reports, and browser responses.
-- [ ] 5.8 Assert the processing workflow makes no OAM upload/publish calls.
-- [ ] 5.9 Inspect diffs for accidental changes to source imagery, caches, credentials, local outputs, or unrelated features.
-
-## 6. Acceptance and delivery
-- [ ] 6.1 Deploy to a non-production environment and run smoke tests.
-- [ ] 6.2 Process a controlled real DroneTM project only after synthetic and resource gates pass.
-- [ ] 6.3 Record actual test commands/results, runtime, peak disk/memory use, and tested raster dimensions.
-- [ ] 6.4 Document setup, secrets configuration, retention, limits, failure recovery, and rollback.
-- [ ] 6.5 Open a reviewed pull request; do not merge or claim production readiness until required checks pass.
+## 5. Hosted acceptance and delivery
+- [ ] 5.1 Deploy the branch to a non-production Streamlit app and verify startup and dependency installation.
+- [ ] 5.2 Run synthetic raster tests in the actual hosted runtime and record observed resource use.
+- [ ] 5.3 Process a controlled real DroneTM project only if the synthetic tests and provisional limits pass.
+- [ ] 5.4 Record actual tested raster dimensions, duration, peak memory/disk use, and known failure limits.
+- [ ] 5.5 Document secrets configuration, temporary-file behavior, user download steps, failure recovery, and the local OSGeo4W fallback.
+- [ ] 5.6 Open a reviewed pull request; do not merge or claim production readiness until required checks pass.
