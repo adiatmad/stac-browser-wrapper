@@ -19,9 +19,9 @@ Tasks are gated. Do not claim tests passed without actual CI results. Do not mer
 
 ## 3. Regression and safety verification
 - [x] 3.1 Run all existing STAC/OAM tests and document results.
-- [ ] 3.2 Run the DroneTM processing and launcher-contract tests and document results.
+- [x] 3.2 Run the DroneTM processing and launcher-contract tests and document results; the latest observed unit and Windows launcher-syntax workflows both passed on `2aa18d4b39ca4719a75cfdec6981c45fc7aa934a`.
 - [x] 3.3 Resolve any CI failures with minimal, evidence-backed fixes; do not change tests just to hide implementation mismatches.
-- [ ] 3.4 Inspect the app diff for regressions to STAC crawling, S3 source discovery, metadata preflight, duplicate checking, and explicit OAM handoff.
+- [x] 3.4 Inspect the feature diff: existing STAC crawling, S3 source discovery, metadata preflight, duplicate checking, and explicit OAM handoff remain in `app.py`; helper implementations were inlined, with no unrelated UI logic deletion identified.
 - [x] 3.5 Verify no DroneTM token handling or DroneTM processing calls were added to the hosted app.
 - [x] 3.6 Verify no OAM upload/publish calls were added and local source/cache/output files remain untouched.
 
