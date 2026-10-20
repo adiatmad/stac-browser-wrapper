@@ -8,12 +8,9 @@
 
 The user currently has separate workflows for discovering/reviewing imagery through the STAC/OAM browser and retrieving completed DroneTM task orthophotos and building a mosaic. The user wants one hosted Streamlit application and one Python source file to guide the end-to-end workflow.
 
-The hosted application should provide a single entry point for:
-1. discovering/reviewing supported STAC imagery using existing behavior;
-2. configuring a DroneTM project and selecting eligible task orthophotos;
-3. explicitly downloading selected orthophotos and building a mosaic;
-4. reviewing output metadata, validation results, preview, and task report;
-5. explicitly downloading/exporting outputs.
+The hosted application should provide a single entry point for discovering/reviewing supported STAC imagery and guiding users to the separate, user-run DroneTM processing workflow for task downloads and mosaic creation.
+
+DroneTM orthophoto downloads and mosaic generation are deliberately run on the user's own computer using the maintained `adiatmad/dronetm-progress-mosaic` project. The hosted app must not download or process DroneTM orthophotos, accept DroneTM tokens, or pretend it can access the user's local files. This keeps large raster processing on the user's machine and preserves the tested local cache and OSGeo4W/COG workflow.
 
 ## 2. Hosting and source-file constraints
 
@@ -22,28 +19,25 @@ The hosted application should provide a single entry point for:
 - Do not add project-specific Python helper modules, worker services, API services, or a separate Python package.
 - Non-Python deployment files such as `requirements.txt`, README, tests, and Streamlit configuration are permitted.
 - Existing STAC/OAM helper behavior currently imported from `validate_imagery.py` and `utils/oam_sources.py` must be preserved by inlining the required implementation into `app.py` or by a clearly justified equivalent that keeps the existing user-visible behavior. Do not silently drop existing features to satisfy the file count.
-- DroneTM processing behavior currently in `mosaic_core.py` must be adapted into functions in `app.py`; do not import that project-specific Python module at runtime.
-- This is a single-file Streamlit application, **not** a persistent asynchronous job service. Work runs in bounded user-triggered operations in the Streamlit app process. The UI must communicate this honestly.
-- Streamlit-hosted local disk and session state must be treated as ephemeral unless the hosting product explicitly guarantees persistence. Do not promise jobs or files will survive app restarts, sleeping, redeployments, or session loss.
-- Do not claim that Streamlit hosting can invoke the user's local Windows filesystem or OSGeo4W Shell.
+- DroneTM processing remains in the separate `adiatmad/dronetm-progress-mosaic` local-first project; do not copy its processing stack into the hosted app.
+- The hosted app is a single-file Streamlit interface for STAC/OAM plus clear links and instructions for the user-run DroneTM workflow. The local DroneTM app is separately run by the user and may retain its own source files and local cache.
+- STAC/OAM network requests remain user-triggered in the hosted app. The app must not claim that it can invoke the user's local Windows filesystem or OSGeo4W Shell.
+- The local DroneTM app must keep its established behavior: user-triggered task discovery/download, validated local caching, mosaic/report generation, explicit local outputs, and no automatic OAM upload.
 
 ## 3. In scope
 
-- Add a focused DroneTM workflow to the existing STAC wrapper without duplicating or unintentionally regressing its STAC/OAM functionality.
-- Preserve the existing DroneTM API behavior for project slug/UUID resolution, task discovery and normalization, selected task downloads, raster validation, mosaic generation, preview, and task report.
-- Keep project URL validation strict and allow the user to review task statuses and selection before downloading.
-- Use a temporary, project-scoped workspace and conservative limits for task count, input bytes, output dimensions/size, and runtime where these can be enforced.
-- Validate downloaded rasters and candidate mosaic output before presenting success.
-- Keep progress and error messages visible during bounded operations; report unavailable or invalid orthophotos rather than silently counting them as complete.
-- Use Streamlit secrets for server-configured credentials where appropriate, or a password input for a per-session token. Never expose bearer tokens in URLs, rendered client code, logs, reports, or exception text.
+- Add a clear, concise DroneTM local-processing section to the hosted STAC wrapper, linking to the existing local-first repository and explaining the supported local launch/rebuild paths.
+- Preserve the existing DroneTM API, caching, raster validation, mosaic, preview/report and OSGeo4W/COG behaviors in `adiatmad/dronetm-progress-mosaic`; avoid rewriting this working processing stack in the hosted app.
+- Make it clear that task download and mosaic generation happen on the user's computer, not on Streamlit hosting.
 - Preserve the current STAC browser, remote-source discovery, metadata preflight, and explicit OAM handoff behavior.
 - Keep any OAM remote-source handoff or publication a separate, explicit user action. No automatic OAM upload or publication is permitted.
 - Document ephemeral storage and realistic raster-size limits; require a controlled representative-project test before claiming production readiness.
 
 ## 4. Out of scope
 
-- Separate worker/API service, queue, external database, or persistent job service.
-- Guarantees of cross-session job status or durable artifact storage without an explicitly configured and tested external storage system.
+- Running DroneTM task downloads or raster mosaicking on the hosted Streamlit server.
+- Copying the local DroneTM processing stack into the hosted app.
+- Guarantees of cross-session job status or durable artifact storage.
 - Automatically uploading, publishing, or replacing imagery on OAM.
 - Accessing the user's local Windows drive or invoking their OSGeo4W installation from the hosted app.
 - Moving, deleting, or rewriting the user's existing local orthophotos, caches, virtual environments, credentials, or mosaic outputs.
@@ -55,21 +49,13 @@ The hosted application should provide a single entry point for:
 
 **FR-001 — Single entry point and file.** The hosted app is one Streamlit app with one project Python source file, `app.py`, and preserves existing STAC/OAM user-visible workflows.
 
-**FR-002 — Explicit project configuration.** A user can configure a valid DroneTM project URL, API base URL, route templates, timeout, and any required token. No processing begins until the user explicitly requests it.
+**FR-002 — DroneTM local handoff.** The hosted app links to the maintained local DroneTM repository and explains that the user must run it on their own computer. It does not collect DroneTM tokens or call DroneTM processing APIs.
 
-**FR-003 — Task selection and provenance.** The app presents discovered task IDs and statuses, allows task selection, identifies cached/downloaded items within the current runtime, and reports unavailable, failed, or invalid orthophotos.
+**FR-003 — Local workflow clarity.** Instructions distinguish launching/updating the local app from rebuilding the COG using existing local orthophotos. They mention local cache/output locations only where supported by the upstream README and make no claim that hosted Streamlit can access those files.
 
-**FR-004 — Bounded processing.** Downloads and raster operations run only after explicit user action and within documented limits. The app must not imply durable asynchronous processing. If a job exceeds limits or the host cannot safely handle it, stop with an actionable error before exhausting resources.
+**FR-004 — Processing provenance and safety.** The local DroneTM tool remains responsible for task statuses, selected downloads, validated caching, failure reporting, mosaic metadata, preview, and report. Preserve source files and do not automatically upload to OAM.
 
-**FR-005 — Safe temporary workspace.** Processing uses a temporary isolated workspace. It never mutates or deletes user-local files. It does not replace an existing validated final artifact with an invalid candidate. Since hosted disk may be ephemeral, the app warns that files may be lost when the process/session restarts.
-
-**FR-006 — Raster correctness.** Validate source readability and required CRS, record output CRS, dimensions, bands, data type, source count and relevant processing parameters, and validate the candidate output before marking success. Do not invent CRS information or silently discard bands.
-
-**FR-007 — Reviewable artifacts.** Successful processing exposes output metadata, a preview, validation summary and task report, with explicit downloads. Avoid unnecessary full-file in-memory copies where possible and enforce output-size limits.
-
-**FR-008 — Credential safety.** Secrets are not embedded in client assets, query strings, exception messages, reports, or normal logs. Error output is sanitized.
-
-**FR-009 — Existing behavior.** Existing STAC/OAM and DroneTM processing tests remain intact and pass, except for changes explicitly justified by this spec. Existing project-specific helper modules may be inlined, but their tested behavior must be retained.
+**FR-005 — Existing behavior.** Existing STAC/OAM and DroneTM processing tests remain intact and pass, except for changes explicitly justified by this spec. Existing project-specific helper modules may be inlined, but their tested behavior must be retained.
 
 **FR-010 — No automatic publication.** Processing, retries, success, and artifact download must never trigger an OAM upload or publication. Tests must assert this invariant.
 
