@@ -1,74 +1,64 @@
-# Implementation Plan: Single-File Hosted End-to-End Imagery Workflow
+# Implementation Plan: Single-File Hosted STAC/OAM App with Local DroneTM Handoff
 
 ## Strategy
 
-Keep `stac-browser-wrapper` as the user-facing Streamlit application with exactly one hosted project Python source file, `app.py`. Preserve its STAC/OAM features by inlining the required project-specific helper implementations. DroneTM raster processing stays in `adiatmad/dronetm-progress-mosaic` and is run by the user on their own computer. The hosted app provides a local-workflow handoff section; it does not download DroneTM imagery, process rasters, or ask for DroneTM credentials.
+Keep `stac-browser-wrapper` as the hosted Streamlit interface, with exactly one project-specific Python runtime file: `app.py`. Inline the required STAC/OAM helpers into that file so existing discovery, preflight, duplicate-checking, and explicit OAM handoff behavior is preserved.
 
-This split is intentional: large raster work stays local, where the existing cache, Windows launcher and OSGeo4W/COG workflow already live. The hosted app does not promise access to local files or persistent processing.
+DroneTM task discovery/download and raster processing stay in `adiatmad/dronetm-progress-mosaic`, run by the user on their own computer. Do not port `mosaic_core.py` into the hosted app. This keeps large raster processing, validated local caching, Windows launchers, and OSGeo4W/COG operations local, and avoids implying the hosted runtime can access a user's filesystem.
 
 ## Evidence inspected
 
-- `stac-browser-wrapper/AGENTS.md`: evidence-first changes, feature branches, focused scope, tests and real-workflow verification, no overwriting imagery, Spec Kit sequence.
-- `stac-browser-wrapper/.specify/memory/constitution.md`: evidence, preservation of local data, verifiable delivery, anti-slop, explicit uncertainty.
-- `stac-browser-wrapper/app.py`: current Streamlit STAC/OAM interface; currently imports project-specific functions from `validate_imagery.py` and `utils/oam_sources.py`.
-- `stac-browser-wrapper/requirements.txt`: Streamlit, requests, Folium, streamlit-folium, Shapely; third-party dependencies can remain external.
-- `stac-browser-wrapper/validate_imagery.py`: existing imagery validation/recommendation implementation; required app behavior must be preserved if the module is no longer imported.
-- `stac-browser-wrapper/utils/oam_sources.py`: existing public S3 source discovery, archive/source URL, metadata and explicit OAM handoff helpers; preserve applicable behavior.
-- `stac-browser-wrapper/specs/002-remote-oam-source-import/spec.md`: current remote-source handoff is explicit and must not become an automatic upload.
-- `dronetm-progress-mosaic/app.py`: existing Streamlit user flow for project config, task selection, download, mosaic, preview, and report.
-- `dronetm-progress-mosaic/mosaic_core.py`: project URL/UUID handling, task normalization, retries, raster validation, download, mosaic, preview, and report functions to adapt into `app.py`.
-- `dronetm-progress-mosaic/requirements.txt`: Streamlit, requests, pandas, rasterio, numpy, Pillow. Reconcile third-party dependencies without blindly copying incompatible version pins.
-- `dronetm-progress-mosaic/specs/local-one-click-workflow.md`: source-data preservation, candidate COG validation before replacement, no OAM upload, and retained tests.
+- `AGENTS.md` and `.specify/memory/constitution.md`: evidence-first changes, small scope, local imagery safety, test actual behavior, and no unsupported success claims.
+- `app.py`: existing hosted STAC/OAM workflow imports project-specific functions from `validate_imagery.py` and `utils/oam_sources.py`; these have now been inlined into `app.py` on the feature branch.
+- `utils/oam_sources.py`: public S3 listing/classification, archive path helpers, evidence-backed SpaceEye metadata, and explicit OAM prefill links.
+- `validate_imagery.py`: gdalinfo text parsing, visual preflight, and local conversion recommendation helpers used by the app.
+- `tests/test_gdal_report.py`: diagnostic text is expected to preserve source pixel-type casing (`Float32`); implementation now keeps original casing for display while normalizing separately for comparisons.
+- `dronetm-progress-mosaic/README.md`: local app handles task discovery/download/cache/mosaic/report; `rebuild_cog.bat` builds VRT and COG from existing local task rasters; no automatic OAM upload.
+- `dronetm-progress-mosaic/tests/test_core.py`, `test_gui_contract.py`, and `test_local_launch_scripts.py`: local processor and launcher contracts remain the responsibility of that repository.
 
-## Architecture
+## Architecture and invariants
 
-1. **One application file:** all project-specific runtime Python code lives in `app.py`. Standard installed packages are allowed. Do not import `validate_imagery`, `utils.oam_sources`, `mosaic_core`, or any other project-specific Python module at runtime.
-2. **Existing STAC/OAM behavior:** inline the smallest necessary existing helper implementations into `app.py), preserving user-visible behavior and existing tests. Keep explicit OAM handoff separate from processing.
-3. **DroneTM functions:** adapt functions from `mosaic_core.py` into clearly separated sections in `app.py`; preserve API routes, retry policy, task normalization, raster checks, CRS behavior, band behavior, overlap semantics, report columns, and safe candidate validation unless tests justify a change.
-4. **Streamlit UI:** add the DroneTM workflow without removing or breaking current STAC/OAM features. Keep credentials in password inputs or Streamlit secrets, not URLs or logs.
-5. **Temporary workspace:** use a per-run temporary directory and cleanup only that directory. Do not assume Streamlit's local disk persists between restarts or that session state is durable.
-6. **Bounded processing:** preflight selection count, expected download size where discoverable, available temporary disk, raster dimensions and output estimates where feasible. Enforce conservative caps; avoid unbounded concurrency and avoid holding full raster arrays or GeoTIFF byte strings in memory.
-7. **Validation:** test helper functions using synthetic rasters before integrating them with UI. Validate every downloaded raster and candidate mosaic; only present success after output validation.
-8. **Publication boundary:** no OAM upload/publish code is added to the DroneTM processing path. Existing explicit OAM handoff behavior remains separate.
+1. Hosted project-specific Python runtime logic stays in `app.py`; no runtime imports from `validate_imagery`, `utils.oam_sources`, or `mosaic_core`.
+2. Third-party dependencies remain ordinary package imports. Do not add rasterio/numpy/Pillow to the hosted app solely for local DroneTM processing.
+3. Preserve current STAC/OAM crawling, public S3 source discovery, metadata preflight, duplicate check, CSV export, and explicit OAM prefill behavior.
+4. The hosted UI links to the maintained DroneTM repository and distinguishes the local app launch/update path from the local OSGeo4W COG rebuild path.
+5. Do not ask for a DroneTM token, call DroneTM APIs, or claim the hosted app can read local Windows paths or invoke OSGeo4W.
+6. No automatic OAM upload/publication. Any handoff to the OAM uploader remains a separate explicit user action.
+7. Preserve local DroneTM source orthophotos, caches, credentials, and existing outputs; do not change its processing algorithm as part of this hosted-app feature.
 
 ## Implementation phases
 
 ### Phase A — Baseline and call graph
-- Identify exact test commands and CI workflows in both repositories.
-- Run both baseline test suites and record actual results and environment versions.
-- Inspect all imports and call paths used by the STAC/OAM UI and DroneTM processing.
-- Identify which functions must be inlined and any naming collisions.
-- Do not change application behavior until baseline results and compatibility requirements are recorded.
+- Identify both repositories' exact test commands and CI workflows.
+- Record actual CI outcomes and failures; do not infer success from a code write.
+- Trace the helper functions used by the hosted STAC/OAM UI and the local DroneTM entry points.
 
 ### Phase B — Single-file hosted app and local handoff
-- Inline the STAC/OAM helper implementations required by `app.py`, preserving existing feature behavior and tests.
-- Add the DroneTM local-workflow section with links and concise launch/COG instructions.
-- Keep hosted requirements limited to dependencies used by the STAC/OAM app; do not add rasterio/numpy/Pillow solely for local DroneTM processing.
-- Add a static check that `app.py` has no project-specific Python imports.
+- Inline the required STAC/OAM helpers into `app.py` without dropping existing UI behavior.
+- Add a concise local DroneTM handoff section with the repository link and correct workflow distinction.
+- Keep hosted dependencies scoped to the hosted STAC/OAM app.
+- Add a static contract test that rejects project-specific runtime imports and checks the local handoff.
+- Fix existing diagnostic casing mismatch without changing the test expectation.
 
-### Phase C — Local workflow handoff and documentation
-- Make it explicit that DroneTM downloads and raster processing run on the user's computer.
-- Explain the distinction between launching/updating the local DroneTM app and rebuilding a COG from existing local orthophotos.
-- Preserve all existing STAC/OAM screens and explicit handoff behavior.
-- Do not imply that the hosted app can access local Windows files, local cache, or OSGeo4W.
+### Phase C — Regression verification
+- Run the existing STAC/OAM unit tests, including the new single-file contract test.
+- Inspect the app diff for changes to source discovery, metadata preflight, duplicate checks, and explicit OAM handoff.
+- Verify the hosted app does not process DroneTM imagery or handle DroneTM tokens.
+- Check the local DroneTM repository's existing test workflow; do not claim local processing passed unless its CI result is available.
 
-### Phase D — Regression and hosted acceptance
-- Run existing STAC/OAM tests and existing DroneTM processing/launcher-contract tests.
-- Add failure, resource-limit, credential-redaction, cleanup-isolation, single-file, and no-OAM-upload tests.
-- Run synthetic-raster smoke tests in CI.
-- Deploy to the selected Streamlit host and verify imports and app startup.
-- Conduct a controlled real-project test only after synthetic and resource gates pass.
-- Document verified limits, manual deployment steps, and known limitations.
+### Phase D — Hosted acceptance and delivery
+- Verify the feature branch CI result and inspect any new failures.
+- Verify the hosted app starts with the declared requirements in a non-production Streamlit deployment.
+- Manually check that the local DroneTM repository link and launch/COG instructions are accurate.
+- Keep the PR unmerged until required checks pass; do not claim hosted acceptance without actual deployment evidence.
 
 ## Main risks and mitigations
 
-- **Large rasters exceed Streamlit limits:** keep DroneTM raster processing local; do not move it into Streamlit hosting.
-- **Confusion about where work runs:** label the local DroneTM handoff clearly and link to the maintained repository.
-- **Single file becomes hard to maintain:** use clear sections, small functions, explicit contracts, and tests; do not add unrelated features.
-- **Inlining changes behavior:** baseline tests first and regression tests for existing STAC/OAM and DroneTM behaviors.
-- **Credential leakage:** password inputs/server-side secrets, URL validation, sanitized exceptions, and redaction tests.
-- **Accidental OAM publication:** keep upload outside the processing path and assert no upload calls in tests.
+- **User confusion about execution location:** clearly label DroneTM processing as local and state that hosted Streamlit cannot access local Windows files or OSGeo4W.
+- **Single-file constraint regresses existing features:** inline the helper implementations, retain tests, and inspect the diff against existing UI call paths.
+- **False completion claims:** report CI and hosted-deployment results separately; do not treat repository edits as execution evidence.
+- **Accidental publication:** keep OAM handoff explicit and do not add upload/publish calls to DroneTM processing.
 
 ## Exit gate
 
-Do not claim implementation complete until existing STAC/OAM tests and local DroneTM tests have actual recorded results, the hosted `app.py` has no project-specific Python imports, the UI handoff is accurate, and the hosted app starts successfully. Keep the local DroneTM project's own acceptance requirements visible; do not claim its real-project behavior was tested by the hosted app.
+Do not claim implementation complete until STAC/OAM tests pass in CI, the static single-file contract passes, the hosted app starts successfully, the local DroneTM handoff is accurate, and the PR checks are green. Report the local DroneTM CI result separately from hosted-app checks.
