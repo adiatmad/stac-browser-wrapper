@@ -12,25 +12,417 @@ import folium
 from folium.plugins import Draw
 from streamlit_folium import st_folium
 from shapely.geometry import box, shape
-from validate_imagery import validate_info, parse_gdalinfo_text, build_oam_recommendation
-from utils.oam_sources import (
-    SPACE_EYE_LICENSE,
-    SPACE_EYE_PLATFORM,
-    SPACE_EYE_PROVIDER,
-    SPACE_EYE_SENSOR,
-    SPACE_EYE_VERIFIED_TIFF_DATETIME,
-    spaceeye_verified_archive_member,
-    build_oam_prefill_url,
-    build_remote_vsizip_path,
-    build_archive_proxy_url,
-    classify_s3_source_objects,
-    filter_tiff_objects,
-    format_bytes,
-    list_public_s3_objects,
-    parse_s3_browser_url,
-    public_s3_object_url,
-    spaceeye_oam_prefill,
+from typing import Any
+from urllib.parse import quote, urlencode, urlsplit
+import xml.etree.ElementTree as ET
+
+OAM_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
+SPACE_EYE_LICENSE = "CC-BY 4.0"
+SPACE_EYE_PROVIDER = "SI Imaging Services"
+SPACE_EYE_PLATFORM = "satellite"
+SPACE_EYE_SENSOR = "SpaceEye-T"
+SPACE_EYE_VERIFIED_ARCHIVE_KEY = (
+    "disasters/Flood in Nepal (Disasters Charter Activation 1052), 2026/"
+    "1st/ST1_20260830_043751_SEN_SSI1_001.zip"
 )
+SPACE_EYE_VERIFIED_ARCHIVE_MEMBER = (
+    "ST1_20260830_043751_SEN_SSI1_001/"
+    "IMG_01_ST1_PMS/"
+    "IMG_ST1_202608300437518_PMS_SEN_LWO_202608_03698_001.TIF"
+)
+SPACE_EYE_VERIFIED_TIFF_DATETIME = "2026-08-30 04:37:53"
+
+_S3_WEBSITE_RE = re.compile(
+    r"^https?://(?P<bucket>[^./]+)\.s3-website[.-](?P<region>[a-z0-9-]+)\.amazonaws\.com/?$",
+    re.IGNORECASE,
+)
+
+
+def parse_s3_browser_url(browser_url: str) -> tuple[str | None, str | None, str | None]:
+    """Return (bucket, region, prefix) from an AWS S3 website browser URL."""
+    parts = urlsplit((browser_url or "").strip())
+    match = _S3_WEBSITE_RE.match(f"{parts.scheme}://{parts.netloc}{parts.path}")
+    if not match:
+        return None, None, None
+
+    prefix = ""
+    fragment = parts.fragment
+    if fragment.startswith("prefix="):
+        prefix = unquote(fragment[len("prefix="):])
+    return match.group("bucket"), match.group("region"), prefix
+
+
+def list_public_s3_objects(
+    bucket: str, region: str, prefix: str, timeout: int = 30
+) -> list[dict]:
+    """List public S3 objects under a prefix using ListObjectsV2."""
+    import requests
+
+    endpoint = f"https://{bucket}.s3.{region}.amazonaws.com/"
+    objects: list[dict] = []
+    token: str | None = None
+
+    while True:
+        params = {"list-type": "2", "prefix": prefix}
+        if token:
+            params["continuation-token"] = token
+
+        response = requests.get(endpoint, params=params, timeout=timeout)
+        response.raise_for_status()
+        root = ET.fromstring(response.text)
+        ns = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
+
+        for node in root.findall("s3:Contents", ns):
+            key = node.findtext("s3:Key", default="", namespaces=ns)
+            if not key:
+                continue
+            size = node.findtext("s3:Size", default="", namespaces=ns)
+            modified = node.findtext("s3:LastModified", default="", namespaces=ns)
+            objects.append(
+                {
+                    "key": key,
+                    "size_bytes": int(size) if size else None,
+                    "last_modified": modified,
+                }
+            )
+
+        truncated = root.findtext("s3:IsTruncated", default="false", namespaces=ns)
+        token = root.findtext(
+            "s3:NextContinuationToken", default="", namespaces=ns
+        ) or None
+        if truncated.lower() != "true" or not token:
+            return objects
+
+
+def classify_s3_source_objects(
+    objects: list[dict], exclude_masks_lineage: bool = True
+) -> str:
+    """Classify a public S3 prefix by the object types it actually exposes.
+
+    DIRECT_RASTER means a public TIFF object URL is exposed and can receive the
+    OAM direct-source handoff. ARCHIVE_ONLY means an archive object is exposed
+    but no direct TIFF object is exposed by the listing; the archive may still
+    contain TIFF imagery.
+    EMPTY means no supported raster/archive object was found.
+    """
+    tiffs = filter_tiff_objects(objects, exclude_masks_lineage)
+    if tiffs:
+        return "DIRECT_RASTER"
+    if any(str(obj.get("key", "")).lower().endswith(".zip") for obj in objects):
+        return "ARCHIVE_ONLY"
+    return "EMPTY"
+
+
+def filter_tiff_objects(
+    objects: list[dict], exclude_masks_lineage: bool = True
+) -> list[dict]:
+    """Keep GeoTIFF objects and optionally exclude common QA sidecars."""
+    result = []
+    for obj in objects:
+        key = obj.get("key", "")
+        upper = key.upper()
+        if not key.lower().endswith((".tif", ".tiff")):
+            continue
+        if exclude_masks_lineage and ("/MASKS/" in upper or "/LINEAGE/" in upper):
+            continue
+        result.append(obj)
+    return result
+
+
+def public_s3_object_url(bucket: str, region: str, key: str) -> str:
+    """Build the public HTTPS URL for an S3 object."""
+    return f"https://{bucket}.s3.{region}.amazonaws.com/{quote(key, safe='/')}"
+
+
+def build_remote_vsizip_path(archive_url: str, member_path: str | None = None) -> str:
+    """Build a GDAL /vsizip//vsicurl/ path for a public ZIP object.
+
+    This is a read-only access path: GDAL can stream a selected member from
+    the remote archive without this app downloading or extracting the archive.
+    The member path is optional so callers can first inspect the archive.
+    """
+    base = f"/vsizip//vsicurl/{archive_url}"
+    if member_path:
+        return f"{base}/{member_path.lstrip('/')}"
+    return base
+
+
+def spaceeye_verified_archive_member(archive_key: str) -> str | None:
+    """Return the verified TIFF member for the known SpaceEye-T sample archive.
+
+    The member path is evidence-backed for this specific public object only;
+    it is not a generic ZIP extraction rule.
+    """
+    if archive_key == SPACE_EYE_VERIFIED_ARCHIVE_KEY:
+        return SPACE_EYE_VERIFIED_ARCHIVE_MEMBER
+    return None
+
+
+def build_archive_proxy_url(
+    proxy_base_url: str, archive_url: str, member_path: str
+) -> str:
+    """Build the public HTTPS URL served by the deployed archive proxy.
+
+    This is only an OAM source URL when the proxy itself is publicly reachable
+    by OAM. The proxy streams the selected ZIP member using HTTP Range requests
+    rather than exposing a GDAL virtual path.
+    """
+    base = proxy_base_url.rstrip("/")
+    query = urlencode({"archive_url": archive_url, "member": member_path}, quote_via=quote)
+    return f"{base}/tiff?{query}"
+
+
+def format_bytes(size: int | None) -> str:
+    if size is None:
+        return ""
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1024 or unit == "TB":
+            return f"{int(value)} B" if unit == "B" else f"{value:.2f} {unit}"
+        value /= 1024
+    return ""
+
+
+def build_oam_prefill_url(
+    *,
+    title: str,
+    source_url: str,
+    provider: str | None = None,
+    platform: str | None = None,
+    sensor: str | None = None,
+    license: str | None = None,
+    acquisition_start: str | None = None,
+    acquisition_end: str | None = None,
+    external_id: str | None = None,
+    external_url: str | None = None,
+) -> str:
+    """Build the documented OAM uploader fragment prefill URL.
+
+    Only evidence-backed fields should be passed. In particular, acquisition
+    dates must not be inferred from S3 LastModified unless the source documents
+    that field as an acquisition timestamp.
+    """
+    fields = {
+        "title": title,
+        "source_url": source_url,
+        "provider": provider,
+        "platform": platform,
+        "license": license,
+        "sensor": sensor,
+        "acquisition_start": acquisition_start,
+        "acquisition_end": acquisition_end,
+        "external_id": external_id,
+        "external_url": external_url,
+    }
+    clean = {k: v for k, v in fields.items() if v not in (None, "")}
+    return OAM_UPLOAD_URL + "#" + urlencode(clean, quote_via=quote)
+
+
+def spaceeye_oam_prefill(
+    *, key: str, object_url: str, source_browser_url: str
+) -> str:
+    """Create a reviewed OAM handoff for SpaceEye-T open-data imagery."""
+    filename = key.rsplit("/", 1)[-1]
+    return build_oam_prefill_url(
+        title=f"SpaceEye-T {filename}",
+        source_url=object_url,
+        provider=SPACE_EYE_PROVIDER,
+        platform=SPACE_EYE_PLATFORM,
+        sensor=SPACE_EYE_SENSOR,
+        license=SPACE_EYE_LICENSE,
+        external_id=f"spaceeye-t:{key}",
+        external_url=source_browser_url,
+    )
+
+# ---------- Inlined imagery validation helpers ----------
+STATUS_ORDER = {"PASS": 0, "WARN": 1, "FAIL": 2}
+
+def metadata_value(info: dict[str, Any], domain: str, key: str) -> str | None:
+    metadata = info.get("metadata") or {}
+    values = metadata.get(domain) or {}
+    value = values.get(key)
+    return str(value) if value is not None else None
+
+def first_band(info: dict[str, Any]) -> dict[str, Any]:
+    bands = info.get("bands") or []
+    return bands[0] if bands else {}
+
+def band_types(info: dict[str, Any]) -> list[str]:
+    return [str(b.get("type", "")) for b in info.get("bands") or []]
+
+def color_interpretations(info: dict[str, Any]) -> list[str]:
+    return [str(b.get("colorInterpretation", "")).lower() for b in info.get("bands") or []]
+
+def has_overviews(info: dict[str, Any]) -> bool:
+    bands = info.get("bands") or []
+    return bool(bands) and all(bool(b.get("overviews")) for b in bands)
+
+def is_tiled(info: dict[str, Any]) -> bool:
+    size = info.get("size") or []
+    band = first_band(info)
+    block = band.get("block") or []
+    if len(size) != 2 or len(block) != 2:
+        return False
+    # A block smaller than the full raster is normally tiled. We deliberately
+    # do not require 256x256 or 512x512: COG-compatible block sizes vary.
+    return block[0] < size[0] and block[1] < size[1]
+
+def crs_present(info: dict[str, Any]) -> bool:
+    cs = info.get("coordinateSystem")
+    return bool(cs and (cs.get("wkt") or cs.get("projjson")))
+
+def bounds_summary(info: dict[str, Any]) -> dict[str, Any]:
+    corners = info.get("cornerCoordinates") or {}
+    return {
+        "upperLeft": corners.get("upperLeft"),
+        "lowerRight": corners.get("lowerRight"),
+        "wgs84Extent": info.get("wgs84Extent"),
+    }
+
+def add_check(checks: list[dict[str, Any]], status: str, name: str, detail: str) -> None:
+    checks.append({"status": status, "name": name, "detail": detail})
+
+def parse_gdalinfo_text(text: str) -> dict[str, Any]:
+    """Parse standard plain-text gdalinfo output without requiring JSON."""
+    import re
+
+    raw = text.strip()
+    if not raw:
+        raise ValueError("No gdalinfo output was provided.")
+
+    def search(pattern: str, flags: int = re.MULTILINE):
+        return re.search(pattern, raw, flags)
+
+    driver_match = search(r"^Driver:\s*([^/\r\n]+)")
+    driver = driver_match.group(1).strip() if driver_match else ""
+
+    size_match = search(r"^Size is\s+(\d+)\s*,\s*(\d+)")
+    size = [int(size_match.group(1)), int(size_match.group(2))] if size_match else None
+
+    crs_present_text = bool(search(r"^Coordinate System is:\s*$", re.MULTILINE))
+    epsg_match = search(r'ID\["EPSG",\s*(\d+)\]')
+    epsg = int(epsg_match.group(1)) if epsg_match else None
+
+    block_matches = re.findall(
+        r"^Band\s+(\d+)\s+Block=(\d+)x(\d+)\s+Type=([^,\r\n]+),\s*ColorInterp=([^\r\n]+)",
+        raw,
+        re.MULTILINE,
+    )
+    bands: list[dict[str, Any]] = []
+    for number, bx, by, dtype, color in block_matches:
+        bands.append({
+            "band": int(number),
+            "block": [int(bx), int(by)],
+            "type": dtype.strip(),
+            "colorInterpretation": color.strip(),
+            "overviews": [],
+        })
+
+    # Plain gdalinfo prints overview dimensions on the line after each band.
+    # Attach them by walking band sections rather than assuming a fixed count.
+    sections = re.split(r"(?=^Band\s+\d+\s+)", raw, flags=re.MULTILINE)[1:]
+    for band, section in zip(bands, sections):
+        overview_match = re.search(r"^\s*Overviews:\s*(.+)$", section, re.MULTILINE)
+        if overview_match:
+            band["overviews"] = [x.strip() for x in overview_match.group(1).split(",") if x.strip()]
+
+    wgs_match = search(
+        r"^(?:Upper Left|Lower Left|Upper Right|Lower Right)\s+\([^\r\n]+\)"
+    )
+    has_corners = bool(wgs_match)
+
+    image_structure = "\\n".join(
+        f"{key}={value}" for key, value in re.findall(
+            r"^\s+(LAYOUT|COMPRESSION)=([^\s\r\n]+)",
+            raw,
+            re.MULTILINE,
+        )
+    )
+    layout_match = re.search(r"LAYOUT=([^\\s\\r\\n]+)", image_structure)
+    compression_match = re.search(r"COMPRESSION=([^\\s\\r\\n]+)", image_structure)
+
+    return {
+        "driverShortName": driver,
+        "size": size,
+        "coordinateSystem": {
+            "wkt": "present" if crs_present_text else "",
+            "epsg": epsg,
+        } if crs_present_text else None,
+        "bands": bands,
+        "cornerCoordinates": {"present": True} if has_corners else {},
+        "wgs84Extent": {"epsg": epsg} if has_corners and epsg == 4326 else ({"present": True} if has_corners and crs_present_text else None),
+        "metadata": {
+            "IMAGE_STRUCTURE": {
+                "LAYOUT": layout_match.group(1) if layout_match else "",
+                "COMPRESSION": compression_match.group(1) if compression_match else "",
+            }
+        },
+    }
+
+def validate_info(info: dict[str, Any]) -> dict[str, Any]:
+    """Validate already-collected gdalinfo JSON without touching the raster."""
+    driver = str(info.get("driverShortName") or info.get("driver", ""))
+    bands_data = info.get("bands") or []
+    summary = {
+        "file": "", "extension": "", "driver": driver, "size": info.get("size"),
+        "bands": len(bands_data), "bandTypes": band_types(info),
+        "colorInterpretations": color_interpretations(info), "crsPresent": crs_present(info),
+        "isTiled": is_tiled(info), "hasOverviews": has_overviews(info),
+        "cogLayout": metadata_value(info, "IMAGE_STRUCTURE", "LAYOUT"),
+        "compression": metadata_value(info, "IMAGE_STRUCTURE", "COMPRESSION"),
+        "bounds": bounds_summary(info),
+    }
+    checks: list[dict[str, Any]] = []
+    d = driver.upper(); ext = ""; bands = summary["bands"]; types = summary["bandTypes"]; colors = summary["colorInterpretations"]
+    add_check(checks, "PASS" if d == "GTIFF" else "WARN", "GeoTIFF driver", "GDAL reports GTiff." if d == "GTIFF" else f"GDAL reports {d or 'unknown'}; conversion to GeoTIFF is recommended.")
+    add_check(checks, "PASS" if crs_present(info) else "FAIL", "CRS", "A coordinate reference system is present." if crs_present(info) else "No CRS was reported by GDAL.")
+    size = info.get("size") or []
+    if len(size) == 2 and bands_data:
+        width, height = size
+        bytes_per_sample = {"BYTE": 1, "UINT8": 1, "INT8": 1, "UINT16": 2, "INT16": 2, "UINT32": 4, "INT32": 4, "FLOAT32": 4, "FLOAT64": 8}
+        first_size = bytes_per_sample.get((band_types(info)[0] if band_types(info) else "").upper())
+        if first_size:
+            decoded_gb = (width * height * len(bands_data) * first_size) / 1e9
+            add_check(checks, "PASS" if decoded_gb <= 130 else "FAIL", "OAM decoded size", f"Estimated decoded size is {decoded_gb:.1f} GB (current OAM validation limit: 130 GB)." if decoded_gb <= 130 else f"Estimated decoded size is {decoded_gb:.1f} GB, above the current OAM validation limit of 130 GB.")
+        else:
+            add_check(checks, "WARN", "OAM decoded size", "Could not estimate decoded size because the pixel type is unknown.")
+    else:
+        add_check(checks, "WARN", "OAM decoded size", "Could not estimate decoded size from the supplied GDAL output.")
+    add_check(checks, "PASS" if bands in (3, 4) else "FAIL", "Band count", f"{bands} bands; suitable for visual RGB/RGBA imagery." if bands in (3,4) else f"Found {bands} bands; visual target expects 3 RGB or 4 RGBA bands.")
+    add_check(checks, "PASS" if types and all(t.upper() == "BYTE" for t in types) else "WARN", "Pixel type", "All bands are Byte/uint8." if types and all(t.upper() == "BYTE" for t in types) else f"Band types are {types or 'unknown'}; verify this is visual RGB/RGBA data.")
+    rgb_ok = colors[:3] == ["red", "green", "blue"]
+    alpha_ok = bands == 4 and len(colors) >= 4 and colors[3] in {"alpha", "undefined"}
+    add_check(checks, "PASS" if rgb_ok and (bands == 3 or alpha_ok) else "WARN", "Color interpretation", "Bands are consistent with RGB/RGBA imagery." if rgb_ok and (bands == 3 or alpha_ok) else f"GDAL reports {colors or 'unknown'}; verify the bands.")
+    add_check(checks, "PASS" if str(summary["cogLayout"]).upper() == "COG" else "WARN", "COG layout", "GDAL reports IMAGE_STRUCTURE LAYOUT=COG." if str(summary["cogLayout"]).upper() == "COG" else "Not reported as COG; the generated local output can create a COG.")
+    add_check(checks, "PASS" if summary["isTiled"] else "WARN", "Internal tiling", "Raster blocks are tiled." if summary["isTiled"] else "Raster is not reported as internally tiled.")
+    add_check(checks, "PASS" if summary["hasOverviews"] else "WARN", "Overviews", "All bands contain overviews." if summary["hasOverviews"] else "One or more bands have no reported overviews.")
+    add_check(checks, "PASS" if summary["bounds"]["wgs84Extent"] else "WARN", "Geographic extent", "GDAL produced a WGS84 extent." if summary["bounds"]["wgs84Extent"] else "No WGS84 extent was reported; inspect georeferencing.")
+    overall = max((STATUS_ORDER[x["status"]] for x in checks), default=2)
+    return {"status": {0:"PASS",1:"WARN",2:"FAIL"}[overall], "summary": summary, "checks": checks}
+
+def build_oam_recommendation(info: dict[str, Any], input_path: str, source_epsg: int | None = None, output_path: str | None = None) -> dict[str, Any]:
+    """Return a conservative local target for OAM visual RGB/RGBA imagery."""
+    bands = len(info.get("bands") or [])
+    types = band_types(info)
+    issues: list[str] = []
+    if bands not in (3, 4):
+        issues.append(f"Expected 3 or 4 bands for visual imagery; found {bands}.")
+    if types and not all(t.upper() == "BYTE" for t in types):
+        issues.append(f"Visual target normally uses Byte/uint8; found {types}.")
+    if not crs_present(info) and source_epsg is None:
+        issues.append("CRS is missing; supply the correct source EPSG before generating the command.")
+    output_path = output_path or str(Path(input_path).with_name(Path(input_path).stem + "_oam_ready.tif"))
+    command = None
+    if not issues:
+        if source_epsg:
+            command = (f'gdalwarp -overwrite -s_srs EPSG:{int(source_epsg)} -of COG '
+                       f'-co COMPRESS=DEFLATE "{input_path}" "{output_path}"')
+        else:
+            command = f'gdal_translate -of COG -co COMPRESS=DEFLATE "{input_path}" "{output_path}"'
+    return {"ready": not issues, "issues": issues, "output": output_path, "command": command,
+            "notes": ["Creates a new file and does not overwrite the source.",
+                      "Uses lossless DEFLATE so RGB and RGBA are preserved.",
+                      "COG is a local output target; OAM may still perform server-side validation/transcoding."]}
 
 # Try importing GDAL for server-side VRT generation; fallback gracefully if unavailable
 try:
@@ -379,6 +771,31 @@ def run_crawl(real_url: str):
 st.set_page_config(page_title="Humanitarian Imagery Wizard", layout="wide", initial_sidebar_state="collapsed")
 st.title("🌍 Humanitarian Imagery Wizard")
 st.markdown("Transform raw satellite data into ready-to-use maps for disaster response.")
+
+# ---------- Local DroneTM Progress Mosaic ----------
+st.header("🛰️ DroneTM progress mosaic — run on your computer")
+st.markdown(
+    "Large orthophoto downloads and mosaic/COG processing run **locally on your own computer**, "
+    "not on this hosted Streamlit app. This keeps the task cache and raster files under your control."
+)
+st.link_button(
+    "Open DroneTM Progress Mosaic on GitHub",
+    "https://github.com/adiatmad/dronetm-progress-mosaic",
+    help="Download or update the local-first tool. This hosted app does not access your local files or DroneTM token.",
+)
+with st.expander("Which local workflow should I use?"):
+    st.markdown(
+        "- **Download task orthophotos and build a mosaic:** use the local DroneTM app, paste your project link, "
+        "load/review tasks, download selected orthophotos, then build the mosaic.\n"
+        "- **Rebuild mosaic.vrt and mosaic.tif as a COG from files already downloaded:** use "
+        "rebuild_cog.bat on Windows with OSGeo4W/QGIS installed.\n"
+        "- **Keep your data safe:** the local tool preserves task_*.tif source orthophotos and does not "
+        "automatically upload or publish anything to OpenAerialMap. Review the output before any separate upload."
+    )
+st.caption(
+    "The hosted app cannot read your Windows folders or run OSGeo4W. Local downloads, cache, and mosaic outputs "
+    "remain in the separate DroneTM tool."
+)
 
 # ---------- Local OAM Drone Preflight ----------
 st.header("🛩️ OAM Drone Preflight")
