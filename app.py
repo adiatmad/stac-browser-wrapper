@@ -380,6 +380,31 @@ st.set_page_config(page_title="Humanitarian Imagery Wizard", layout="wide", init
 st.title("🌍 Humanitarian Imagery Wizard")
 st.markdown("Transform raw satellite data into ready-to-use maps for disaster response.")
 
+# ---------- Local DroneTM Progress Mosaic ----------
+st.header("🛰️ DroneTM progress mosaic — run on your computer")
+st.markdown(
+    "Large orthophoto downloads and mosaic/COG processing run **locally on your own computer**, "
+    "not on this hosted Streamlit app. This keeps the task cache and raster files under your control."
+)
+st.link_button(
+    "Open DroneTM Progress Mosaic on GitHub",
+    "https://github.com/adiatmad/dronetm-progress-mosaic",
+    help="Download or update the local-first tool. This hosted app does not access your local files or DroneTM token.",
+)
+with st.expander("Which local workflow should I use?"):
+    st.markdown(
+        "- **Download task orthophotos and build a mosaic:** use the local DroneTM app, paste your project link, "
+        "load/review tasks, download selected orthophotos, then build the mosaic.\n"
+        "- **Rebuild mosaic.vrt and mosaic.tif as a COG from files already downloaded:** use "
+        "rebuild_cog.bat on Windows with OSGeo4W/QGIS installed.\n"
+        "- **Keep your data safe:** the local tool preserves task_*.tif source orthophotos and does not "
+        "automatically upload or publish anything to OpenAerialMap. Review the output before any separate upload."
+    )
+st.caption(
+    "The hosted app cannot read your Windows folders or run OSGeo4W. Local downloads, cache, and mosaic outputs "
+    "remain in the separate DroneTM tool."
+)
+
 # ---------- Local OAM Drone Preflight ----------
 st.header("🛩️ OAM Drone Preflight")
 st.caption("A guided local workflow: select an imagery path → run one GDAL command → paste the report → get the final local preparation command.")
