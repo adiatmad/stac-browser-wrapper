@@ -19,6 +19,8 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertIn("run on your computer", source)
         self.assertIn("https://github.com/adiatmad/dronetm-progress-mosaic", source)
         self.assertIn("cannot read your Windows folders or run OSGeo4W", source)
+        self.assertNotIn("api.drone.hotosm.org", source)
+        self.assertNotRegex(source, r"requests\\.(post|put|patch|delete)\\s*\\(")
 
     def test_inlined_validation_helpers_match_existing_module(self):
         import re
