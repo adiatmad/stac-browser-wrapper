@@ -8,6 +8,6 @@
 - [x] Render preflight PASS/WARN/FAIL states as badges while retaining existing descriptions and overall alerts.
 - [x] Replace the three native imagery metrics with shadcn metric cards.
 - [x] Add contract tests for dependency compatibility, component integration, preserved workflow affordances, and the no-automatic-upload boundary.
-- [x] Re-read the committed diff and run the full repository unit-test workflow in GitHub Actions (32 tests passed on the current code change; run: https://github.com/adiatmad/stac-browser-wrapper/actions/runs/39873015897).
+- [x] Re-read the committed diff and run the full repository unit-test workflow in GitHub Actions (32 tests passed) and install/import the complete app requirements (Streamlit 1.66.1 and shadcn UI 1.4.0); run: https://github.com/adiatmad/stac-browser-wrapper/actions/runs/39873116541.
 - [ ] Verify the hosted Streamlit app starts with the new dependency and manually inspect desktop/mobile layout, keyboard focus, empty states, and preflight results.
 - [ ] Update acceptance evidence and known limitations; keep PR draft/unmerged until user approves.
