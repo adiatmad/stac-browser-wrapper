@@ -124,3 +124,24 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         for name, args, kwargs in examples:
             with self.subTest(helper=name):
                 self.assertEqual(namespace[name](*args, **kwargs), getattr(original, name)(*args, **kwargs))
+
+    def test_shadcn_ui_dependencies_and_components_are_declared(self):
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        ast.parse(source, filename="app.py")
+        self.assertIn("import streamlit_shadcn_ui as ui", source)
+        self.assertIn("ui.card(", source)
+        self.assertIn("ui.badge(", source)
+        self.assertIn("ui.metric_card(", source)
+        self.assertRegex(requirements, r"(?m)^streamlit>=1\\.60\\.0$")
+        self.assertRegex(requirements, r"(?m)^streamlit-shadcn-ui>=1\\.4\\.0,<2\\.0\\.0$")
+
+    def test_ui_refresh_preserves_imagery_and_publication_safeguards(self):
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertIn("https://github.com/adiatmad/dronetm-progress-mosaic", source)
+        self.assertIn("Check OAM v2 for Duplicates", source)
+        self.assertIn("Prepare OAM v2 upload", source)
+        self.assertIn("Apply filter", source)
+        self.assertIn("never automatically uploads or publishes to OpenAerialMap", source)
+        self.assertNotRegex(source, r"requests\\.(post|put|patch|delete)\\s*\\(")
+

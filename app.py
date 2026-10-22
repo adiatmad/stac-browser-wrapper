@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit_shadcn_ui as ui
 import requests
 from urllib.parse import urlparse, unquote, urljoin
 import re
@@ -773,10 +774,17 @@ st.title("🌍 Humanitarian Imagery Wizard")
 st.markdown("Transform raw satellite data into ready-to-use maps for disaster response.")
 
 # ---------- Local DroneTM Progress Mosaic ----------
-st.header("🛰️ DroneTM progress mosaic — run on your computer")
-st.markdown(
-    "Large orthophoto downloads and mosaic/COG processing run **locally on your own computer**, "
-    "not on this hosted Streamlit app. This keeps the task cache and raster files under your control."
+ui.card(
+    title="DroneTM progress mosaic",
+    description="Run locally on your computer",
+    content=(
+        "Large orthophoto downloads and mosaic/COG processing run on your own computer, "
+        "not on this hosted Streamlit app. Your task cache and raster files stay under your control."
+    ),
+    footer=(
+        "This app cannot access local files and never automatically uploads or publishes to OpenAerialMap."
+    ),
+    key="drone-mosaic-workflow",
 )
 st.link_button(
     "Open DroneTM Progress Mosaic on GitHub",
@@ -854,9 +862,14 @@ if preflight_text.strip():
             st.success("✅ **Ready based on this report** — no OAM preflight checks failed.")
         st.caption(f"Parsed from {evidence_format}. The raster itself was not uploaded.")
 
-        for check in result["checks"]:
-            icon = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}[check["status"]]
-            st.markdown(f"{icon} **{check['name']}**  \n{check['detail']}")
+        for check_index, check in enumerate(result["checks"]):
+            badge_variant = {"PASS": "default", "WARN": "secondary", "FAIL": "destructive"}[check["status"]]
+            ui.badge(
+                check["status"],
+                variant=badge_variant,
+                key=f"preflight-status-{check_index}",
+            )
+            st.markdown(f"**{check['name']}**  \n{check['detail']}")
 
         source_epsg = None
         if not result["summary"]["crsPresent"]:
@@ -1097,9 +1110,27 @@ if source_mode == "STAC catalog / item" and root_url_input:
         
         st.subheader("📊 Imagery Found")
         m1, m2, m3 = st.columns(3)
-        m1.metric("Total Usable Images", len(display_tiff_links))
-        m2.metric("PRE-Event (Before Disaster)", len(pre_items))
-        m3.metric("POST-Event (After Disaster)", len(post_items))
+        ui.metric_card(
+            "Total usable images",
+            len(display_tiff_links),
+            description="GeoTIFF scenes available for the selected area",
+            variant="dashboard",
+            key="metric-total-usable-images",
+        )
+        ui.metric_card(
+            "PRE-event",
+            len(pre_items),
+            description="Before-disaster baseline scenes",
+            variant="dashboard",
+            key="metric-pre-event",
+        )
+        ui.metric_card(
+            "POST-event",
+            len(post_items),
+            description="After-disaster scenes",
+            variant="dashboard",
+            key="metric-post-event",
+        )
 
         st.divider()
         st.header("Step 3: Choose Your Goal")
