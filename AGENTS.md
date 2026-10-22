@@ -91,3 +91,30 @@ For non-trivial features, follow this sequence:
 8. converge — verify the delivered behavior against the specification
 
 For small maintenance changes, use the same principles without creating ceremony that adds no value.
+
+## Superpowers-inspired execution layer
+
+Use this layer to make the existing evidence-first and Spec Kit workflow more executable. It complements the rules above; it does not replace them, add an application/runtime dependency, or require ceremony for trivial edits.
+
+### Before implementation
+- Inspect repository state, applicable instructions, relevant code/tests, and current failures before asking questions or editing.
+- State the job, acceptance criteria, constraints, and non-goals. Ask one focused question only when a material decision cannot be resolved from repository evidence.
+- For substantial or behavior-changing work, compare meaningful implementation options, recommend the smallest sound option, and record the approved design plus a short, testable plan in the relevant spec/tasks.
+- Analyze the plan against existing architecture, safety invariants, and acceptance criteria before coding.
+
+### Implementation and debugging
+- Prefer test-first red/green/refactor: add or update a focused failing test, make the smallest change that passes, then refactor while keeping tests green. Do not manufacture a failing test when a useful regression test is not feasible; state why and use the strongest available verification.
+- For failures, reproduce first, inspect the earliest relevant error and trace the root cause. Form and test one evidence-based hypothesis at a time; do not mask errors, weaken valid assertions, or change tests merely to obtain a green run.
+- Keep changes small and independently verifiable. Use parallel work only for genuinely independent tasks with clear file boundaries and integrate/review their outputs before relying on them.
+- Follow repository-specific safety rules, including local-first imagery handling and explicit user-controlled OAM publication.
+
+### Review and convergence
+- Review the complete diff for scope, accidental deletions, duplicated abstractions, secrets, destructive side effects, and mismatch with the approved spec.
+- Run focused tests after each meaningful change, then the relevant full test suite and available real-workflow checks. Inspect actual exit status/logs; a successful edit or an unrelated green workflow is not proof.
+- Separate automated-test evidence from deployment, browser, real-service, and real-imagery acceptance. Mark inaccessible checks as blocked/unverified and identify the exact evidence needed.
+- Complete both a spec-compliance review (every acceptance criterion and invariant) and a code-quality/safety review before declaring done. Record remaining limitations and the next concrete action.
+
+### Method and tool boundaries
+- Apply these practices through the supported instructions/skills of the active coding environment when available; do not assume a particular skill installer or add Superpowers as a runtime package.
+- Keep Spec Kit as the repository's durable source of scope, decisions, and acceptance criteria; use this execution layer for disciplined implementation, debugging, and review. Anti-Slop and Loop & Graph remain delivery gates.
+
