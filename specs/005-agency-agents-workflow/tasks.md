@@ -15,5 +15,5 @@ Tasks are gated. Check an item only when its evidence exists.
 ## 3. Verify and deliver
 - [x] 3.1 Re-fetch all changed files and review the full diff against `docs/superpowers-workflow-after-stac-acceptance`. Self-review found no scope or consistency issue; independent review remains outstanding.
 - [x] 3.2 Confirm only `AGENTS.md`, `specs/005-agency-agents-workflow/spec.md`, and `specs/005-agency-agents-workflow/tasks.md` changed.
-- [ ] 3.3 Inspect CI results for the exact latest PR commit; re-check after this checklist update because it creates a new head commit.
+- [x] 3.3 Inspect CI for the latest PR commit: run [39871158983](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/39871158983) passed on commit `e42ab07bfb334c85bfbbe8f21090c4e8796a4eea`. The final checklist commit triggers a new run; verify that final-head run is green before merge.
 - [x] 3.4 Keep the PR draft and unmerged while final-head CI and independent review are outstanding.
