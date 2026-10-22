@@ -9,10 +9,10 @@ Tasks are gated. Do not claim verification without actual evidence.
 
 ## 2. Integrate
 - [x] 2.1 Extend `AGENTS.md` with proportional design, test-first implementation, root-cause debugging, diff review, and evidence-based convergence.
-- [ ] 2.2 Review wording for conflicts or duplication with existing Spec Kit, Anti-Slop, and evidence-first rules.
+- [x] 2.2 Review wording for conflicts or duplication with existing Spec Kit, Anti-Slop, and evidence-first rules. The addition explicitly complements rather than replaces the existing sequence and keeps lightweight work proportional.
 
 ## 3. Verify and deliver
-- [ ] 3.1 Re-fetch the committed file and inspect the final diff.
-- [ ] 3.2 Run repository CI or inspect a newly triggered run; record actual results.
-- [ ] 3.3 Confirm no runtime/application files or dependencies changed.
-- [ ] 3.4 Keep this workstream separate from hosted-acceptance work; report external acceptance blockers honestly.
+- [x] 3.1 Re-fetch the committed file and inspect the final diff. Comparison against `feat/end-to-end-imagery-workflow-spec` showed only `AGENTS.md` and these two Spec Kit files changed.
+- [x] 3.2 Inspect PR-triggered CI run [39782779225](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/39782779225): dependency installation and the unit-test step passed on the combined STAC feature + workflow change before this final task-status update.
+- [x] 3.3 Confirm no runtime/application files or dependencies changed.
+- [x] 3.4 Keep this workstream separate from hosted-acceptance work. PR #8 still has a separate live Streamlit startup/browser acceptance gap; this workflow PR does not close it.
