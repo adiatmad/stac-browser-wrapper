@@ -1,6 +1,6 @@
 # Feature Specification: Agency Agents Specialist Routing
 
-**Status:** Implementation in progress on `docs/agency-agents-workflow`; awaiting CI and review.
+**Status:** Documentation integration implemented on `docs/agency-agents-workflow`. Full diff and file scope reviewed; CI passed on commit `8452b03217aa1a7f302bd0c7c11f768df506bc01`. Final CI after checklist/status reconciliation and an independent GitHub review remain outstanding.
 
 ## 1. User outcome
 
@@ -24,7 +24,7 @@ Use a lightweight repository-local routing guide that links to the upstream Agen
 
 - **Product Manager** — trigger: new feature, unclear user problem, or materially ambiguous success criteria. Output: problem statement, user outcome, measurable acceptance criteria, scope and non-goals.
 - **Minimal Change Engineer** — trigger: bug fix, maintenance, or a risk of unrelated refactoring. Output: smallest justified implementation and separately recorded follow-up ideas.
-- **Code Reviewer** — trigger: behavior-changing code or pre-delivery review. Output: prioritized, actionable findings about correctness, regressions, maintainability, security, and tests.
+- **Code Reviewer** — trigger: behavior-changing code or pre-delivery review. Output: evidence-backed, prioritized, actionable findings about correctness, regressions, maintainability, security, and tests.
 - **AI-Generated Code Security Auditor** — trigger: credentials, authentication/authorization, untrusted input, external integrations, sensitive data, or security-relevant dependency/configuration changes. Output: evidence-backed findings with impact and remediation; no speculative alarms.
 - **Evidence Collector / Reality Checker** — trigger: acceptance and release readiness. Output: requirement-to-evidence mapping, reproducible failures, tested scope, and explicit unverified or blocked checks. Combine their perspectives in one verification pass unless separate evidence collection and certification are genuinely needed.
 
@@ -38,19 +38,20 @@ Upstream sources:
 
 ## 5. Acceptance criteria
 
-- [ ] `AGENTS.md` defines activation triggers, expected outputs, and the boundaries between Agency Agents, Spec Kit, Superpowers, Anti-Slop, and Loop & Graph.
-- [ ] Every selected upstream specialist is linked to its canonical source; no full persona prompt is copied into the repository.
-- [ ] The guide makes specialist use task-triggered and allows shared verification to avoid duplicate work.
-- [ ] Security review requires concrete evidence and remediation, not speculative findings or fixed issue quotas.
-- [ ] Verification separates automated CI from live deployment, browser, external service, and real-data acceptance.
-- [ ] Diff is limited to `AGENTS.md` and this feature's Spec Kit specification/task checklist relative to the Superpowers workflow branch.
-- [ ] Repository CI passes for the latest PR commit, or the exact unavailable/pending state is recorded honestly.
-- [ ] No app code, dependencies, credentials, local imagery, cache, or output data are changed.
+- [x] `AGENTS.md` defines activation triggers, expected outputs, and the boundaries between Agency Agents, Spec Kit, Superpowers, Anti-Slop, and Loop & Graph.
+- [x] Every selected upstream specialist is linked to its canonical source; no full persona prompt is copied into the repository.
+- [x] The guide makes specialist use task-triggered and allows shared verification to avoid duplicate work.
+- [x] Security review requires concrete evidence and remediation, not speculative findings or fixed issue quotas.
+- [x] Verification separates automated CI from live deployment, browser, external service, and real-data acceptance.
+- [x] Diff is limited to `AGENTS.md` and this feature's Spec Kit specification/task checklist relative to the Superpowers workflow branch.
+- [ ] Repository CI passes for the latest PR commit; the previously observed green run covers commit `8452b03217aa1a7f302bd0c7c11f768df506bc01`, not any later checklist/status edits.
+- [x] No app code, dependencies, credentials, local imagery, cache, or output data are changed.
 
-## 6. Verification plan
+## 6. Verification record
 
-1. Inspect existing repository instructions and the current PR stack before edits.
-2. Review the selected upstream files and confirm each link points to the intended specialist.
-3. Re-fetch the changed files and inspect the complete diff against the Superpowers workflow branch.
-4. Confirm the changed-file list contains only the three intended documentation/specification paths.
-5. Inspect CI for the latest commit; distinguish a prior green run from a run covering the current head.
+1. Re-fetched the current branch's `AGENTS.md`, this specification, and task checklist.
+2. Reviewed the full PR #11 patch. The routing is optional and task-triggered; it avoids duplicating Spec Kit, Superpowers, Anti-Slop, and Loop & Graph. No runtime code or dependencies are introduced.
+3. Confirmed the PR changed-file list is exactly `AGENTS.md`, `specs/005-agency-agents-workflow/spec.md`, and `specs/005-agency-agents-workflow/tasks.md`.
+4. GitHub Actions run [39794820708](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/39794820708) completed successfully for commit `8452b03217aa1a7f302bd0c7c11f768df506bc01`; re-run against the final updated head is still required.
+5. No GitHub review submissions were present at the time of this check. This self-review is not a substitute for an independent review.
+6. This documentation-only PR does not establish live Streamlit startup, browser acceptance, external-service behavior, or real-imagery acceptance for the separate hosted-app work.
