@@ -1110,27 +1110,30 @@ if source_mode == "STAC catalog / item" and root_url_input:
         
         st.subheader("📊 Imagery Found")
         m1, m2, m3 = st.columns(3)
-        ui.metric_card(
-            "Total usable images",
-            len(display_tiff_links),
-            description="GeoTIFF scenes available for the selected area",
-            variant="dashboard",
-            key="metric-total-usable-images",
-        )
-        ui.metric_card(
-            "PRE-event",
-            len(pre_items),
-            description="Before-disaster baseline scenes",
-            variant="dashboard",
-            key="metric-pre-event",
-        )
-        ui.metric_card(
-            "POST-event",
-            len(post_items),
-            description="After-disaster scenes",
-            variant="dashboard",
-            key="metric-post-event",
-        )
+        with m1:
+            ui.metric_card(
+                "Total usable images",
+                len(display_tiff_links),
+                description="GeoTIFF scenes available for the selected area",
+                variant="dashboard",
+                key="metric-total-usable-images",
+            )
+        with m2:
+            ui.metric_card(
+                "PRE-event",
+                len(pre_items),
+                description="Before-disaster baseline scenes",
+                variant="dashboard",
+                key="metric-pre-event",
+            )
+        with m3:
+            ui.metric_card(
+                "POST-event",
+                len(post_items),
+                description="After-disaster scenes",
+                variant="dashboard",
+                key="metric-post-event",
+            )
 
         st.divider()
         st.header("Step 3: Choose Your Goal")

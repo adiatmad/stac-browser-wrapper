@@ -133,8 +133,8 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn("ui.card(", source)
         self.assertIn("ui.badge(", source)
         self.assertIn("ui.metric_card(", source)
-        self.assertRegex(requirements, r"(?m)^streamlit>=1\\.60\\.0$")
-        self.assertRegex(requirements, r"(?m)^streamlit-shadcn-ui>=1\\.4\\.0,<2\\.0\\.0$")
+        self.assertRegex(requirements, r"(?m)^streamlit>=1\.60\.0$")
+        self.assertRegex(requirements, r"(?m)^streamlit-shadcn-ui>=1\.4\.0,<2\.0\.0$")
 
     def test_ui_refresh_preserves_imagery_and_publication_safeguards(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
@@ -143,5 +143,5 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn("Prepare OAM v2 upload", source)
         self.assertIn("Apply filter", source)
         self.assertIn("never automatically uploads or publishes to OpenAerialMap", source)
-        self.assertNotRegex(source, r"requests\\.(post|put|patch|delete)\\s*\\(")
+        self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
 
