@@ -778,7 +778,7 @@ ui.card(
     title="DroneTM progress mosaic",
     description="Run locally on your computer",
     content=(
-        "Large orthophoto downloads and mosaic/COG processing run on your own computer, "
+        "Large orthophoto downloads and mosaic/COG processing run on your computer, "
         "not on this hosted Streamlit app. Your task cache and raster files stay under your control."
     ),
     footer=(
