@@ -8,9 +8,9 @@ Tasks are gated. Check an item only when its evidence exists.
 - [x] 1.3 Record scope, non-goals, routing, and verification gates in the spec.
 
 ## 2. Integrate
-- [ ] 2.1 Add task-triggered specialist routing and canonical upstream links to `AGENTS.md`.
-- [ ] 2.2 Check for conflicts and duplicated ceremony with Spec Kit, Superpowers, Anti-Slop, and Loop & Graph.
-- [ ] 2.3 Keep this integration documentation-only; no runtime or app behavior changes.
+- [x] 2.1 Add task-triggered specialist routing and canonical upstream links to `AGENTS.md`.
+- [x] 2.2 Check for conflicts and duplicated ceremony with Spec Kit, Superpowers, Anti-Slop, and Loop & Graph; routing is optional, task-triggered, and uses the existing delivery gates.
+- [x] 2.3 Keep this integration documentation-only; no runtime or app behavior changes.
 
 ## 3. Verify and deliver
 - [ ] 3.1 Re-fetch all changed files and review the full diff against `docs/superpowers-workflow-after-stac-acceptance`.
