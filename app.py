@@ -414,11 +414,19 @@ def build_oam_recommendation(info: dict[str, Any], input_path: str, source_epsg:
     output_path = output_path or str(Path(input_path).with_name(Path(input_path).stem + "_oam_ready.tif"))
     command = None
     if not issues:
+        # Never silently replace a pre-existing user file. The generated command
+        # stops before GDAL runs if the selected output path already exists.
+        quoted_output = "'" + output_path.replace("'", "''") + "'"
+        guard = (
+            f"$out={quoted_output}; "
+            "if (Test-Path -LiteralPath $out) { "
+            "throw 'Output already exists; choose a different output path.' }; "
+        )
         if source_epsg:
-            command = (f'gdalwarp -overwrite -s_srs EPSG:{int(source_epsg)} -of COG '
-                       f'-co COMPRESS=DEFLATE "{input_path}" "{output_path}"')
+            command = (guard + f'gdalwarp -s_srs EPSG:{int(source_epsg)} -of COG '
+                       f'-co COMPRESS=DEFLATE "{input_path}" "$out"')
         else:
-            command = f'gdal_translate -of COG -co COMPRESS=DEFLATE "{input_path}" "{output_path}"'
+            command = guard + f'gdal_translate -of COG -co COMPRESS=DEFLATE "{input_path}" "$out"'
     return {"ready": not issues, "issues": issues, "output": output_path, "command": command,
             "notes": ["Creates a new file and does not overwrite the source.",
                       "Uses lossless DEFLATE so RGB and RGBA are preserved.",
