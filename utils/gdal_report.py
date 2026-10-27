@@ -127,10 +127,10 @@ def parse_detailed_gdalinfo(text: str) -> dict[str, Any]:
 def visual_assessment(report: dict[str, Any]) -> dict[str, Any]:
     """Classify whether the report looks like the tool's visual RGB/RGBA target."""
     bands = report.get("bands") or []
-    types = [str(b.get("type", "")).upper() for b in bands]
+    types = [str(b.get("type", "")) for b in bands]
     colors = [str(b.get("colorInterpretation", "")).lower() for b in bands]
     rgb = colors[:3] == ["red", "green", "blue"]
-    byte_pixels = bool(types) and all(t in {"BYTE", "UINT8"} for t in types)
+    byte_pixels = bool(types) and all(t.upper() in {"BYTE", "UINT8"} for t in types)
     count_ok = len(bands) in (3, 4)
 
     if count_ok and byte_pixels and rgb:
