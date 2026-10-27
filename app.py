@@ -415,11 +415,18 @@ def build_oam_recommendation(info: dict[str, Any], input_path: str, source_epsg:
     output_path = output_path or str(Path(input_path).with_name(Path(input_path).stem + "_oam_ready.tif"))
     command = None
     if not issues:
+        # Never silently replace a pre-existing user file.
+        quoted_output = "'" + output_path.replace("'", "''") + "'"
+        guard = (
+            f"$out={quoted_output}; "
+            "if (Test-Path -LiteralPath $out) { "
+            "throw 'Output already exists; choose a different output path.' }; "
+        )
         if source_epsg:
-            command = (f'gdalwarp -overwrite -s_srs EPSG:{int(source_epsg)} -of COG '
-                       f'-co COMPRESS=DEFLATE "{input_path}" "{output_path}"')
+            command = (guard + f'gdalwarp -s_srs EPSG:{int(source_epsg)} -of COG '
+                       f'-co COMPRESS=DEFLATE "{input_path}" "$out"')
         else:
-            command = f'gdal_translate -of COG -co COMPRESS=DEFLATE "{input_path}" "{output_path}"'
+            command = guard + f'gdal_translate -of COG -co COMPRESS=DEFLATE "{input_path}" "$out"'
     return {"ready": not issues, "issues": issues, "output": output_path, "command": command,
             "notes": ["Creates a new file and does not overwrite the source.",
                       "Uses lossless DEFLATE so RGB and RGBA are preserved.",
@@ -810,16 +817,21 @@ st.header("🛩️ OAM Drone Preflight")
 st.caption("A guided local workflow: select an imagery path → run one GDAL command → paste the report → get the final local preparation command.")
 
 with st.container(border=True):
-    st.markdown("### 1 · Select imagery")
-    preflight_path = st.text_input(
-        "Imagery path on your computer",
-        placeholder=r"C:\drone\orthomosaic.ecw",
-        key="preflight_path",
-        help="This is only a local path used to build commands. The imagery is never uploaded to this app.",
+    st.markdown("### 1 · Find the imagery file")
+    st.markdown(
+        "Open the folder in Windows File Explorer, hold **Shift**, right-click the image, "
+        "then choose **Copy as path**."
     )
-    run_gdal = st.button("Generate GDAL check command", type="primary", disabled=not preflight_path.strip(), key="run_gdal_check")
+    preflight_path = st.text_input(
+        "Local imagery path",
+        placeholder=r'"C:\drone\orthomosaic.ecw"',
+        key="preflight_path",
+        help="Paste the path copied from File Explorer. The app uses it only to build a command; it does not open or upload the image.",
+    )
+    preflight_local_path = preflight_path.strip().strip('"')
+    run_gdal = st.button("Generate GDAL check command", type="primary", disabled=not preflight_local_path, key="run_gdal_check")
     if run_gdal:
-        st.session_state["preflight_gdal_command"] = f'gdalinfo "{preflight_path.strip()}"'
+        st.session_state["preflight_gdal_command"] = f'gdalinfo "{preflight_local_path}"'
 
 if st.session_state.get("preflight_gdal_command"):
     st.markdown("### 2 · Run the GDAL check")
@@ -883,12 +895,18 @@ if preflight_text.strip():
 
         needs_conversion = result["summary"]["driver"].upper() != "GTIFF"
         if needs_conversion and not hard_fails and (result["summary"]["crsPresent"] or source_epsg is not None):
-            rec = build_oam_recommendation(info, preflight_path.strip(), source_epsg=source_epsg)
+            rec = build_oam_recommendation(info, preflight_local_path, source_epsg=source_epsg)
             if rec["ready"]:
                 st.markdown("### 4 · Final local preparation command")
                 st.caption("Copy this one combined PowerShell command. It creates a new file and then runs gdalinfo on that output for verification. The original is not overwritten.")
                 output = rec["output"]
-                combined = f'$out="{output}"; if (Test-Path $out) {{ Remove-Item $out -Force }}; {rec["command"]}; if ($LASTEXITCODE -eq 0) {{ gdalinfo "$out" }}'
+                quoted_output = "'" + output.replace("'", "''") + "'"
+                combined = (
+                    f"$out={quoted_output}; "
+                    "if (Test-Path -LiteralPath $out) { "
+                    "throw 'Output already exists; choose a different output path.' }; "
+                    f'{rec["command"]}; if ($LASTEXITCODE -eq 0) {{ gdalinfo "$out" }}'
+                )
                 st.code(combined, language="powershell")
                 st.caption("Paste the resulting gdalinfo output back into the GDAL result box above to verify the converted file.")
         elif not needs_conversion:
