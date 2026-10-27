@@ -381,7 +381,7 @@ def build_oam_recommendation(info: dict[str, Any], input_path: str, source_epsg:
     command = None
     if not issues:
         if source_epsg:
-            command = (f'gdalwarp -overwrite -s_srs EPSG:{int(source_epsg)} -of COG '
+            command = (f'gdalwarp -s_srs EPSG:{int(source_epsg)} -of COG '
                        f'-co COMPRESS=DEFLATE "{input_path}" "{output_path}"')
         else:
             command = f'gdal_translate -of COG -co COMPRESS=DEFLATE "{input_path}" "{output_path}"'
