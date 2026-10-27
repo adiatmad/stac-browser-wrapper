@@ -76,10 +76,14 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         parsed_original = original_parse(gdal_text)
         self.assertEqual(parsed_inline, parsed_original)
         self.assertEqual(namespace["validate_info"](parsed_inline), original_validate(parsed_original))
-        self.assertEqual(
-            namespace["build_oam_recommendation"](parsed_inline, "input.tif"),
-            original_recommend(parsed_original, "input.tif"),
-        )
+        inline_recommendation = namespace["build_oam_recommendation"](parsed_inline, "input.tif")
+        original_recommendation = original_recommend(parsed_original, "input.tif")
+        for field in ("ready", "issues", "output", "notes"):
+            self.assertEqual(inline_recommendation[field], original_recommendation[field])
+        self.assertIn("gdal_translate -of COG -co COMPRESS=DEFLATE", inline_recommendation["command"])
+        self.assertIn('"input.tif" "$out"', inline_recommendation["command"])
+        self.assertIn("Test-Path -LiteralPath $out", inline_recommendation["command"])
+        self.assertNotIn("-overwrite", inline_recommendation["command"])
 
     def test_inlined_oam_helpers_match_existing_module(self):
         import re
