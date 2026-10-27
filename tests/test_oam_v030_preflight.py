@@ -1,0 +1,65 @@
+import unittest
+from pathlib import Path
+
+from utils.oam_v030_preflight import OAM_SCHEMA_URL, check_oam_item
+
+
+class OAMV030PreflightTests(unittest.TestCase):
+    def valid_item(self):
+        return {
+            "type": "Feature",
+            "stac_extensions": [OAM_SCHEMA_URL],
+            "geometry": {"type": "Polygon", "coordinates": [[[120, -9], [120.1, -9], [120.1, -8.9], [120, -8.9], [120, -9]]]},
+            "bbox": [120, -9, 120.1, -8.9],
+            "gsd": 0.05,
+            "providers": [{"name": "Example Drone Team", "roles": ["producer", "licensor"]}],
+            "properties": {
+                "title": "Example UAV orthomosaic",
+                "datetime": "2026-09-29T01:00:00Z",
+                "license": "CC-BY-4.0",
+                "oam:platform_type": "uav",
+                "oam:producer_name": "Example Drone Team",
+                "oam:product_type": "visual",
+            },
+            "assets": {"visual": {"href": "https://example.org/image.tif", "roles": ["visual"]}},
+        }
+
+    def test_minimum_required_contract_warns_when_cog_is_unverified(self):
+        result = check_oam_item(self.valid_item())
+        self.assertEqual(result["status"], "WARN")
+        self.assertFalse(any(c["status"] == "FAIL" for c in result["checks"]))
+        format_check = next(c for c in result["checks"] if c["name"] == "Visual asset format")
+        self.assertEqual(format_check["status"], "WARN")
+
+    def test_missing_required_metadata_is_reported_individually(self):
+        item = self.valid_item()
+        item["properties"].pop("oam:producer_name")
+        item["properties"].pop("title")
+        item["gsd"] = None
+        result = check_oam_item(item)
+        failed = {c["name"] for c in result["checks"] if c["status"] == "FAIL"}
+        self.assertTrue({"GSD", "Producer", "Title"}.issubset(failed))
+
+    def test_elevation_is_not_called_a_visual_failure(self):
+        item = self.valid_item()
+        item["properties"]["oam:product_type"] = "elevation"
+        result = check_oam_item(item)
+        product_check = next(c for c in result["checks"] if c["name"] == "Product type")
+        self.assertEqual(product_check["status"], "PASS")
+
+    def test_wrong_license_is_explicit(self):
+        item = self.valid_item()
+        item["properties"]["license"] = "proprietary"
+        result = check_oam_item(item)
+        license_check = next(c for c in result["checks"] if c["name"] == "License")
+        self.assertEqual(license_check["status"], "FAIL")
+
+
+    def test_generated_commands_refuse_existing_output_paths(self):
+        page = (Path(__file__).resolve().parents[1] / "pages" / "1_OAM_Preflight.py").read_text(encoding="utf-8")
+        self.assertNotIn("Remove-Item $out -Force", page)
+        self.assertIn("Test-Path -LiteralPath $out", page)
+        self.assertIn("Output already exists; choose a different output path.", page)
+
+if __name__ == "__main__":
+    unittest.main()
