@@ -39,23 +39,30 @@ def _visual_conversion_command(path: str, detailed: dict) -> str | None:
 
 def render_oam_preflight() -> None:
     """Render detailed local-only preflight inside the main application."""
-    st.subheader("🛩️ Local drone imagery preflight")
-    st.caption("Optional workflow for local drone imagery. Follow the steps below; your raster stays on your computer.")
-
-    path = st.text_input(
-        "1 · Select imagery on your computer",
-        placeholder=r"C:\drone\orthomosaic.tif",
-        help="Only the path is used to generate a command. The raster is never uploaded to this app.",
-        key="detailed_preflight_path",
+    st.markdown(
+        "Find the image in Windows File Explorer, copy its path, and paste it below. "
+        "The image stays on your computer; this app does not open or upload it."
+    )
+    st.markdown(
+        "**Copy the path:** open the folder, hold **Shift**, right-click the image, "
+        "then choose **Copy as path**. Paste it into the field below."
     )
 
-    if path.strip():
-        st.markdown("**2 · Run this locally**")
-        st.code(f'gdalinfo "{path.strip()}"', language="powershell")
-        st.caption("Run the command in PowerShell/QGIS OSGeo4W, then paste the complete output below.")
+    path = st.text_input(
+        "Local imagery path",
+        placeholder=r'"C:\drone\orthomosaic.tif"',
+        help="Paste the path copied from File Explorer. The app uses the path only to build a command.",
+        key="detailed_preflight_path",
+    )
+    local_path = path.strip().strip('"')
+
+    if local_path:
+        st.markdown("**Run this command on your computer**")
+        st.code(f'gdalinfo "{local_path}"', language="powershell")
+        st.caption("Run it in PowerShell or the QGIS/OSGeo4W shell, then paste the full output below.")
 
     report_text = st.text_area(
-        "3 · Paste the complete GDAL output",
+        "Paste the full GDAL output",
         height=260,
         placeholder="Driver: GTiff/GeoTIFF\nSize is ...\nCoordinate System is: ...\nBand 1 ...",
         key="detailed_preflight_report",
@@ -150,7 +157,7 @@ def render_oam_preflight() -> None:
 
             if visual["status"] == "PASS" and needs_local_conversion:
                 st.markdown("### 5 · One combined local preparation command")
-                rec = build_oam_recommendation(info, path.strip(), source_epsg=None)
+                rec = build_oam_recommendation(info, local_path, source_epsg=None)
                 if rec["ready"] and rec["command"]:
                     output = rec["output"]
                     combined = (
@@ -162,7 +169,7 @@ def render_oam_preflight() -> None:
             elif visual["status"] == "PASS":
                 st.info("No local conversion command is needed from the supplied report. The source already matches the visual COG checks used here.")
             else:
-                candidate = _visual_conversion_command(path.strip(), detailed) if path.strip() else None
+                candidate = _visual_conversion_command(local_path, detailed) if local_path else None
                 if candidate:
                     st.markdown("### 5 · If this is intended to be a visual RGB orthomosaic")
                     st.warning(
