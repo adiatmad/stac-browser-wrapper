@@ -362,7 +362,7 @@ def build_oam_ready_powershell(input_path: str, output_path: str | None = None, 
     src_path = Path(input_path)
     dst = output_path or str(src_path.with_name(src_path.stem + "_oam_ready.tif"))
     if source_epsg:
-        return (f'gdalwarp -overwrite -s_srs EPSG:{int(source_epsg)} -of COG '
+        return (f'gdalwarp -s_srs EPSG:{int(source_epsg)} -of COG '
                 f'-co COMPRESS=DEFLATE "{input_path}" "{dst}"')
     return f'gdal_translate -of COG -co COMPRESS=DEFLATE "{input_path}" "{dst}"'
 
@@ -381,7 +381,7 @@ def build_oam_recommendation(info: dict[str, Any], input_path: str, source_epsg:
     command = None
     if not issues:
         if source_epsg:
-            command = (f'gdalwarp -overwrite -s_srs EPSG:{int(source_epsg)} -of COG '
+            command = (f'gdalwarp -s_srs EPSG:{int(source_epsg)} -of COG '
                        f'-co COMPRESS=DEFLATE "{input_path}" "{output_path}"')
         else:
             command = f'gdal_translate -of COG -co COMPRESS=DEFLATE "{input_path}" "{output_path}"'
