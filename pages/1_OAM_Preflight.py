@@ -28,10 +28,14 @@ def _visual_conversion_command(path: str, detailed: dict) -> str | None:
     root, _ = os.path.splitext(source)
     output = f"{root}_OAM.tif"
     selected = "-b 1 -b 2 -b 3"
+    quoted_output = "'" + output.replace("'", "''") + "'"
+    quoted_source = "'" + source.replace("'", "''") + "'"
     return (
-        f'$out="{output}"; if (Test-Path $out) {{ Remove-Item $out -Force }}; '
+        f"$out={quoted_output}; "
+        "if (Test-Path -LiteralPath $out) { "
+        "throw 'Output already exists; choose a different output path.' }; "
         f'gdal_translate -of COG -ot Byte {selected} -colorinterp red,green,blue -scale -a_nodata 0 '
-        f'-co COMPRESS=DEFLATE "{source}" "$out"; '
+        f'-co COMPRESS=DEFLATE {quoted_source} "$out"; '
         f'if ($LASTEXITCODE -eq 0) {{ gdalinfo "$out" }}'
     )
 
@@ -240,7 +244,13 @@ if report_text.strip():
             if rec["ready"] and rec["command"]:
                 st.caption("The command below creates a new local COG and verifies it. It never overwrites the source.")
                 output = rec["output"]
-                combined = f'$out="{output}"; if (Test-Path $out) {{ Remove-Item $out -Force }}; {rec["command"]}; if ($LASTEXITCODE -eq 0) {{ gdalinfo "$out" }}'
+                quoted_output = "'" + output.replace("'", "''") + "'"
+                combined = (
+                    f"$out={quoted_output}; "
+                    "if (Test-Path -LiteralPath $out) { "
+                    "throw 'Output already exists; choose a different output path.' }; "
+                    f'{rec["command"]}; if ($LASTEXITCODE -eq 0) {{ gdalinfo "$out" }}'
+                )
                 st.code(combined, language="powershell")
         elif visual["status"] != "PASS":
             candidate = _visual_conversion_command(path.strip(), detailed) if path.strip() else None
