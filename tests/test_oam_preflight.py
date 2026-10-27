@@ -110,6 +110,14 @@ Image Structure Metadata:
         self.assertIn("COMPRESS=DEFLATE", rec["command"])
         self.assertIn(r"C:\drone\orthomosaic_oam_ready.tif", rec["command"])
         self.assertNotIn("gdalwarp", rec["command"])
+        self.assertNotIn("-overwrite", rec["command"])
+
+    def test_gdalwarp_recommendation_never_requests_overwrite(self):
+        info = parse_gdalinfo_text(ECW_GDALINFO)
+        rec = build_oam_recommendation(info, r"C:\drone\orthomosaic.ecw", source_epsg=32751)
+        self.assertTrue(rec["ready"])
+        self.assertIn("gdalwarp -s_srs EPSG:32751", rec["command"])
+        self.assertNotIn("-overwrite", rec["command"])
 
 
 if __name__ == "__main__":
