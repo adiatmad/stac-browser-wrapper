@@ -54,5 +54,11 @@ class OAMV030PreflightTests(unittest.TestCase):
         self.assertEqual(license_check["status"], "FAIL")
 
 
+    def test_generated_commands_refuse_existing_output_paths(self):
+        page = (Path(__file__).resolve().parents[1] / "pages" / "1_OAM_Preflight.py").read_text(encoding="utf-8")
+        self.assertNotIn("Remove-Item $out -Force", page)
+        self.assertIn("Test-Path -LiteralPath $out", page)
+        self.assertIn("Output already exists; choose a different output path.", page)
+
 if __name__ == "__main__":
     unittest.main()
