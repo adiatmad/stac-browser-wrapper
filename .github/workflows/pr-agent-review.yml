@@ -1,0 +1,38 @@
+name: PR-Agent review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  pr-agent-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check whether the model-provider key is configured
+        id: provider-key
+        shell: bash
+        env:
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+        run: |
+          if [[ -n "$OPENAI_KEY" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Review pull request with PR-Agent
+        if: steps.provider-key.outputs.configured == 'true'
+        uses: The-PR-Agent/pr-agent@981344be2755e303df501e18e3f60b848a188a80
+        env:
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Explain required setup
+        if: steps.provider-key.outputs.configured != 'true'
+        run: |
+          echo "::warning::PR-Agent review was skipped because the repository Actions secret OPENAI_KEY is not configured. Add it in Settings > Secrets and variables > Actions to enable AI reviews."
