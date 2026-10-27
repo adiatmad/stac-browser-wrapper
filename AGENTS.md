@@ -118,3 +118,23 @@ Use this layer to make the existing evidence-first and Spec Kit workflow more ex
 - Apply these practices through the supported instructions/skills of the active coding environment when available; do not assume a particular skill installer or add Superpowers as a runtime package.
 - Keep Spec Kit as the repository's durable source of scope, decisions, and acceptance criteria; use this execution layer for disciplined implementation, debugging, and review. Anti-Slop and Loop & Graph remain delivery gates.
 
+## Agency Agents specialist routing
+
+Use the upstream Agency Agents catalog as an optional set of task-specific perspectives, not as a second mandatory process or a claim of autonomous execution. Activate only the roles that address the current risk; do not run every specialist on every change. Keep Spec Kit as the durable source of requirements and acceptance criteria, Superpowers as the execution discipline, and Anti-Slop plus Loop & Graph as delivery gates.
+
+### Routing rules
+
+- **Product Manager** — For a new feature, unclear user problem, or materially ambiguous success criteria. Produce a concise problem statement, user outcome, measurable acceptance criteria, scope, and non-goals. Source: https://github.com/msitarzewski/agency-agents/blob/main/product/product-manager.md
+- **Minimal Change Engineer** — For bug fixes, maintenance, or risk of unrelated refactoring. Prefer the smallest justified diff; record useful out-of-scope improvements separately instead of sneaking them into the patch. Source: https://github.com/msitarzewski/agency-agents/blob/main/engineering/engineering-minimal-change-engineer.md
+- **Code Reviewer** — For behavior-changing code and pre-delivery review. Return one complete, prioritized set of actionable findings about correctness, regressions, maintainability, security, and test coverage; do not spend review effort on stylistic preferences already enforced by tools. Source: https://github.com/msitarzewski/agency-agents/blob/main/engineering/engineering-code-reviewer.md
+- **AI-Generated Code Security Auditor** — For credentials, authentication/authorization, untrusted input, external integrations, sensitive data, or security-relevant dependency/configuration changes. Tie each finding to concrete code/evidence, impact, and remediation. Do not invent vulnerabilities or pad findings to meet a quota. Source: https://github.com/msitarzewski/agency-agents/blob/main/security/security-ai-generated-code-auditor.md
+- **Evidence Collector / Reality Checker** — For acceptance and release readiness. Map requirements to appropriate evidence, report reproducible deviations, state what was actually tested, and list remaining unverified/blocked checks. Combine both perspectives in one verification pass unless separate evidence collection and certification are genuinely needed. Sources: https://github.com/msitarzewski/agency-agents/blob/main/testing/testing-evidence-collector.md and https://github.com/msitarzewski/agency-agents/blob/main/testing/testing-reality-checker.md
+
+### Boundaries and non-duplication
+
+- These links are references to upstream guidance; this repository does not vendor or copy full persona prompts, install the whole catalog, add an agent runtime, or imply these personas are installed in every coding environment.
+- Do not duplicate Spec Kit specifications/tasks, Superpowers design/test/debug/review steps, or existing CI. A specialist perspective should improve the relevant existing step, not create a parallel checklist by default.
+- Keep test-first implementation, root-cause debugging, full-diff review, and verification-before-completion from the Superpowers-inspired layer in force.
+- Security reviews must be proportional to the change and evidence-based. QA screenshots may prove appearance, but behavior needs assertions, recorded outcomes, or reproducible steps too.
+- Keep the single-file hosted app contract, local-first imagery processing, preservation of local data, and explicit user-controlled OAM publication unchanged.
+- Treat automated CI, live Streamlit startup, browser acceptance, external-service behavior, and real-imagery results as distinct evidence categories. Never infer one from another.
