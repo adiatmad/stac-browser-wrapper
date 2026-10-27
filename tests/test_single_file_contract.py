@@ -22,6 +22,13 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertNotIn("api.drone.hotosm.org", source)
         self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
 
+    def test_generated_cog_commands_refuse_to_overwrite_existing_outputs(self):
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertNotIn("gdalwarp -overwrite", source)
+        self.assertNotIn("Remove-Item $out -Force", source)
+        self.assertIn("Test-Path -LiteralPath $out", source)
+        self.assertIn("Output already exists; choose a different output path.", source)
+
     def test_inlined_validation_helpers_match_existing_module(self):
         import re
         from typing import Any
