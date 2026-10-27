@@ -23,9 +23,12 @@ class OAMV030PreflightTests(unittest.TestCase):
             "assets": {"visual": {"href": "https://example.org/image.tif", "roles": ["visual"]}},
         }
 
-    def test_current_minimum_contract_passes(self):
+    def test_minimum_required_contract_warns_when_cog_is_unverified(self):
         result = check_oam_item(self.valid_item())
-        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["status"], "WARN")
+        self.assertFalse(any(c["status"] == "FAIL" for c in result["checks"]))
+        format_check = next(c for c in result["checks"] if c["name"] == "Visual asset format")
+        self.assertEqual(format_check["status"], "WARN")
 
     def test_missing_required_metadata_is_reported_individually(self):
         item = self.valid_item()
