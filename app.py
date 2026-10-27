@@ -380,9 +380,8 @@ st.set_page_config(page_title="Humanitarian Imagery Wizard", layout="wide", init
 st.title("🌍 Humanitarian Imagery Wizard")
 st.markdown("Transform raw satellite data into ready-to-use maps for disaster response.")
 
-# ---------- Optional local OAM drone preflight ----------
-with st.expander("🛩️ Prepare local drone imagery (optional)", expanded=False):
-    st.caption("For drone imagery stored on your computer. The raster is not uploaded; this workflow only analyses the GDAL report you paste.")
+# ---------- Optional local imagery check ----------
+with st.expander("Check a local orthomosaic", expanded=False):
     render_oam_preflight()
 
 st.header("Remote source import")
