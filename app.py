@@ -18,7 +18,7 @@ from urllib.parse import quote, urlencode, urlsplit
 import xml.etree.ElementTree as ET
 
 OAM_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
-SPACE_EYE_LICENSE = "CC-BY 4.0"
+SPACE_EYE_LICENSE = "CC-BY-4.0"
 SPACE_EYE_PROVIDER = "SI Imaging Services"
 SPACE_EYE_PLATFORM = "satellite"
 SPACE_EYE_SENSOR = "SpaceEye-T"
