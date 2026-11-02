@@ -81,6 +81,10 @@ def main() -> None:
                 page.goto(BASE_URL, wait_until="domcontentloaded", timeout=60_000)
                 page.get_by_role("heading", name="STAC Imagery Workbench").wait_for()
                 page.get_by_role("heading", name="Choose an imagery source").wait_for()
+                page.screenshot(
+                    path=str(ARTIFACTS / "workbench-discover-desktop.png"),
+                    full_page=True,
+                )
 
                 local_tab = page.get_by_role("tab", name="Local preparation")
                 local_tab.click()
