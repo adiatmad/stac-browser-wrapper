@@ -805,7 +805,7 @@ h2, h3 { color: var(--app-ink); letter-spacing: -0.012em; }
 [data-testid="stTabs"] [role="tablist"] { gap: 0.25rem; border-bottom: 1px solid var(--app-border); }
 [data-testid="stTabs"] button[role="tab"] { min-height: 44px; padding: 0.55rem 1rem; color: var(--app-muted); }
 [data-testid="stTabs"] button[aria-selected="true"] { color: var(--app-accent); border-bottom-color: var(--app-accent); }
-[data-testid="stVerticalBlockBorderWrapper"] { border-color: var(--app-border); border-radius: var(--app-radius); }
+[data-testid="stVerticalBlockBorderWrapper"] { background: var(--app-surface); border-color: var(--app-border); border-radius: var(--app-radius); }
 [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea { font-size: 16px; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [role="tab"]:focus-visible { outline: 2px solid var(--app-focus); outline-offset: 2px; }
 ::selection { background: var(--app-accent-soft); color: var(--app-ink); }
@@ -915,9 +915,9 @@ with tab_local:
             if hard_fails:
                 st.error("**Not ready** — a required check failed. Fix the item marked FAIL before upload.")
             elif warnings:
-                st.warning(" **Review before upload** — no hard OAM requirement failed, but some details need verification.")
+                st.warning("**Review before upload** — no hard OAM requirement failed, but some details need verification.")
             else:
-                st.success(" **Ready based on this report** — no OAM preflight checks failed.")
+                st.success("**Ready based on this report** — no OAM preflight checks failed.")
             st.caption(f"Parsed from {evidence_format}. The raster itself was not uploaded.")
 
             for check_index, check in enumerate(result["checks"]):
@@ -1007,7 +1007,7 @@ with tab_discover:
                 with st.expander(f"{idx}. {key.rsplit('/', 1)[-1]} — {format_bytes(obj.get('size_bytes'))}"):
                     st.code(object_url, language=None)
                     st.caption(f"S3 last modified: {obj.get('last_modified') or 'not reported'}")
-                    st.markdown(f"**Provider:** {SPACE_EYE_PROVIDER}\\n\\n**Platform:** {SPACE_EYE_PLATFORM}\\n\\n**Sensor:** {SPACE_EYE_SENSOR}\\n\\n**License:** {SPACE_EYE_LICENSE}")
+                    st.markdown(f"**Provider:** {SPACE_EYE_PROVIDER}\n\n**Platform:** {SPACE_EYE_PLATFORM}\n\n**Sensor:** {SPACE_EYE_SENSOR}\n\n**License:** {SPACE_EYE_LICENSE}")
                     prefill = spaceeye_oam_prefill(
                         key=key, object_url=object_url, source_browser_url=s3_results["browser_url"]
                     )
@@ -1115,7 +1115,7 @@ with tab_discover:
             group_by_location = st.toggle("Draw a box on the map to filter images")
             
             if group_by_location:
-                st.info(" **Draw an area:** Disaster imagery often covers huge regions. Draw a box over your specific activation area so you don't overwhelm the mapping software with unnecessary map data.")
+                st.info("Draw an area around the activation you need. Filtering reduces the number of scenes sent to mapping software.")
                 items_with_bbox = [m for m in oam_items if parse_bbox_2d(m.get("bbox"))]
                 if items_with_bbox:
                     parsed_bboxes = [parse_bbox_2d(m["bbox"]) for m in items_with_bbox]
