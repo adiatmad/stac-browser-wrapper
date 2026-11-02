@@ -37,7 +37,7 @@ The interface should feel like a focused technical workbench, not a marketing la
 7. UI styling uses declared tokens for colors and fonts, includes visible keyboard focus, supports reduced motion, and prevents horizontal overflow.
 8. Controls and navigation remain usable at narrow viewport widths, including the top-level shadcn Tabs control.
 9. Contract tests verify the app parses, the new navigation and tokenized styling exist, and the local-only/no-automatic-publication safeguards remain.
-10. CI unit tests pass. Browser rendering, keyboard navigation, and desktop/mobile visual inspection are recorded separately and are not inferred from unit-test success.
+10. CI unit tests pass.\n11. A Playwright browser smoke test loads the real Streamlit app, switches between both workflows, verifies that only the selected workflow is rendered, exercises keyboard tab navigation, checks horizontal overflow at 390px, and saves desktop/mobile screenshots as CI artifacts.
 
 ## Quality gates
 
