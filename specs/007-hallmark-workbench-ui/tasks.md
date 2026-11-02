@@ -8,7 +8,7 @@
 - [x] Introduce Discover & map / Local preparation navigation with the existing shadcn Tabs V2 component and conditional rendering, without changing workflow logic or widget keys.
 - [x] Add STAC crawl loading and empty states, plus an empty state for missing OAM-compatible items.
 - [x] Tighten UI labels and remove decorative emoji while preserving factual copy and user actions.
-- [x] Extend contract tests for navigation, styling safeguards, and preserved workflows.
+- [x] Extend contract tests for navigation, styling safeguards, preserved workflows, and WCAG AA text/focus contrast for the selected theme tokens.
 - [x] Add Playwright smoke coverage for actual Streamlit startup, shadcn tab switching, keyboard navigation, mobile overflow, and screenshot artifacts.
 - [ ] Run the full unit suite and repository CI; investigate any failures without weakening assertions.
   - Evidence: the shadcn dependency-compatibility job passed. The unit job currently fails in the pre-existing `spaceeye_oam_prefill` parity test because `app.py` uses `CC-BY-4.0` while `utils/oam_sources.py` still uses `CC-BY 4.0`; the separate open PR #17 fixes that mismatch. This UI PR does not change license or OAM helper behavior.
