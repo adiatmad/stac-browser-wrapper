@@ -35,7 +35,7 @@ The interface should feel like a focused technical workbench, not a marketing la
 5. Existing widget keys, form fields, callback behavior, session-state contracts, external URLs, and workflow logic are preserved.
 6. Existing shadcn card, badge, and metric-card integrations remain intact. No new runtime dependency or project-specific Python module is introduced.
 7. UI styling uses declared tokens for colors and fonts, includes visible keyboard focus, supports reduced motion, and prevents horizontal overflow.
-8. Controls and navigation remain usable at narrow viewport widths; the segmented control remains usable at narrow viewport widths.
+8. Controls and navigation remain usable at narrow viewport widths, including the top-level segmented control.
 9. Contract tests verify the app parses, the new navigation and tokenized styling exist, and the local-only/no-automatic-publication safeguards remain.
 10. CI unit tests pass. Browser rendering, keyboard navigation, and desktop/mobile visual inspection are recorded separately and are not inferred from unit-test success.
 
