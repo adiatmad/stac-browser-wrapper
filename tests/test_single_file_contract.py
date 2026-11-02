@@ -163,7 +163,7 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         tokens = {
             name: value.lower()
             for name, value in re.findall(
-                r"--app-([a-z-]+):\\s*(#[0-9a-fA-F]{6})",
+                r"--app-([a-z-]+):\s*(#[0-9a-fA-F]{6})",
                 source,
             )
         }
