@@ -804,6 +804,7 @@ h2, h3 { color: var(--app-ink); letter-spacing: -0.012em; }
 [data-testid="stMarkdownContainer"] p { color: var(--app-ink); line-height: 1.55; }
 [data-testid="stTabs"] [role="tablist"] { gap: 0.25rem; border-bottom: 1px solid var(--app-border); }
 [data-testid="stTabs"] button[role="tab"] { min-height: 44px; padding: 0.55rem 1rem; color: var(--app-muted); }
+[data-testid="stSegmentedControl"] button { min-height: 44px; }
 [data-testid="stTabs"] button[aria-selected="true"] { color: var(--app-accent); border-bottom-color: var(--app-accent); }
 [data-testid="stVerticalBlockBorderWrapper"] { background: var(--app-surface); border-color: var(--app-border); border-radius: var(--app-radius); }
 [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea { font-size: 16px; }
@@ -823,9 +824,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 st.title("STAC Imagery Workbench")
 st.markdown("Find imagery, inspect coverage, and prepare mapping or OpenAerialMap handoffs.")
 
-tab_discover, tab_local = st.tabs(["Discover & map", "Local preparation"])
+active_workflow = st.segmented_control(
+    "Workflow",
+    options=["Discover & map", "Local preparation"],
+    default="Discover & map",
+    key="active_workflow",
+)
 
-with tab_local:
+if active_workflow == "Local preparation":
     # ---------- Local DroneTM Progress Mosaic ----------
     ui.card(
         title="DroneTM progress mosaic",
@@ -962,7 +968,7 @@ with tab_local:
         except Exception as exc:
             st.error(f"Preflight could not be processed: {exc}")
 
-with tab_discover:
+elif active_workflow == "Discover & map":
     st.header("Choose an imagery source")
     source_mode = st.radio(
         "Source type",
@@ -1106,7 +1112,8 @@ with tab_discover:
             st.session_state["pending_drawing"] = None
             st.session_state["last_processed_url"] = real_url
 
-        all_links, tiff_links, oam_items = run_crawl(real_url)
+        with st.spinner("Discovering STAC items and imagery assets..."):
+            all_links, tiff_links, oam_items = run_crawl(real_url)
 
         if all_links:
             st.divider()
@@ -1344,7 +1351,13 @@ with tab_discover:
                         help="Use this CSV as a checklist to keep track of which URLs you have manually uploaded to OAM v2."
                     )
 
+                else:
+                    st.info("No OAM-compatible STAC items are available for the current selection.")
+
             with tab_adv:
                 st.caption("Raw Data Endpoints for Developers")
                 for idx, link in enumerate(all_links, 1):
                     st.markdown(f"{idx}. [{link}]({link})")
+
+        else:
+            st.info("No STAC imagery links were found. Check the catalog URL or try another STAC item.")
