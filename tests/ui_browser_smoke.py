@@ -93,8 +93,9 @@ def main() -> None:
                     full_page=True,
                 )
 
-                local_tab.focus()
-                page.keyboard.press("ArrowLeft")
+                discover_tab = page.get_by_role("tab", name="Discover & map")
+                discover_tab.focus()
+                discover_tab.press("Enter")
                 page.get_by_role("heading", name="Choose an imagery source").wait_for()
 
                 page.set_viewport_size({"width": 390, "height": 844})
