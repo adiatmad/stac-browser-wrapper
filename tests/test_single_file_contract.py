@@ -156,3 +156,16 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn("never automatically uploads or publishes to OpenAerialMap", source)
         self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
 
+    def test_hallmark_workbench_navigation_and_accessibility_shell(self):
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        ast.parse(source, filename="app.py")
+        self.assertIn('st.title("STAC Imagery Workbench")', source)
+        self.assertIn('st.tabs(["Discover & map", "Local preparation"])', source)
+        self.assertIn('st.header("Choose an imagery source")', source)
+        self.assertIn('st.header("OAM Drone Preflight")', source)
+        self.assertIn("--app-accent:", source)
+        self.assertIn(":focus-visible", source)
+        self.assertIn("overflow-x: clip", source)
+        self.assertIn("prefers-reduced-motion: reduce", source)
+        self.assertNotIn("transition: all", source)
+        self.assertIn("never automatically uploads or publishes to OpenAerialMap", source)
