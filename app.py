@@ -824,11 +824,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 st.title("STAC Imagery Workbench")
 st.markdown("Find imagery, inspect coverage, and prepare mapping or OpenAerialMap handoffs.")
 
-active_workflow = st.segmented_control(
-    "Workflow",
+active_workflow = ui.tabs(
     options=["Discover & map", "Local preparation"],
-    default="Discover & map",
-    key="active_workflow",
+    value="Discover & map",
+    label="Workflow",
+    variant="line",
+    key="active-workflow-tabs",
 )
 
 if active_workflow == "Local preparation":
