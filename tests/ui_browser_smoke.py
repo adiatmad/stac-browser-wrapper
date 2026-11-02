@@ -36,6 +36,12 @@ def wait_for_streamlit(process: subprocess.Popen, log_path: Path, timeout: int =
     )
 
 
+def wait_for_streamlit_idle(page) -> None:
+    stop_button = page.get_by_role("button", name="Stop")
+    if stop_button.count():
+        stop_button.wait_for(state="detached", timeout=60_000)
+
+
 def assert_no_horizontal_overflow(page, label: str) -> None:
     dimensions = page.evaluate(
         """() => ({
@@ -81,6 +87,7 @@ def main() -> None:
                 page.goto(BASE_URL, wait_until="domcontentloaded", timeout=60_000)
                 page.get_by_role("heading", name="STAC Imagery Workbench").wait_for()
                 page.get_by_role("heading", name="Choose an imagery source").wait_for()
+                wait_for_streamlit_idle(page)
                 page.screenshot(
                     path=str(ARTIFACTS / "workbench-discover-desktop.png"),
                     full_page=True,
@@ -101,6 +108,8 @@ def main() -> None:
                 discover_tab.focus()
                 discover_tab.press("Enter")
                 page.get_by_role("heading", name="Choose an imagery source").wait_for()
+                page.get_by_role("heading", name="OAM Drone Preflight").wait_for(state="detached")
+                wait_for_streamlit_idle(page)
 
                 page.set_viewport_size({"width": 390, "height": 844})
                 page.wait_for_timeout(300)
