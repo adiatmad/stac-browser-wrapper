@@ -36,7 +36,7 @@ jobs:
 
           installed = version("streamlit")
           assert tuple(int(part) for part in installed.split(".")[:2]) >= (1, 60), installed
-          for name in ("card", "badge", "metric_card"):
+          for name in ("card", "badge", "metric_card", "tabs"):
               assert callable(getattr(ui, name, None)), f"Missing shadcn component: {name}"
-          print(f"Streamlit {installed}; shadcn card/badge/metric_card imports passed.")
+          print(f"Streamlit {installed}; shadcn card/badge/metric_card/tabs imports passed.")
           PY
