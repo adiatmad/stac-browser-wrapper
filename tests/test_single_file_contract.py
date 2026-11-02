@@ -156,6 +156,58 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn("never automatically uploads or publishes to OpenAerialMap", source)
         self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
 
+    def test_workbench_theme_text_and_focus_tokens_meet_wcag_aa_contrast(self):
+        import re
+
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        tokens = {
+            name: value.lower()
+            for name, value in re.findall(
+                r"--app-([a-z-]+):\\s*(#[0-9a-fA-F]{6})",
+                source,
+            )
+        }
+
+        def luminance(hex_color):
+            channels = [
+                int(hex_color[index:index + 2], 16) / 255
+                for index in (1, 3, 5)
+            ]
+            linear = [
+                channel / 12.92
+                if channel <= 0.04045
+                else ((channel + 0.055) / 1.055) ** 2.4
+                for channel in channels
+            ]
+            return sum(
+                weight * channel
+                for weight, channel in zip((0.2126, 0.7152, 0.0722), linear)
+            )
+
+        def contrast(foreground, background):
+            values = sorted(
+                (luminance(foreground), luminance(background)),
+                reverse=True,
+            )
+            return (values[0] + 0.05) / (values[1] + 0.05)
+
+        required = {"canvas", "surface", "ink", "muted", "accent", "focus"}
+        self.assertTrue(required.issubset(tokens), f"Missing theme tokens: {required - tokens.keys()}")
+        pairs = (
+            ("ink", "canvas"),
+            ("muted", "canvas"),
+            ("accent", "canvas"),
+            ("focus", "canvas"),
+            ("ink", "surface"),
+            ("muted", "surface"),
+        )
+        for foreground, background in pairs:
+            with self.subTest(foreground=foreground, background=background):
+                self.assertGreaterEqual(
+                    contrast(tokens[foreground], tokens[background]),
+                    4.5,
+                )
+
     def test_hallmark_workbench_navigation_and_accessibility_shell(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         ast.parse(source, filename="app.py")
