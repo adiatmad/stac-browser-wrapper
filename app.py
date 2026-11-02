@@ -804,7 +804,6 @@ h2, h3 { color: var(--app-ink); letter-spacing: -0.012em; }
 [data-testid="stMarkdownContainer"] p { color: var(--app-ink); line-height: 1.55; }
 [data-testid="stTabs"] [role="tablist"] { gap: 0.25rem; border-bottom: 1px solid var(--app-border); }
 [data-testid="stTabs"] button[role="tab"] { min-height: 44px; padding: 0.55rem 1rem; color: var(--app-muted); }
-[data-testid="stSegmentedControl"] button { min-height: 44px; }
 [data-testid="stTabs"] button[aria-selected="true"] { color: var(--app-accent); border-bottom-color: var(--app-accent); }
 [data-testid="stVerticalBlockBorderWrapper"] { background: var(--app-surface); border-color: var(--app-border); border-radius: var(--app-radius); }
 [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea { font-size: 16px; }
