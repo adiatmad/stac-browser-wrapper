@@ -94,8 +94,7 @@ def main() -> None:
                     full_page=True,
                 )
 
-                discover_tab = page.get_by_role("tab", name="Discover & map")
-                discover_tab.focus()
+                local_tab.focus()
                 page.keyboard.press("ArrowLeft")
                 page.get_by_role("heading", name="Choose an imagery source").wait_for()
 
