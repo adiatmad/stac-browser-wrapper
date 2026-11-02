@@ -4,7 +4,8 @@
 - [x] Inspect Hallmark v2.0.0 app-screen, redesign, quality-gate, and interaction-state guidance.
 - [x] Record user outcome, scope, non-goals, and Floor/Reflex/Finish/Ledger gates in the feature specification.
 - [x] Add a tokenized, restrained Streamlit visual layer with keyboard focus, responsive spacing, and reduced-motion support.
-- [x] Introduce Discover & map / Local preparation top-level navigation without changing workflow logic or widget keys.
+- [x] Introduce Discover & map / Local preparation segmented navigation with conditional rendering, without changing workflow logic or widget keys.
+- [x] Add STAC crawl loading and empty states, plus an empty state for missing OAM-compatible items.
 - [x] Tighten UI labels and remove decorative emoji while preserving factual copy and user actions.
 - [x] Extend contract tests for navigation, styling safeguards, and preserved workflows.
 - [ ] Run the full unit suite and repository CI; investigate any failures without weakening assertions.
