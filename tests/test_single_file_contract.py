@@ -216,6 +216,13 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn('options=["Discover & map", "Local preparation"]', source)
         self.assertIn('variant="line"', source)
         self.assertIn('key="active-workflow-tabs"', source)
+        for existing_key in (
+            "preflight_path",
+            "run_gdal_check",
+            "source_mode",
+            "location_filter_map",
+        ):
+            self.assertIn(f'key="{existing_key}"', source)
         self.assertNotIn('st.segmented_control(', source)
         self.assertIn('if active_workflow == "Local preparation":', source)
         self.assertIn('elif active_workflow == "Discover & map":', source)
