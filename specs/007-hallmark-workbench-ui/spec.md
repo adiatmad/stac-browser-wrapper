@@ -22,14 +22,14 @@ The interface should feel like a focused technical workbench, not a marketing la
 - Modern-minimal, restrained, high-contrast, and data-first.
 - Keep Streamlit and the existing shadcn UI 1.x components.
 - Introduce a small tokenized visual system in the app stylesheet; do not add fonts, icons, frontend frameworks, or runtime dependencies.
-- Use a native Streamlit segmented control as the top-level navigation, and render only the selected workflow so local preparation does not trigger STAC discovery.
+- Use the existing `streamlit-shadcn-ui` Tabs V2 component as the top-level navigation, and render only the selected workflow so local preparation does not trigger STAC discovery.
 - Keep controls, maps, metrics, result details, and workflow copy close to their existing logic.
 - Remove decorative emoji from UI labels; rely on clear text and existing semantic status components.
 
 ## Acceptance criteria
 
 1. The app title and one-sentence description accurately describe STAC discovery, imagery inspection, and mapping/OAM handoffs.
-2. The page has two clear top-level destinations: Discover & map, and Local preparation. Only the selected workflow executes; opening local preparation must not trigger a STAC crawl.
+2. The page has two clear top-level destinations: Discover & map, and Local preparation, selected with the existing shadcn Tabs component. Only the selected workflow executes; opening local preparation must not trigger a STAC crawl.
 3. All existing workflows remain available: STAC URL resolution/crawl, public S3 listing, archive inspection, spatial filtering, Folium drawing, PRE/POST/all scene views, Tasking Manager/iD and JOSM TMS handoffs, OAM duplicate checks, explicit OAM prefill links, and CSV audit export.
 4. Local DroneTM processing remains a separate local tool. The hosted app does not access local files, upload raster bytes, or automatically publish to OAM.
 5. Existing widget keys, form fields, callback behavior, session-state contracts, external URLs, and workflow logic are preserved.
