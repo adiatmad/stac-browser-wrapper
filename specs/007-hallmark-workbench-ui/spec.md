@@ -26,7 +26,7 @@ The interface should feel like a focused technical workbench, not a marketing la
 - Keep controls, maps, metrics, result details, and workflow copy close to their existing logic.
 - Remove decorative emoji from UI labels; rely on clear text and existing semantic status components.
 
-## Acceptance criteria
+## UI library selection\n\n- Selected: [`ObservedObserver/streamlit-shadcn-ui`](https://github.com/ObservedObserver/streamlit-shadcn-ui), version 1.4.0. It is already a declared MIT-licensed dependency, uses Streamlit Components V2, and the application baseline satisfies its Streamlit 1.60 requirement. Reuse it rather than adding a second UI framework. The top-level workflow selector now uses its Tabs V2 API; cards, badges, and metric cards remain in use.\n- Rejected: [`bistighosh16/neonui`](https://github.com/bistighosh16/neonui) 0.1.0. Its global selectors style generic `div`, `span`, and text elements, it uses `transition: all`, and its bundled themes impose neon/dark aesthetics. That conflicts with the existing shadcn component surface, the workbench's restrained data-first design, and the accessibility floor.\n- Rejected: [`microsoft/Streamlit_UI_Template`](https://github.com/microsoft/Streamlit_UI_Template), archived September 2026. It is a CSS template repository, not a maintained component system.\n\n## Acceptance criteria
 
 1. The app title and one-sentence description accurately describe STAC discovery, imagery inspection, and mapping/OAM handoffs.
 2. The page has two clear top-level destinations: Discover & map, and Local preparation, selected with the existing shadcn Tabs component. Only the selected workflow executes; opening local preparation must not trigger a STAC crawl.
@@ -35,7 +35,7 @@ The interface should feel like a focused technical workbench, not a marketing la
 5. Existing widget keys, form fields, callback behavior, session-state contracts, external URLs, and workflow logic are preserved.
 6. Existing shadcn card, badge, and metric-card integrations remain intact. No new runtime dependency or project-specific Python module is introduced.
 7. UI styling uses declared tokens for colors and fonts, includes visible keyboard focus, supports reduced motion, and prevents horizontal overflow.
-8. Controls and navigation remain usable at narrow viewport widths, including the top-level segmented control.
+8. Controls and navigation remain usable at narrow viewport widths, including the top-level shadcn Tabs control.
 9. Contract tests verify the app parses, the new navigation and tokenized styling exist, and the local-only/no-automatic-publication safeguards remain.
 10. CI unit tests pass. Browser rendering, keyboard navigation, and desktop/mobile visual inspection are recorded separately and are not inferred from unit-test success.
 
