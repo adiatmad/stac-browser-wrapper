@@ -776,527 +776,575 @@ def run_crawl(real_url: str):
     return all_links, tiff_links, oam_items
 
 # ---------- Streamlit Main Application UI ----------
-st.set_page_config(page_title="Humanitarian Imagery Wizard", layout="wide", initial_sidebar_state="collapsed")
-st.title("🌍 Humanitarian Imagery Wizard")
-st.markdown("Transform raw satellite data into ready-to-use maps for disaster response.")
+st.set_page_config(page_title="STAC Imagery Workbench", layout="wide", initial_sidebar_state="collapsed")
 
-# ---------- Local DroneTM Progress Mosaic ----------
-ui.card(
-    title="DroneTM progress mosaic",
-    description="Run locally on your computer",
-    content=(
-        "Large orthophoto downloads and mosaic/COG processing run on your computer, "
-        "not on this hosted Streamlit app. Your task cache and raster files stay under your control."
-    ),
-    footer=(
-        "This app cannot access local files and never automatically uploads or publishes to OpenAerialMap."
-    ),
-    key="drone-mosaic-workflow",
-)
-st.link_button(
-    "Open DroneTM Progress Mosaic on GitHub",
-    "https://github.com/adiatmad/dronetm-progress-mosaic",
-    help="Download or update the local-first tool. This hosted app does not access your local files or DroneTM token.",
-)
-with st.expander("Which local workflow should I use?"):
-    st.markdown(
-        "- **Download task orthophotos and build a mosaic:** use the local DroneTM app, paste your project link, "
-        "load/review tasks, download selected orthophotos, then build the mosaic.\n"
-        "- **Rebuild mosaic.vrt and mosaic.tif as a COG from files already downloaded:** use "
-        "rebuild_cog.bat on Windows with OSGeo4W/QGIS installed.\n"
-        "- **Keep your data safe:** the local tool preserves task_*.tif source orthophotos and does not "
-        "automatically upload or publish anything to OpenAerialMap. Review the output before any separate upload."
-    )
-st.caption(
-    "The hosted app cannot read your Windows folders or run OSGeo4W. Local downloads, cache, and mosaic outputs "
-    "remain in the separate DroneTM tool."
-)
-
-# ---------- Local OAM Drone Preflight ----------
-st.header("🛩️ OAM Drone Preflight")
-st.caption("A guided local workflow: select an imagery path → run one GDAL command → paste the report → get the final local preparation command.")
-
-with st.container(border=True):
-    st.markdown("### 1 · Find the imagery file")
-    st.markdown(
-        "Open the folder in Windows File Explorer, hold **Shift**, right-click the image, "
-        "then choose **Copy as path**."
-    )
-    preflight_path = st.text_input(
-        "Local imagery path",
-        placeholder=r'"C:\drone\orthomosaic.ecw"',
-        key="preflight_path",
-        help="Paste the path copied from File Explorer. The app uses it only to build a command; it does not open or upload the image.",
-    )
-    preflight_local_path = preflight_path.strip().strip('"')
-    run_gdal = st.button("Generate GDAL check command", type="primary", disabled=not preflight_local_path, key="run_gdal_check")
-    if run_gdal:
-        st.session_state["preflight_gdal_command"] = f'gdalinfo "{preflight_local_path}"'
-
-if st.session_state.get("preflight_gdal_command"):
-    st.markdown("### 2 · Run the GDAL check")
-    st.caption("Copy this command into PowerShell on the computer that has the imagery.")
-    st.code(st.session_state["preflight_gdal_command"], language="powershell")
-    st.markdown("After it finishes, copy the **complete output** and paste it below.")
-    preflight_text = st.text_area(
-        "GDAL result",
-        height=220,
-        placeholder="Paste the complete gdalinfo output here…",
-        key="preflight_text",
-    )
-else:
-    preflight_text = ""
-
-if preflight_text.strip():
-    try:
-        raw = preflight_text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw
-            if raw.endswith("```"):
-                raw = raw[:-3].strip()
-        if raw.lstrip().startswith("{"):
-            info = json.loads(raw)
-            evidence_format = "gdalinfo -json"
-        else:
-            info = parse_gdalinfo_text(raw)
-            evidence_format = "gdalinfo"
-
-        result = validate_info(info)
-        hard_fails = [c for c in result["checks"] if c["status"] == "FAIL"]
-        warnings = [c for c in result["checks"] if c["status"] == "WARN"]
-
-        st.markdown("### 3 · OAM check")
-        if hard_fails:
-            st.error("❌ **Not ready** — a required check failed. Fix the item marked ❌ before upload.")
-        elif warnings:
-            st.warning("⚠️ **Review before upload** — no hard OAM requirement failed, but some details need verification.")
-        else:
-            st.success("✅ **Ready based on this report** — no OAM preflight checks failed.")
-        st.caption(f"Parsed from {evidence_format}. The raster itself was not uploaded.")
-
-        for check_index, check in enumerate(result["checks"]):
-            badge_variant = {"PASS": "default", "WARN": "secondary", "FAIL": "destructive"}[check["status"]]
-            ui.badge(
-                check["status"],
-                variant=badge_variant,
-                key=f"preflight-status-{check_index}",
-            )
-            st.markdown(f"**{check['name']}**  \n{check['detail']}")
-
-        source_epsg = None
-        if not result["summary"]["crsPresent"]:
-            st.markdown("**CRS needed**")
-            epsg_text = st.text_input("Source EPSG", placeholder="Example: 32751", key="preflight_epsg", help="Enter the CRS actually used by your workflow. Do not guess.")
-            if epsg_text.strip():
-                try:
-                    source_epsg = int(epsg_text.strip())
-                except ValueError:
-                    st.error("Source EPSG must be an integer, e.g. 32751.")
-
-        needs_conversion = result["summary"]["driver"].upper() != "GTIFF"
-        if needs_conversion and not hard_fails and (result["summary"]["crsPresent"] or source_epsg is not None):
-            rec = build_oam_recommendation(info, preflight_local_path, source_epsg=source_epsg)
-            if rec["ready"]:
-                st.markdown("### 4 · Final local preparation command")
-                st.caption("Copy this one combined PowerShell command. It creates a new file and then runs gdalinfo on that output for verification. The original is not overwritten.")
-                output = rec["output"]
-                quoted_output = "'" + output.replace("'", "''") + "'"
-                combined = (
-                    f"$out={quoted_output}; "
-                    "if (Test-Path -LiteralPath $out) { "
-                    "throw 'Output already exists; choose a different output path.' }; "
-                    f'{rec["command"]}; if ($LASTEXITCODE -eq 0) {{ gdalinfo "$out" }}'
-                )
-                st.code(combined, language="powershell")
-                st.caption("Paste the resulting gdalinfo output back into the GDAL result box above to verify the converted file.")
-        elif not needs_conversion:
-            st.info("This report is already for GeoTIFF. No conversion command is needed; review the OAM checks above and upload the source if they are satisfied.")
-    except json.JSONDecodeError as exc:
-        st.error(f"Could not parse the GDAL output: {exc}")
-    except Exception as exc:
-        st.error(f"Preflight could not be processed: {exc}")
-st.header("Remote source import")
-source_mode = st.radio(
-    "Source type",
-    ["STAC catalog / item", "Public S3 bucket folder"],
-    horizontal=True,
-    key="source_mode",
+st.markdown(
+    """<style>
+/* Hallmark · app screen · modern-minimal · full redesign · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H5 E5 S5 R5 V4 · weakest: P, keep the workbench task-led rather than adding a marketing hero */
+:root {
+    --app-canvas: #f2f6f7;
+    --app-surface: #f9fbfb;
+    --app-ink: #20343a;
+    --app-muted: #5a6e73;
+    --app-border: #d7e2e3;
+    --app-accent: #176b72;
+    --app-accent-soft: #e2f0ef;
+    --app-focus: #0c7881;
+    --app-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --app-radius: 12px;
+}
+html, body { overflow-x: clip; }
+body, [data-testid="stAppViewContainer"] { font-family: var(--app-font); color: var(--app-ink); }
+[data-testid="stAppViewContainer"] { background: var(--app-canvas); }
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stMainBlockContainer"] { max-width: 1480px; padding-top: 1.75rem; padding-bottom: 3rem; }
+h1 { color: var(--app-ink); font-size: 1.8rem; letter-spacing: -0.025em; }
+h2, h3 { color: var(--app-ink); letter-spacing: -0.012em; }
+[data-testid="stMarkdownContainer"] p { color: var(--app-ink); line-height: 1.55; }
+[data-testid="stTabs"] [role="tablist"] { gap: 0.25rem; border-bottom: 1px solid var(--app-border); }
+[data-testid="stTabs"] button[role="tab"] { min-height: 44px; padding: 0.55rem 1rem; color: var(--app-muted); }
+[data-testid="stTabs"] button[aria-selected="true"] { color: var(--app-accent); border-bottom-color: var(--app-accent); }
+[data-testid="stVerticalBlockBorderWrapper"] { border-color: var(--app-border); border-radius: var(--app-radius); }
+[data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea { font-size: 16px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [role="tab"]:focus-visible { outline: 2px solid var(--app-focus); outline-offset: 2px; }
+::selection { background: var(--app-accent-soft); color: var(--app-ink); }
+@media (max-width: 768px) {
+    [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
+    [data-testid="stTabs"] [role="tablist"] { overflow-x: auto; flex-wrap: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+</style>""",
+    unsafe_allow_html=True,
 )
 
-if source_mode == "Public S3 bucket folder":
-    st.caption("For public S3 Open Data buckets. The bucket-browser #prefix is read in your browser; imagery is never downloaded by this app.")
-    s3_browser_url = st.text_input(
-        "S3 bucket-browser URL",
-        value="http://st-vvhr-opendata.s3-website.us-west-2.amazonaws.com/#prefix=disasters%2FFlood%20in%20Nepal%20(Disasters%20Charter%20Activation%201052)%2C%202026%2F",
-        key="s3_browser_url",
-    )
-    exclude_masks = st.checkbox("Exclude MASKS/LINEAGE folders", value=True, key="exclude_s3_artifacts")
+st.title("STAC Imagery Workbench")
+st.markdown("Find imagery, inspect coverage, and prepare mapping or OpenAerialMap handoffs.")
 
-    bucket, region, prefix = parse_s3_browser_url(s3_browser_url)
-    if not bucket:
-        st.error("Use an AWS S3 website browser URL with a #prefix= fragment.")
-    elif st.button("List public imagery objects", type="primary"):
+tab_discover, tab_local = st.tabs(["Discover & map", "Local preparation"])
+
+with tab_local:
+    # ---------- Local DroneTM Progress Mosaic ----------
+    ui.card(
+        title="DroneTM progress mosaic",
+        description="Run locally on your computer",
+        content=(
+            "Large orthophoto downloads and mosaic/COG processing run on your computer, "
+            "not on this hosted Streamlit app. Your task cache and raster files stay under your control."
+        ),
+        footer=(
+            "This app cannot access local files and never automatically uploads or publishes to OpenAerialMap."
+        ),
+        key="drone-mosaic-workflow",
+    )
+    st.link_button(
+        "Open DroneTM Progress Mosaic on GitHub",
+        "https://github.com/adiatmad/dronetm-progress-mosaic",
+        help="Download or update the local-first tool. This hosted app does not access your local files or DroneTM token.",
+    )
+    with st.expander("Which local workflow should I use?"):
+        st.markdown(
+            "- **Download task orthophotos and build a mosaic:** use the local DroneTM app, paste your project link, "
+            "load/review tasks, download selected orthophotos, then build the mosaic.\n"
+            "- **Rebuild mosaic.vrt and mosaic.tif as a COG from files already downloaded:** use "
+            "rebuild_cog.bat on Windows with OSGeo4W/QGIS installed.\n"
+            "- **Keep your data safe:** the local tool preserves task_*.tif source orthophotos and does not "
+            "automatically upload or publish anything to OpenAerialMap. Review the output before any separate upload."
+        )
+    st.caption(
+        "The hosted app cannot read your Windows folders or run OSGeo4W. Local downloads, cache, and mosaic outputs "
+        "remain in the separate DroneTM tool."
+    )
+
+    # ---------- Local OAM Drone Preflight ----------
+    st.header("OAM Drone Preflight")
+    st.caption("A guided local workflow: select an imagery path → run one GDAL command → paste the report → get the final local preparation command.")
+
+    with st.container(border=True):
+        st.markdown("### 1 · Find the imagery file")
+        st.markdown(
+            "Open the folder in Windows File Explorer, hold **Shift**, right-click the image, "
+            "then choose **Copy as path**."
+        )
+        preflight_path = st.text_input(
+            "Local imagery path",
+            placeholder=r'"C:\drone\orthomosaic.ecw"',
+            key="preflight_path",
+            help="Paste the path copied from File Explorer. The app uses it only to build a command; it does not open or upload the image.",
+        )
+        preflight_local_path = preflight_path.strip().strip('"')
+        run_gdal = st.button("Generate GDAL check command", type="primary", disabled=not preflight_local_path, key="run_gdal_check")
+        if run_gdal:
+            st.session_state["preflight_gdal_command"] = f'gdalinfo "{preflight_local_path}"'
+
+    if st.session_state.get("preflight_gdal_command"):
+        st.markdown("### 2 · Run the GDAL check")
+        st.caption("Copy this command into PowerShell on the computer that has the imagery.")
+        st.code(st.session_state["preflight_gdal_command"], language="powershell")
+        st.markdown("After it finishes, copy the **complete output** and paste it below.")
+        preflight_text = st.text_area(
+            "GDAL result",
+            height=220,
+            placeholder="Paste the complete gdalinfo output here…",
+            key="preflight_text",
+        )
+    else:
+        preflight_text = ""
+
+    if preflight_text.strip():
         try:
-            with st.spinner(f"Listing s3://{bucket}/{prefix} ..."):
-                objects = list_public_s3_objects(bucket, region, prefix)
-            source_kind = classify_s3_source_objects(objects, exclude_masks_lineage=exclude_masks)
-            tiffs = filter_tiff_objects(objects, exclude_masks_lineage=exclude_masks)
-            st.session_state["remote_s3_results"] = {
-                "bucket": bucket, "region": region, "prefix": prefix, "objects": tiffs,
-                "all_objects": objects, "source_kind": source_kind,
-                "browser_url": s3_browser_url,
-            }
+            raw = preflight_text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1] if "\n" in raw else raw
+                if raw.endswith("```"):
+                    raw = raw[:-3].strip()
+            if raw.lstrip().startswith("{"):
+                info = json.loads(raw)
+                evidence_format = "gdalinfo -json"
+            else:
+                info = parse_gdalinfo_text(raw)
+                evidence_format = "gdalinfo"
+
+            result = validate_info(info)
+            hard_fails = [c for c in result["checks"] if c["status"] == "FAIL"]
+            warnings = [c for c in result["checks"] if c["status"] == "WARN"]
+
+            st.markdown("### 3 · OAM check")
+            if hard_fails:
+                st.error("**Not ready** — a required check failed. Fix the item marked FAIL before upload.")
+            elif warnings:
+                st.warning(" **Review before upload** — no hard OAM requirement failed, but some details need verification.")
+            else:
+                st.success(" **Ready based on this report** — no OAM preflight checks failed.")
+            st.caption(f"Parsed from {evidence_format}. The raster itself was not uploaded.")
+
+            for check_index, check in enumerate(result["checks"]):
+                badge_variant = {"PASS": "default", "WARN": "secondary", "FAIL": "destructive"}[check["status"]]
+                ui.badge(
+                    check["status"],
+                    variant=badge_variant,
+                    key=f"preflight-status-{check_index}",
+                )
+                st.markdown(f"**{check['name']}**  \n{check['detail']}")
+
+            source_epsg = None
+            if not result["summary"]["crsPresent"]:
+                st.markdown("**CRS needed**")
+                epsg_text = st.text_input("Source EPSG", placeholder="Example: 32751", key="preflight_epsg", help="Enter the CRS actually used by your workflow. Do not guess.")
+                if epsg_text.strip():
+                    try:
+                        source_epsg = int(epsg_text.strip())
+                    except ValueError:
+                        st.error("Source EPSG must be an integer, e.g. 32751.")
+
+            needs_conversion = result["summary"]["driver"].upper() != "GTIFF"
+            if needs_conversion and not hard_fails and (result["summary"]["crsPresent"] or source_epsg is not None):
+                rec = build_oam_recommendation(info, preflight_local_path, source_epsg=source_epsg)
+                if rec["ready"]:
+                    st.markdown("### 4 · Final local preparation command")
+                    st.caption("Copy this one combined PowerShell command. It creates a new file and then runs gdalinfo on that output for verification. The original is not overwritten.")
+                    output = rec["output"]
+                    quoted_output = "'" + output.replace("'", "''") + "'"
+                    combined = (
+                        f"$out={quoted_output}; "
+                        "if (Test-Path -LiteralPath $out) { "
+                        "throw 'Output already exists; choose a different output path.' }; "
+                        f'{rec["command"]}; if ($LASTEXITCODE -eq 0) {{ gdalinfo "$out" }}'
+                    )
+                    st.code(combined, language="powershell")
+                    st.caption("Paste the resulting gdalinfo output back into the GDAL result box above to verify the converted file.")
+            elif not needs_conversion:
+                st.info("This report is already for GeoTIFF. No conversion command is needed; review the OAM checks above and upload the source if they are satisfied.")
+        except json.JSONDecodeError as exc:
+            st.error(f"Could not parse the GDAL output: {exc}")
         except Exception as exc:
-            st.error(f"Could not list the public S3 prefix: {exc}")
+            st.error(f"Preflight could not be processed: {exc}")
 
-    s3_results = st.session_state.get("remote_s3_results")
-    if s3_results and s3_results.get("objects"):
-        st.success(f"Found {len(s3_results['objects'])} GeoTIFF object(s).")
-        st.caption("Source facts are limited to the public S3 object listing. Last modified is shown for reference only and is not treated as acquisition time.")
-        for idx, obj in enumerate(s3_results["objects"], 1):
-            key = obj["key"]
-            object_url = public_s3_object_url(s3_results["bucket"], s3_results["region"], key)
-            with st.expander(f"{idx}. {key.rsplit('/', 1)[-1]} — {format_bytes(obj.get('size_bytes'))}"):
-                st.code(object_url, language=None)
-                st.caption(f"S3 last modified: {obj.get('last_modified') or 'not reported'}")
-                st.markdown(f"Provider: **{SPACE_EYE_PROVIDER}** · Platform: **{SPACE_EYE_PLATFORM}** · Sensor: **{SPACE_EYE_SENSOR}** · License: **{SPACE_EYE_LICENSE}**")
-                prefill = spaceeye_oam_prefill(
-                    key=key, object_url=object_url, source_browser_url=s3_results["browser_url"]
-                )
-                st.link_button("Prepare OAM v2 upload", prefill)
-                st.caption("The handoff uses OAM's documented source_url flow. OAM requires a valid acquisition date before submission; this app leaves it blank unless source evidence provides one. S3 LastModified is not treated as capture time.")
-    elif s3_results is not None:
-        if s3_results.get("source_kind") == "ARCHIVE_ONLY":
-            archive_names = [
-                obj["key"].rsplit("/", 1)[-1]
-                for obj in s3_results.get("all_objects", [])
-                if str(obj.get("key", "")).lower().endswith(".zip")
-            ]
-            st.warning(
-                "This public prefix exposes an imagery archive, not a direct TIFF object. "
-                "The archive may contain GeoTIFF imagery, but the S3 object listing cannot see inside it. "
-                "OAM v2 accepts direct public TIFF URLs and a narrow ODM `all.zip` special case; it does not "
-                "accept arbitrary commercial imagery ZIP archives."
-            )
-            if archive_names:
-                st.caption("Detected archive(s): " + ", ".join(archive_names[:5]))
-                archive_key = next(
-                    obj["key"] for obj in s3_results.get("all_objects", [])
+with tab_discover:
+    st.header("Choose an imagery source")
+    source_mode = st.radio(
+        "Source type",
+        ["STAC catalog / item", "Public S3 bucket folder"],
+        horizontal=True,
+        key="source_mode",
+    )
+
+    if source_mode == "Public S3 bucket folder":
+        st.caption("For public S3 Open Data buckets. The bucket-browser #prefix is read in your browser; imagery is never downloaded by this app.")
+        s3_browser_url = st.text_input(
+            "S3 bucket-browser URL",
+            value="http://st-vvhr-opendata.s3-website.us-west-2.amazonaws.com/#prefix=disasters%2FFlood%20in%20Nepal%20(Disasters%20Charter%20Activation%201052)%2C%202026%2F",
+            key="s3_browser_url",
+        )
+        exclude_masks = st.checkbox("Exclude MASKS/LINEAGE folders", value=True, key="exclude_s3_artifacts")
+
+        bucket, region, prefix = parse_s3_browser_url(s3_browser_url)
+        if not bucket:
+            st.error("Use an AWS S3 website browser URL with a #prefix= fragment.")
+        elif st.button("List public imagery objects", type="primary"):
+            try:
+                with st.spinner(f"Listing s3://{bucket}/{prefix} ..."):
+                    objects = list_public_s3_objects(bucket, region, prefix)
+                source_kind = classify_s3_source_objects(objects, exclude_masks_lineage=exclude_masks)
+                tiffs = filter_tiff_objects(objects, exclude_masks_lineage=exclude_masks)
+                st.session_state["remote_s3_results"] = {
+                    "bucket": bucket, "region": region, "prefix": prefix, "objects": tiffs,
+                    "all_objects": objects, "source_kind": source_kind,
+                    "browser_url": s3_browser_url,
+                }
+            except Exception as exc:
+                st.error(f"Could not list the public S3 prefix: {exc}")
+
+        s3_results = st.session_state.get("remote_s3_results")
+        if s3_results and s3_results.get("objects"):
+            st.success(f"Found {len(s3_results['objects'])} GeoTIFF object(s).")
+            st.caption("Source facts are limited to the public S3 object listing. Last modified is shown for reference only and is not treated as acquisition time.")
+            for idx, obj in enumerate(s3_results["objects"], 1):
+                key = obj["key"]
+                object_url = public_s3_object_url(s3_results["bucket"], s3_results["region"], key)
+                with st.expander(f"{idx}. {key.rsplit('/', 1)[-1]} — {format_bytes(obj.get('size_bytes'))}"):
+                    st.code(object_url, language=None)
+                    st.caption(f"S3 last modified: {obj.get('last_modified') or 'not reported'}")
+                    st.markdown(f"**Provider:** {SPACE_EYE_PROVIDER}\\n\\n**Platform:** {SPACE_EYE_PLATFORM}\\n\\n**Sensor:** {SPACE_EYE_SENSOR}\\n\\n**License:** {SPACE_EYE_LICENSE}")
+                    prefill = spaceeye_oam_prefill(
+                        key=key, object_url=object_url, source_browser_url=s3_results["browser_url"]
+                    )
+                    st.link_button("Prepare OAM v2 upload", prefill)
+                    st.caption("The handoff uses OAM's documented source_url flow. OAM requires a valid acquisition date before submission; this app leaves it blank unless source evidence provides one. S3 LastModified is not treated as capture time.")
+        elif s3_results is not None:
+            if s3_results.get("source_kind") == "ARCHIVE_ONLY":
+                archive_names = [
+                    obj["key"].rsplit("/", 1)[-1]
+                    for obj in s3_results.get("all_objects", [])
                     if str(obj.get("key", "")).lower().endswith(".zip")
+                ]
+                st.warning(
+                    "This public prefix exposes an imagery archive, not a direct TIFF object. "
+                    "The archive may contain GeoTIFF imagery, but the S3 object listing cannot see inside it. "
+                    "OAM v2 accepts direct public TIFF URLs and a narrow ODM `all.zip` special case; it does not "
+                    "accept arbitrary commercial imagery ZIP archives."
                 )
-                archive_url = public_s3_object_url(
-                    s3_results["bucket"], s3_results["region"], archive_key
-                )
-                st.markdown("**Remote GDAL access (no full ZIP download)**")
-                st.caption(
-                    "GDAL can stream a member from this public ZIP through `/vsicurl/` + `/vsizip/`. "
-                    "The app does not extract or upload the archive."
-                )
-                st.code(build_remote_vsizip_path(archive_url), language="text")
-                verified_member = spaceeye_verified_archive_member(archive_key)
-                proxy_base_url = os.getenv("OAM_ARCHIVE_PROXY_BASE_URL", "").strip()
-                if verified_member:
-                    st.markdown("**Verified archive member**")
-                    st.code(build_remote_vsizip_path(archive_url, verified_member), language="text")
-                    st.caption(
-                        "This exact member was verified with GDAL as a GeoTIFF (29,560 × 36,720, "
-                        "WGS 84 / EPSG:4326). Its TIFF acquisition timestamp is "
-                        f"`{SPACE_EYE_VERIFIED_TIFF_DATETIME}`; the source output does not state a timezone, "
-                        "so the app does not pass this timestamp to OAM."
+                if archive_names:
+                    st.caption("Detected archive(s): " + ", ".join(archive_names[:5]))
+                    archive_key = next(
+                        obj["key"] for obj in s3_results.get("all_objects", [])
+                        if str(obj.get("key", "")).lower().endswith(".zip")
                     )
-                    if proxy_base_url:
-                        proxy_url = build_archive_proxy_url(proxy_base_url, archive_url, verified_member)
-                        st.markdown("**OAM-ready HTTPS TIFF URL**")
-                        st.code(proxy_url, language="text")
+                    archive_url = public_s3_object_url(
+                        s3_results["bucket"], s3_results["region"], archive_key
+                    )
+                    st.markdown("**Remote GDAL access (no full ZIP download)**")
+                    st.caption(
+                        "GDAL can stream a member from this public ZIP through `/vsicurl/` + `/vsizip/`. "
+                        "The app does not extract or upload the archive."
+                    )
+                    st.code(build_remote_vsizip_path(archive_url), language="text")
+                    verified_member = spaceeye_verified_archive_member(archive_key)
+                    proxy_base_url = os.getenv("OAM_ARCHIVE_PROXY_BASE_URL", "").strip()
+                    if verified_member:
+                        st.markdown("**Verified archive member**")
+                        st.code(build_remote_vsizip_path(archive_url, verified_member), language="text")
                         st.caption(
-                            "This URL is OAM-ready only when the configured archive proxy is publicly "
-                            "reachable by OAM. The proxy streams the selected TIFF member from S3 using "
-                            "HTTP Range requests; it does not expose the GDAL virtual path."
+                            "This exact member was verified with GDAL as a GeoTIFF (29,560 × 36,720, "
+                            "WGS 84 / EPSG:4326). Its TIFF acquisition timestamp is "
+                            f"`{SPACE_EYE_VERIFIED_TIFF_DATETIME}`; the source output does not state a timezone, "
+                            "so the app does not pass this timestamp to OAM."
                         )
-                        prefill = build_oam_prefill_url(
-                            title="SpaceEye-T " + archive_key.rsplit("/", 1)[-1],
-                            source_url=proxy_url,
-                            provider=SPACE_EYE_PROVIDER,
-                            platform=SPACE_EYE_PLATFORM,
-                            sensor=SPACE_EYE_SENSOR,
-                            license=SPACE_EYE_LICENSE,
-                            external_id=f"spaceeye-t:{archive_key}:{verified_member}",
-                            external_url=s3_results["browser_url"],
-                        )
-                        st.link_button("Prepare OAM v2 upload", prefill)
-                    else:
-                        st.info(
-                            "Archive proxy not configured. Set OAM_ARCHIVE_PROXY_BASE_URL to the public "
-                            "HTTPS base URL of the standalone archive proxy to enable the direct TIFF URL "
-                            "and OAM handoff. No fake .TIF URL is generated."
-                        )
-                else:
-                    st.caption(
-                        "Append the exact path inside the ZIP after the final `/` once you inspect the archive. "
-                        "This is a local GDAL/QGIS access path, not an OAM `source_url`."
-                    )
-            st.info(
-                "The ZIP itself is not an OAM source_url. When an archive proxy is configured, the app can "
-                "hand OAM a real HTTPS URL that serves the verified TIFF member. Without that deployment, "
-                "no misleading OAM handoff is generated. The app never bulk-downloads the archive."
-            )
-        else:
-            st.info("No GeoTIFFs matched this prefix and filter.")
-
-st.header("Step 1: Fetch Event Imagery")
-st.info("💡 Paste the URL of the data catalog you found. We will automatically find all the usable map images inside it.")
-
-root_url_input = st.text_input("Data Catalog URL:", value=DEFAULT_SAMPLE_URL, disabled=source_mode != "STAC catalog / item")
-
-if source_mode == "STAC catalog / item" and root_url_input:
-    real_url = extract_real_stac_url(root_url_input)
-    event_prefix = extract_event_name_from_url(real_url)
-
-    if real_url != st.session_state["last_processed_url"]:
-        st.session_state["oam_duplicates"] = {}
-        st.session_state["location_filter_bbox"] = None
-        st.session_state["pending_drawing"] = None
-        st.session_state["last_processed_url"] = real_url
-
-    all_links, tiff_links, oam_items = run_crawl(real_url)
-
-    if all_links:
-        st.divider()
-        st.header("Step 2: Isolate Target Area (Optional)")
-        
-        group_by_location = st.toggle("📍 Draw a box on the map to filter images")
-        
-        if group_by_location:
-            st.info("🗺️ **Pro Tip:** Disaster imagery often covers huge regions. Draw a box over your specific activation area so you don't overwhelm the mapping software with unnecessary map data.")
-            items_with_bbox = [m for m in oam_items if parse_bbox_2d(m.get("bbox"))]
-            if items_with_bbox:
-                parsed_bboxes = [parse_bbox_2d(m["bbox"]) for m in items_with_bbox]
-                all_lons = [b[0] for b in parsed_bboxes] + [b[2] for b in parsed_bboxes]
-                all_lats = [b[1] for b in parsed_bboxes] + [b[3] for b in parsed_bboxes]
-                center_lat = sum(all_lats) / len(all_lats)
-                center_lon = sum(all_lons) / len(all_lons)
-
-                fmap = folium.Map(location=[center_lat, center_lon], zoom_start=6)
-                for m in items_with_bbox:
-                    b = parse_bbox_2d(m["bbox"])
-                    folium.Rectangle(
-                        bounds=[[b[1], b[0]], [b[3], b[2]]],
-                        color="blue", weight=1, fill=True, fill_opacity=0.1,
-                        tooltip=m["title"],
-                    ).add_to(fmap)
-
-                Draw(
-                    export=False,
-                    draw_options={"rectangle": True, "polygon": False, "circle": False, "marker": False},
-                    edit_options={"edit": False},
-                ).add_to(fmap)
-
-                map_data = st_folium(fmap, height=380, width=700, key="location_filter_map")
-                
-                if map_data and map_data.get("last_active_drawing"):
-                    st.session_state["pending_drawing"] = map_data["last_active_drawing"]
-
-                col_apply, col_clear = st.columns([1, 1])
-                with col_apply:
-                    if st.button("Apply filter"):
-                        drawn = st.session_state.get("pending_drawing")
-                        if drawn and drawn.get("geometry", {}).get("type") == "Polygon":
-                            coords = drawn["geometry"]["coordinates"][0]
-                            lons = [c[0] for c in coords]
-                            lats = [c[1] for c in coords]
-                            st.session_state["location_filter_bbox"] = (min(lons), min(lats), max(lons), max(lats))
-                with col_clear:
-                    if st.button("Clear filter"):
-                        st.session_state["location_filter_bbox"] = None
-                        st.session_state["pending_drawing"] = None
-
-        active_filter = st.session_state["location_filter_bbox"] if group_by_location else None
-        if active_filter:
-            filtered_item_urls = {
-                m["item_url"] for m in oam_items if bbox_intersects(m.get("bbox"), active_filter)
-            }
-            display_tiff_links = [e for e in tiff_links if e["item_url"] in filtered_item_urls]
-            display_oam_items = [m for m in oam_items if m["item_url"] in filtered_item_urls]
-        else:
-            display_tiff_links = tiff_links
-            display_oam_items = oam_items
-
-        # Dashboard Metrics
-        pre_items = [e for e in display_tiff_links if get_item_phase(e) == "PRE"]
-        post_items = [e for e in display_tiff_links if get_item_phase(e) == "POST"]
-        all_items = [e for e in display_tiff_links]
-        
-        st.subheader("📊 Imagery Found")
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            ui.metric_card(
-                "Total usable images",
-                len(display_tiff_links),
-                description="GeoTIFF scenes available for the selected area",
-                variant="dashboard",
-                key="metric-total-usable-images",
-            )
-        with m2:
-            ui.metric_card(
-                "PRE-event",
-                len(pre_items),
-                description="Before-disaster baseline scenes",
-                variant="dashboard",
-                key="metric-pre-event",
-            )
-        with m3:
-            ui.metric_card(
-                "POST-event",
-                len(post_items),
-                description="After-disaster scenes",
-                variant="dashboard",
-                key="metric-post-event",
-            )
-
-        st.divider()
-        st.header("Step 3: Choose Your Goal")
-
-        tab_tm, tab_oam, tab_adv = st.tabs([
-            "🎯 Goal A: Setup a Mapping Project", 
-            "🌍 Goal B: Publish to OAM v2", 
-            "⚙️ Advanced Data"
-        ])
-
-        with tab_tm:
-            st.info("🗺️ **What is this?** These links allow mapping software (like the HOT Tasking Manager, iD Editor, or JOSM) to instantly stream the satellite imagery in the background so volunteers can trace buildings and roads.")
-            
-            mosaic_tab_pre, mosaic_tab_post, mosaic_tab_all = st.tabs([
-                f"PRE-Event Baseline ({len(pre_items)} scenes)", 
-                f"POST-Event Damage ({len(post_items)} scenes)", 
-                f"ALL Scenes ({len(all_items)} scenes)"
-            ])
-
-            def render_instant_tms_workflow(items: list[dict], category_name: str):
-                if not items:
-                    st.info(f"No {category_name} images found in this selection.")
-                    return
-                
-                ids = [item["provider_item_id"] for item in items if item.get("provider_item_id")]
-                if not ids:
-                    st.warning("Could not extract STAC Item IDs for the selected scenes.")
-                    return
-                    
-                ids_str = ",".join(ids)
-
-                tm_url = f"https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
-                st.markdown("**1. For Tasking Manager & iD Editor:**")
-                st.caption("Copy this URL and paste it directly into the 'Custom Imagery' field.")
-                st.code(tm_url, language="text")
-
-                josm_url = f"tms:https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{zoom}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
-                st.markdown("**2. For JOSM Desktop Software:**")
-                st.caption("Go to Imagery > Imagery Preferences > + TMS, and paste this URL.")
-                st.code(josm_url, language="text")
-                
-                with st.expander("🛠️ Advanced: View the exact Image IDs in this layer"):
-                    st.markdown("The images will render in this exact order (top ID renders in front).")
-                    for idx, img_id in enumerate(ids, 1):
-                        st.markdown(f"`{idx}. {img_id}`")
-
-            with mosaic_tab_pre:
-                render_instant_tms_workflow(pre_items, "PRE")
-            with mosaic_tab_post:
-                render_instant_tms_workflow(post_items, "POST")
-            with mosaic_tab_all:
-                render_instant_tms_workflow(all_items, "ALL")
-
-        with tab_oam:
-            st.info("🛑 **Why check for duplicates?** Uploading the exact same footprint twice clutters the map. Use the button below to check if someone from the community has already uploaded these images to the new OAM v2 database.")
-            st.markdown("**Ready to upload?** Use the prefilled OAM v2 handoff for each selected scene. The source GeoTIFF stays at its public URL; OAM fetches it server-side.")
-
-            if display_oam_items:
-                if st.button("🔍 Check OAM v2 for Duplicates"):
-                    st.session_state["oam_duplicates"] = {}
-                    progress_bar = st.progress(0, text="Checking v2 STAC database...")
-                    total = len(display_oam_items)
-                    for i, meta in enumerate(display_oam_items):
-                        result = check_oam_duplicate(meta)
-                        st.session_state["oam_duplicates"][meta["item_url"]] = result
-                        if result.get("exists") and result.get("link"):
-                            meta["oam_existing_link"] = result["link"]
-                        progress_bar.progress((i + 1) / total)
-                        time.sleep(0.10)
-                    progress_bar.empty()
-                    st.success("Verification complete! Check the results below.")
-
-                for meta in display_oam_items:
-                    dup_info = st.session_state.get("oam_duplicates", {}).get(meta["item_url"])
-                    if dup_info:
-                        meta["oam_duplicate_status"] = dup_info.get("status_str", "Not checked")
-                        if dup_info.get("link"):
-                            meta["oam_existing_link"] = dup_info["link"]
-                    else:
-                        meta["oam_duplicate_status"] = "Not checked"
-
-                for idx, meta in enumerate(display_oam_items, 1):
-                    status_label = meta["oam_duplicate_status"]
-                    with st.expander(f"{idx}. {meta['title']} | Status: [{status_label}]"):
-                        if "Already exists" in status_label:
-                            st.warning(f"⚠️ {status_label}")
-                            if meta.get("oam_existing_link"):
-                                if "Exact ID" in status_label:
-                                    st.link_button("👀 View Exact Image (HOTOSM Viewer)", meta["oam_existing_link"])
-                                else:
-                                    st.link_button("⚠️ View Overlapping Image (HOTOSM Viewer)", meta["oam_existing_link"])
-                        elif "Not found" in status_label:
-                            st.success(f"✅ {status_label} – Ready for submission.")
-                        
-                        if meta.get("image_source_url"):
+                        if proxy_base_url:
+                            proxy_url = build_archive_proxy_url(proxy_base_url, archive_url, verified_member)
+                            st.markdown("**OAM-ready HTTPS TIFF URL**")
+                            st.code(proxy_url, language="text")
+                            st.caption(
+                                "This URL is OAM-ready only when the configured archive proxy is publicly "
+                                "reachable by OAM. The proxy streams the selected TIFF member from S3 using "
+                                "HTTP Range requests; it does not expose the GDAL virtual path."
+                            )
                             prefill = build_oam_prefill_url(
-                                title=meta["title"],
-                                source_url=meta["image_source_url"],
-                                provider=meta.get("provider") or None,
-                                platform=meta.get("platform") or None,
-                                sensor=meta.get("sensor") or None,
-                                license=meta.get("stac_license_reference") or None,
-                                acquisition_start=meta.get("raw_datetime") or None,
-                                acquisition_end=meta.get("raw_datetime") or None,
-                                external_id=meta.get("provider_item_id") or None,
-                                external_url=meta.get("item_url") or None,
+                                title="SpaceEye-T " + archive_key.rsplit("/", 1)[-1],
+                                source_url=proxy_url,
+                                provider=SPACE_EYE_PROVIDER,
+                                platform=SPACE_EYE_PLATFORM,
+                                sensor=SPACE_EYE_SENSOR,
+                                license=SPACE_EYE_LICENSE,
+                                external_id=f"spaceeye-t:{archive_key}:{verified_member}",
+                                external_url=s3_results["browser_url"],
                             )
                             st.link_button("Prepare OAM v2 upload", prefill)
-                            st.caption("Review the prefilled metadata in OAM before submitting. The source URL is passed to OAM; this app does not download the imagery.")
+                        else:
+                            st.info(
+                                "Archive proxy not configured. Set OAM_ARCHIVE_PROXY_BASE_URL to the public "
+                                "HTTPS base URL of the standalone archive proxy to enable the direct TIFF URL "
+                                "and OAM handoff. No fake .TIF URL is generated."
+                            )
+                    else:
+                        st.caption(
+                            "Append the exact path inside the ZIP after the final `/` once you inspect the archive. "
+                            "This is a local GDAL/QGIS access path, not an OAM `source_url`."
+                        )
+                st.info(
+                    "The ZIP itself is not an OAM source_url. When an archive proxy is configured, the app can "
+                    "hand OAM a real HTTPS URL that serves the verified TIFF member. Without that deployment, "
+                    "no misleading OAM handoff is generated. The app never bulk-downloads the archive."
+                )
+            else:
+                st.info("No GeoTIFFs matched this prefix and filter.")
 
-                        fields = [
-                            ("Title", meta["title"]),
-                            ("Platform", meta["platform"]),
-                            ("Sensor", meta["sensor"]),
-                            ("Date start", meta["date_start"]),
-                            ("Image source (Url)", meta["image_source_url"]),
-                            ("Provider", meta["provider"]),
-                            ("Duplicate Status", meta["oam_duplicate_status"]),
-                        ]
-                        for label, value in fields:
-                            col_lbl, col_val = st.columns([1, 3])
-                            with col_lbl:
-                                st.markdown(f"**{label}**")
-                            with col_val:
-                                st.code(value, language=None)
+    st.header("Find event imagery")
+    st.info("Enter a STAC catalog or item URL to discover imagery that can be filtered and handed off to mapping tools.")
 
-                timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                export_csv_filename = f"{event_prefix}_audit_log_{timestamp_str}.csv"
+    root_url_input = st.text_input("Data Catalog URL:", value=DEFAULT_SAMPLE_URL, disabled=source_mode != "STAC catalog / item")
 
-                csv_buffer = io.StringIO()
-                writer = csv.DictWriter(csv_buffer, fieldnames=OAM_FIELDNAMES, extrasaction="ignore")
-                writer.writeheader()
-                for meta in display_oam_items:
-                    writer.writerow(meta)
+    if source_mode == "STAC catalog / item" and root_url_input:
+        real_url = extract_real_stac_url(root_url_input)
+        event_prefix = extract_event_name_from_url(real_url)
 
-                st.markdown("---")
-                st.download_button(
-                    label=f"📥 Download Audit Log / Checklist (CSV)",
-                    data=csv_buffer.getvalue(),
-                    file_name=export_csv_filename,
-                    mime="text/csv",
-                    help="Use this CSV as a checklist to keep track of which URLs you have manually uploaded to OAM v2."
+        if real_url != st.session_state["last_processed_url"]:
+            st.session_state["oam_duplicates"] = {}
+            st.session_state["location_filter_bbox"] = None
+            st.session_state["pending_drawing"] = None
+            st.session_state["last_processed_url"] = real_url
+
+        all_links, tiff_links, oam_items = run_crawl(real_url)
+
+        if all_links:
+            st.divider()
+            st.header("Filter by area (optional)")
+            
+            group_by_location = st.toggle("Draw a box on the map to filter images")
+            
+            if group_by_location:
+                st.info(" **Draw an area:** Disaster imagery often covers huge regions. Draw a box over your specific activation area so you don't overwhelm the mapping software with unnecessary map data.")
+                items_with_bbox = [m for m in oam_items if parse_bbox_2d(m.get("bbox"))]
+                if items_with_bbox:
+                    parsed_bboxes = [parse_bbox_2d(m["bbox"]) for m in items_with_bbox]
+                    all_lons = [b[0] for b in parsed_bboxes] + [b[2] for b in parsed_bboxes]
+                    all_lats = [b[1] for b in parsed_bboxes] + [b[3] for b in parsed_bboxes]
+                    center_lat = sum(all_lats) / len(all_lats)
+                    center_lon = sum(all_lons) / len(all_lons)
+
+                    fmap = folium.Map(location=[center_lat, center_lon], zoom_start=6)
+                    for m in items_with_bbox:
+                        b = parse_bbox_2d(m["bbox"])
+                        folium.Rectangle(
+                            bounds=[[b[1], b[0]], [b[3], b[2]]],
+                            color="blue", weight=1, fill=True, fill_opacity=0.1,
+                            tooltip=m["title"],
+                        ).add_to(fmap)
+
+                    Draw(
+                        export=False,
+                        draw_options={"rectangle": True, "polygon": False, "circle": False, "marker": False},
+                        edit_options={"edit": False},
+                    ).add_to(fmap)
+
+                    map_data = st_folium(fmap, height=380, width=700, key="location_filter_map")
+                    
+                    if map_data and map_data.get("last_active_drawing"):
+                        st.session_state["pending_drawing"] = map_data["last_active_drawing"]
+
+                    col_apply, col_clear = st.columns([1, 1])
+                    with col_apply:
+                        if st.button("Apply filter"):
+                            drawn = st.session_state.get("pending_drawing")
+                            if drawn and drawn.get("geometry", {}).get("type") == "Polygon":
+                                coords = drawn["geometry"]["coordinates"][0]
+                                lons = [c[0] for c in coords]
+                                lats = [c[1] for c in coords]
+                                st.session_state["location_filter_bbox"] = (min(lons), min(lats), max(lons), max(lats))
+                    with col_clear:
+                        if st.button("Clear filter"):
+                            st.session_state["location_filter_bbox"] = None
+                            st.session_state["pending_drawing"] = None
+
+            active_filter = st.session_state["location_filter_bbox"] if group_by_location else None
+            if active_filter:
+                filtered_item_urls = {
+                    m["item_url"] for m in oam_items if bbox_intersects(m.get("bbox"), active_filter)
+                }
+                display_tiff_links = [e for e in tiff_links if e["item_url"] in filtered_item_urls]
+                display_oam_items = [m for m in oam_items if m["item_url"] in filtered_item_urls]
+            else:
+                display_tiff_links = tiff_links
+                display_oam_items = oam_items
+
+            # Dashboard Metrics
+            pre_items = [e for e in display_tiff_links if get_item_phase(e) == "PRE"]
+            post_items = [e for e in display_tiff_links if get_item_phase(e) == "POST"]
+            all_items = [e for e in display_tiff_links]
+            
+            st.subheader("Imagery found")
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                ui.metric_card(
+                    "Total usable images",
+                    len(display_tiff_links),
+                    description="GeoTIFF scenes available for the selected area",
+                    variant="dashboard",
+                    key="metric-total-usable-images",
+                )
+            with m2:
+                ui.metric_card(
+                    "PRE-event",
+                    len(pre_items),
+                    description="Before-disaster baseline scenes",
+                    variant="dashboard",
+                    key="metric-pre-event",
+                )
+            with m3:
+                ui.metric_card(
+                    "POST-event",
+                    len(post_items),
+                    description="After-disaster scenes",
+                    variant="dashboard",
+                    key="metric-post-event",
                 )
 
-        with tab_adv:
-            st.caption("Raw Data Endpoints for Developers")
-            for idx, link in enumerate(all_links, 1):
-                st.markdown(f"{idx}. [{link}]({link})")
+            st.divider()
+            st.header("Prepare a handoff")
+
+            tab_tm, tab_oam, tab_adv = st.tabs([
+                "Tasking Manager / JOSM", 
+                "OpenAerialMap", 
+                "Advanced data"
+            ])
+
+            with tab_tm:
+                st.info("These links let HOT Tasking Manager, iD Editor, and JOSM stream selected imagery as a tracing background.")
+                
+                mosaic_tab_pre, mosaic_tab_post, mosaic_tab_all = st.tabs([
+                    f"PRE-Event Baseline ({len(pre_items)} scenes)", 
+                    f"POST-Event Damage ({len(post_items)} scenes)", 
+                    f"ALL Scenes ({len(all_items)} scenes)"
+                ])
+
+                def render_instant_tms_workflow(items: list[dict], category_name: str):
+                    if not items:
+                        st.info(f"No {category_name} images found in this selection.")
+                        return
+                    
+                    ids = [item["provider_item_id"] for item in items if item.get("provider_item_id")]
+                    if not ids:
+                        st.warning("Could not extract STAC Item IDs for the selected scenes.")
+                        return
+                        
+                    ids_str = ",".join(ids)
+
+                    tm_url = f"https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
+                    st.markdown("**1. For Tasking Manager & iD Editor:**")
+                    st.caption("Copy this URL and paste it directly into the 'Custom Imagery' field.")
+                    st.code(tm_url, language="text")
+
+                    josm_url = f"tms:https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{zoom}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
+                    st.markdown("**2. For JOSM Desktop Software:**")
+                    st.caption("Go to Imagery > Imagery Preferences > + TMS, and paste this URL.")
+                    st.code(josm_url, language="text")
+                    
+                    with st.expander("Advanced: View the exact image IDs in this layer"):
+                        st.markdown("The images will render in this exact order (top ID renders in front).")
+                        for idx, img_id in enumerate(ids, 1):
+                            st.markdown(f"`{idx}. {img_id}`")
+
+                with mosaic_tab_pre:
+                    render_instant_tms_workflow(pre_items, "PRE")
+                with mosaic_tab_post:
+                    render_instant_tms_workflow(post_items, "POST")
+                with mosaic_tab_all:
+                    render_instant_tms_workflow(all_items, "ALL")
+
+            with tab_oam:
+                st.info("Check for an existing image before preparing a handoff. Duplicate footprints make the imagery catalog harder to use.")
+                st.markdown("**Ready to upload?** Use the prefilled OAM v2 handoff for each selected scene. The source GeoTIFF stays at its public URL; OAM fetches it server-side.")
+
+                if display_oam_items:
+                    if st.button("Check OAM v2 for Duplicates"):
+                        st.session_state["oam_duplicates"] = {}
+                        progress_bar = st.progress(0, text="Checking v2 STAC database...")
+                        total = len(display_oam_items)
+                        for i, meta in enumerate(display_oam_items):
+                            result = check_oam_duplicate(meta)
+                            st.session_state["oam_duplicates"][meta["item_url"]] = result
+                            if result.get("exists") and result.get("link"):
+                                meta["oam_existing_link"] = result["link"]
+                            progress_bar.progress((i + 1) / total)
+                            time.sleep(0.10)
+                        progress_bar.empty()
+                        st.success("Verification complete! Check the results below.")
+
+                    for meta in display_oam_items:
+                        dup_info = st.session_state.get("oam_duplicates", {}).get(meta["item_url"])
+                        if dup_info:
+                            meta["oam_duplicate_status"] = dup_info.get("status_str", "Not checked")
+                            if dup_info.get("link"):
+                                meta["oam_existing_link"] = dup_info["link"]
+                        else:
+                            meta["oam_duplicate_status"] = "Not checked"
+
+                    for idx, meta in enumerate(display_oam_items, 1):
+                        status_label = meta["oam_duplicate_status"]
+                        with st.expander(f"{idx}. {meta['title']} | Status: [{status_label}]"):
+                            if "Already exists" in status_label:
+                                st.warning(status_label)
+                                if meta.get("oam_existing_link"):
+                                    if "Exact ID" in status_label:
+                                        st.link_button("View exact image (HOTOSM Viewer)", meta["oam_existing_link"])
+                                    else:
+                                        st.link_button("View overlapping image (HOTOSM Viewer)", meta["oam_existing_link"])
+                            elif "Not found" in status_label:
+                                st.success(f"{status_label} – Ready for submission.")
+                            
+                            if meta.get("image_source_url"):
+                                prefill = build_oam_prefill_url(
+                                    title=meta["title"],
+                                    source_url=meta["image_source_url"],
+                                    provider=meta.get("provider") or None,
+                                    platform=meta.get("platform") or None,
+                                    sensor=meta.get("sensor") or None,
+                                    license=meta.get("stac_license_reference") or None,
+                                    acquisition_start=meta.get("raw_datetime") or None,
+                                    acquisition_end=meta.get("raw_datetime") or None,
+                                    external_id=meta.get("provider_item_id") or None,
+                                    external_url=meta.get("item_url") or None,
+                                )
+                                st.link_button("Prepare OAM v2 upload", prefill)
+                                st.caption("Review the prefilled metadata in OAM before submitting. The source URL is passed to OAM; this app does not download the imagery.")
+
+                            fields = [
+                                ("Title", meta["title"]),
+                                ("Platform", meta["platform"]),
+                                ("Sensor", meta["sensor"]),
+                                ("Date start", meta["date_start"]),
+                                ("Image source (Url)", meta["image_source_url"]),
+                                ("Provider", meta["provider"]),
+                                ("Duplicate Status", meta["oam_duplicate_status"]),
+                            ]
+                            for label, value in fields:
+                                col_lbl, col_val = st.columns([1, 3])
+                                with col_lbl:
+                                    st.markdown(f"**{label}**")
+                                with col_val:
+                                    st.code(value, language=None)
+
+                    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    export_csv_filename = f"{event_prefix}_audit_log_{timestamp_str}.csv"
+
+                    csv_buffer = io.StringIO()
+                    writer = csv.DictWriter(csv_buffer, fieldnames=OAM_FIELDNAMES, extrasaction="ignore")
+                    writer.writeheader()
+                    for meta in display_oam_items:
+                        writer.writerow(meta)
+
+                    st.markdown("---")
+                    st.download_button(
+                        label="Download audit log / checklist (CSV)",
+                        data=csv_buffer.getvalue(),
+                        file_name=export_csv_filename,
+                        mime="text/csv",
+                        help="Use this CSV as a checklist to keep track of which URLs you have manually uploaded to OAM v2."
+                    )
+
+            with tab_adv:
+                st.caption("Raw Data Endpoints for Developers")
+                for idx, link in enumerate(all_links, 1):
+                    st.markdown(f"{idx}. [{link}]({link})")
