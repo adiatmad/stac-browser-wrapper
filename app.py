@@ -702,7 +702,7 @@ def validate_local_oam_raster(
             (
                 f"{file_size_bytes / 1024**3:.2f} GiB; within the upstream default 100 GiB OAM uploader ceiling."
                 if file_size_bytes <= OAM_MAX_UPLOAD_BYTES
-                else f"{file_size_bytes / 1024**3:.2f} GiB exceeds the current 100 GiB uploader ceiling. OAM will reject this upload."
+                else f"{file_size_bytes / 1024**3:.2f} GiB exceeds the upstream default 100 GiB uploader ceiling. The deployed service may override this limit; confirm with OAM operators before attempting upload."
             ),
         )
 
