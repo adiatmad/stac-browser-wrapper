@@ -9,8 +9,6 @@ import json
 import os
 import ntpath
 import math
-import shutil
-import subprocess
 from pathlib import Path
 from datetime import datetime
 import time
@@ -447,10 +445,8 @@ def build_oam_recommendation(info: dict[str, Any], input_path: str, source_epsg:
 
 
 # ---------- Local GDAL / OAM imagery workbench ----------
-OAM_STAC_SCHEMA_URL = "https://docs.imagery.hotosm.org/oam/v0.3.0/schema.json"
 OAM_SUPPORTED_PRODUCTS = ("visual", "multispectral", "sar", "elevation", "pseudocolor")
 OAM_SUPPORTED_PLATFORMS = ("kite", "balloon", "uav", "aircraft", "satellite")
-OAM_SUPPORTED_LICENSES = ("CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0")
 OAM_MAX_UPLOAD_BYTES = 100 * 1024**3
 
 
@@ -595,63 +591,6 @@ def build_osgeo4w_verify_commands(path: str) -> dict[str, str]:
     return build_osgeo4w_commands(path)
 
 
-def resolve_local_gdal_tools(gdal_bin_dir: str = "") -> dict[str, str]:
-    """Find both GDAL CLI tools without requiring a shell or changing PATH."""
-    suffix = ".exe" if os.name == "nt" else ""
-    candidates: list[Path] = []
-    if gdal_bin_dir.strip():
-        custom = Path(gdal_bin_dir.strip().strip('"')).expanduser()
-        candidates.append(custom.parent if custom.is_file() else custom)
-    for env_name in ("OSGEO4W_ROOT", "QGIS_PREFIX_PATH"):
-        root = os.environ.get(env_name, "").strip()
-        if root:
-            base = Path(root)
-            candidates.extend((base, base / "bin", base.parent / "bin"))
-    if os.name == "nt":
-        candidates.extend((Path("C:/OSGeo4W/bin"), Path("C:/OSGeo4W64/bin")))
-        program_files = Path(os.environ.get("ProgramFiles", "C:/Program Files"))
-        candidates.extend(program_files.glob("QGIS */bin"))
-    found: dict[str, str] = {}
-    for candidate in candidates:
-        if not candidate.is_dir():
-            continue
-        for tool in ("gdalinfo", "gdal_translate"):
-            executable = candidate / f"{tool}{suffix}"
-            if executable.is_file():
-                found[tool] = str(executable)
-        if len(found) == 2:
-            return found
-    for tool in ("gdalinfo", "gdal_translate"):
-        found.setdefault(tool, shutil.which(f"{tool}{suffix}") or shutil.which(tool) or "")
-    return found if all(found.values()) else {}
-
-
-def run_local_gdalinfo(path: str, tools: dict[str, str]) -> dict[str, Any]:
-    """Read raster metadata locally; raster bytes are never sent to a service."""
-    source = Path(str(path).strip().strip('"')).expanduser()
-    if not source.is_file():
-        raise FileNotFoundError(f"Raster file does not exist: {source}")
-    if not tools.get("gdalinfo"):
-        raise RuntimeError("gdalinfo was not found. Set the GDAL bin directory or launch Streamlit from the QGIS/OSGeo4W shell.")
-    try:
-        proc = subprocess.run(
-            [tools["gdalinfo"], "-json", str(source)],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=600, check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("gdalinfo timed out after 10 minutes. Check the file and local storage, then retry.") from exc
-    if proc.returncode != 0:
-        raise RuntimeError(proc.stderr.strip() or f"gdalinfo exited with code {proc.returncode}.")
-    try:
-        info = json.loads(proc.stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"gdalinfo returned invalid JSON: {exc}") from exc
-    if not isinstance(info, dict) or not info.get("size") or not info.get("bands"):
-        raise RuntimeError("GDAL did not return a usable raster dataset description.")
-    return info
-
-
 def _local_decoded_bytes(info: dict[str, Any]) -> int | None:
     """Mirror OAM's validator: first-band dtype multiplied by the band count."""
     sizes = {
@@ -779,196 +718,6 @@ def validate_local_oam_raster(
     failures = [item for item in checks if item["status"] == "FAIL"]
     warnings = [item for item in checks if item["status"] == "WARN"]
     return {"status": "FAIL" if failures else ("WARN" if warnings else "PASS"), "checks": checks, "decodedBytes": decoded}
-
-
-def create_local_thumbnail(
-    raster_path: str, info: dict[str, Any], product_type: str, tools: dict[str, str]
-) -> str | None:
-    """Create a small PNG preview for visual RGB data only."""
-    bands = info.get("bands") or []
-    types = [str(b.get("type", "")).upper() for b in bands]
-    if product_type != "visual" or len(bands) < 3 or not all(t in {"BYTE", "UINT8"} for t in types[:3]):
-        return None
-    source = Path(raster_path).expanduser().resolve()
-    output = source.with_name(source.stem + "_thumbnail.png")
-    if output.exists():
-        raise FileExistsError(f"Thumbnail already exists; choose another output path: {output}")
-    if not tools.get("gdal_translate"):
-        raise RuntimeError("gdal_translate was not found.")
-    args = [tools["gdal_translate"], "-of", "PNG", "-outsize", "1024", "0"]
-    args.extend(["-b", "1", "-b", "2", "-b", "3"])
-    args.extend([str(source), str(output)])
-    proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, check=False)
-    if proc.returncode != 0 or not output.is_file():
-        raise RuntimeError(proc.stderr.strip() or "GDAL did not create the thumbnail.")
-    return str(output)
-
-
-def build_local_cog(
-    source_path: str, output_path: str, source_info: dict[str, Any],
-    product_type: str, tools: dict[str, str],
-) -> dict[str, Any]:
-    """Create and verify a separate lossless COG; never overwrite source/output."""
-    source = Path(str(source_path).strip().strip('"')).expanduser().resolve(strict=True)
-    output = Path(str(output_path).strip().strip('"')).expanduser().resolve()
-    if source == output:
-        raise ValueError("Output path must differ from the source raster.")
-    if output.exists():
-        raise FileExistsError(f"Output already exists; choose another path: {output}")
-    if not output.parent.is_dir():
-        raise FileNotFoundError(f"Output directory does not exist: {output.parent}")
-    if not tools.get("gdal_translate") or not tools.get("gdalinfo"):
-        raise RuntimeError("Both gdal_translate and gdalinfo are required.")
-    args = [
-        tools["gdal_translate"], "-of", "COG",
-        "-co", "COMPRESS=DEFLATE",
-        "-co", "BIGTIFF=IF_SAFER",
-        "-co", "BLOCKSIZE=512",
-        "-co", "RESAMPLING=AVERAGE",
-        "-co", "NUM_THREADS=ALL_CPUS",
-        str(source), str(output),
-    ]
-    proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=14400, check=False)
-    if proc.returncode != 0:
-        raise RuntimeError(proc.stderr.strip() or f"gdal_translate exited with code {proc.returncode}. Any partial output was left untouched for inspection.")
-    if not output.is_file():
-        raise RuntimeError("gdal_translate reported success but the output file was not created.")
-    output_info = run_local_gdalinfo(str(output), tools)
-    output_structure = (output_info.get("metadata") or {}).get("IMAGE_STRUCTURE") or {}
-    if str(output_structure.get("LAYOUT", "")).upper() != "COG":
-        raise RuntimeError("GDAL created an output, but gdalinfo did not confirm LAYOUT=COG. The output was not deleted.")
-    if output_info.get("size") != source_info.get("size"):
-        raise RuntimeError("COG verification failed: raster dimensions changed. The output was not deleted.")
-    source_bands, output_bands = source_info.get("bands") or [], output_info.get("bands") or []
-    if len(source_bands) != len(output_bands):
-        raise RuntimeError("COG verification failed: band count changed. The output was not deleted.")
-    if [str(b.get("type", "")).upper() for b in source_bands] != [str(b.get("type", "")).upper() for b in output_bands]:
-        raise RuntimeError("COG verification failed: band data types changed. The output was not deleted.")
-    source_colors = [str(b.get("colorInterpretation", "")).lower() for b in source_bands]
-    output_colors = [str(b.get("colorInterpretation", "")).lower() for b in output_bands]
-    if source_colors != output_colors:
-        raise RuntimeError("COG verification failed: band color interpretations changed. The output was not deleted.")
-    if source_info.get("geoTransform") != output_info.get("geoTransform"):
-        raise RuntimeError("COG verification failed: geotransform changed. The output was not deleted.")
-    source_crs = source_info.get("coordinateSystem") or {}
-    output_crs = output_info.get("coordinateSystem") or {}
-    source_has_crs = bool(source_crs.get("wkt") or source_crs.get("projjson") or source_crs.get("id"))
-    output_has_crs = bool(output_crs.get("wkt") or output_crs.get("projjson") or output_crs.get("id"))
-    if source_has_crs != output_has_crs:
-        raise RuntimeError("COG verification failed: CRS presence changed. The output was not deleted.")
-    for field, label in (("id", "identifier"), ("projjson", "definition"), ("wkt", "definition")):
-        source_value, output_value = source_crs.get(field), output_crs.get(field)
-        if source_value and output_value and source_value != output_value:
-            raise RuntimeError(f"COG verification failed: CRS {label} changed. The output was not deleted.")
-    thumbnail = None
-    thumbnail_error = None
-    try:
-        thumbnail = create_local_thumbnail(str(output), output_info, product_type, tools)
-    except Exception as exc:
-        thumbnail_error = str(exc)
-    return {"path": str(output), "info": output_info, "thumbnail": thumbnail, "thumbnail_error": thumbnail_error}
-
-
-def _geojson_positions(value: Any):
-    """Yield longitude/latitude pairs from nested GeoJSON coordinates."""
-    if isinstance(value, (list, tuple)) and len(value) >= 2 and all(isinstance(x, (int, float)) for x in value[:2]):
-        yield float(value[0]), float(value[1])
-    elif isinstance(value, (list, tuple)):
-        for child in value:
-            yield from _geojson_positions(child)
-
-
-def build_local_oam_item(
-    info: dict[str, Any], asset_path: str, metadata: dict[str, Any],
-    thumbnail_path: str | None = None,
-) -> dict[str, Any]:
-    """Build an OAM v0.3.0 STAC draft from GDAL geometry and user-confirmed fields."""
-    extent = info.get("wgs84Extent")
-    if not isinstance(extent, dict) or not extent.get("coordinates"):
-        raise ValueError("GDAL did not provide a WGS84 extent. Do not guess the Item geometry.")
-    positions = list(_geojson_positions(extent["coordinates"]))
-    if not positions:
-        raise ValueError("Could not extract longitude/latitude coordinates from GDAL's WGS84 extent.")
-    longitudes = [point[0] for point in positions]
-    latitudes = [point[1] for point in positions]
-    if max(longitudes) - min(longitudes) > 180:
-        raise ValueError("This extent crosses the antimeridian. The geometry must be split before creating a valid OAM STAC Item.")
-    required = ("title", "producer", "platform", "product_type", "license", "datetime", "gsd")
-    missing = [key for key in required if metadata.get(key) in (None, "")]
-    if missing:
-        raise ValueError("Missing user-confirmed metadata: " + ", ".join(missing))
-    if metadata["product_type"] not in OAM_SUPPORTED_PRODUCTS:
-        raise ValueError("Choose a supported OAM product type.")
-    if metadata["platform"] not in OAM_SUPPORTED_PLATFORMS:
-        raise ValueError("Choose the actual platform type; it is not inferred.")
-    if metadata["license"] not in OAM_SUPPORTED_LICENSES:
-        raise ValueError("Choose one of OAM's accepted Creative Commons licenses.")
-    gsd = float(metadata["gsd"])
-    if gsd <= 0:
-        raise ValueError("GSD must be greater than zero.")
-    captured = datetime.fromisoformat(str(metadata["datetime"]).replace("Z", "+00:00"))
-    if captured.tzinfo is None:
-        raise ValueError("Acquisition datetime must include a timezone, e.g. Z or +07:00.")
-    producer = str(metadata["producer"]).strip()
-    if not producer:
-        raise ValueError("Producer cannot be empty.")
-    title = str(metadata["title"]).strip()
-    if not title:
-        raise ValueError("Title cannot be empty.")
-    asset_name = Path(asset_path).name
-    item_id = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(asset_path).stem).strip("-") or "local-imagery"
-    properties: dict[str, Any] = {
-        "title": title,
-        "datetime": captured.isoformat().replace("+00:00", "Z"),
-        "license": metadata["license"],
-        "gsd": gsd,
-        "providers": [{"name": producer, "roles": ["producer", "licensor"]}],
-        "oam:platform_type": metadata["platform"],
-        "oam:producer_name": producer,
-        "oam:product_type": metadata["product_type"],
-        "oam:product_type_source": "declared",
-        "oam:footprint_source": "bbox",
-    }
-    sensor = str(metadata.get("sensor", "")).strip()
-    if sensor:
-        properties["instruments"] = [sensor]
-    item: dict[str, Any] = {
-        "type": "Feature",
-        "stac_version": "1.0.0",
-        "stac_extensions": [OAM_STAC_SCHEMA_URL],
-        "id": item_id,
-        "geometry": extent,
-        "bbox": [min(longitudes), min(latitudes), max(longitudes), max(latitudes)],
-        "properties": properties,
-        "assets": {
-            "visual": {
-                "href": "./" + asset_name,
-                "type": "image/tiff; application=geotiff; profile=cloud-optimized",
-                "roles": ["data"],
-                "title": asset_name,
-            }
-        },
-        "links": [{"rel": "self", "href": "./" + item_id + "_oam_item.json", "type": "application/geo+json"}],
-    }
-    if thumbnail_path:
-        item["assets"]["thumbnail"] = {
-            "href": "./" + Path(thumbnail_path).name,
-            "type": "image/png",
-            "roles": ["thumbnail"],
-        }
-    return item
-
-
-def write_local_oam_item(item: dict[str, Any], output_path: str) -> str:
-    """Write a metadata sidecar once; never replace an existing file."""
-    output = Path(output_path).expanduser().resolve()
-    if output.exists():
-        raise FileExistsError(f"Metadata file already exists; choose another path: {output}")
-    if not output.parent.is_dir():
-        raise FileNotFoundError(f"Metadata directory does not exist: {output.parent}")
-    with output.open("x", encoding="utf-8") as stream:
-        stream.write(json.dumps(item, indent=2, ensure_ascii=False) + "\n")
-    return str(output)
 
 
 def build_oam_local_prefill_url(metadata: dict[str, Any]) -> str:
