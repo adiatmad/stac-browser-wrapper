@@ -37,6 +37,7 @@ Decisions:
 - OAM derives GSD and footprint from the raster; the app does not ask the user to invent either.
 - The uploader prefill uses only documented URL-fragment fields. A local filesystem path is never passed as source_url.
 - The user selects the local file and confirms upload in the official OAM uploader. No credentials or automatic upload are added.
+- Open upstream OAM PRs [#371](https://github.com/hotosm/openaerialmap/pull/371), [#372](https://github.com/hotosm/openaerialmap/pull/372), and [#373](https://github.com/hotosm/openaerialmap/pull/373) propose v0.4 ownership identity and related queryable/coverage changes, but were still open at the inspected main commit. Keep this workflow on the released v0.3.0 contract; do not invent or prefill an unmerged `oam:owner_id` field.
 - Preserve the native Streamlit appearance and the Discover & map workflow.
 
 ## Acceptance criteria
