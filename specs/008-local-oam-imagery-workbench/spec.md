@@ -1,6 +1,6 @@
 # Feature Specification: Local Geospatial Imagery Preparation and OAM Handoff
 
-**Status:** Approved for implementation on `feat/local-oam-imagery-workbench`.
+**Status:** Implemented on `feat/local-oam-imagery-workbench`; automated CI passed on commit `095e6a6350104dc1126f71f820aeace4a57247fa`. Real local GDAL/QGIS execution and live OAM submission remain manual acceptance checks.
 
 ## User outcome
 
@@ -41,16 +41,24 @@ Turn the existing Local preparation workflow into a local-first geospatial image
 
 ## Acceptance criteria
 
-- [ ] The app detects local GDAL tools or explains how to launch it from OSGeo4W/QGIS shell or provide the GDAL bin directory.
-- [ ] Inspect runs `gdalinfo -json` through argument-list subprocess calls (no shell interpolation) and reports actionable failures/timeouts.
-- [ ] Product-aware validation accepts non-visual native data types and rejects invalid declared visual inputs.
-- [ ] A prepared COG is a new file; source and existing outputs are never overwritten. A source file over the uploader ceiling may still be prepared; enforce the ceiling against the final selected upload asset.
-- [ ] Prepared output retains dimensions, band count, geotransform, CRS, and data type; GDAL reports COG layout.
-- [ ] Thumbnail and STAC metadata sidecar are generated locally without uploading imagery.
-- [ ] STAC metadata uses GDAL-derived EPSG:4326 extent and user-entered metadata only; it records `oam:footprint_source=bbox` and requires acknowledgement that this is not a traced valid-pixel footprint. OAM-required `gsd`, `oam:platform_type`, and `oam:producer_name`, plus the STAC `providers` array, are placed under Item `properties`. Missing required values remain missing and block the handoff.
-- [ ] OAM prefill contains supported metadata fields but no local filesystem path or `source_url`; the user manually selects and submits the file. Because the documented prefill contract does not support GSD, the uploader explicitly asks the user to re-enter it; the local STAC sidecar retains the confirmed value.
-- [ ] Existing hosted app single-file contract and Discover & map workflows remain intact.
-- [ ] Focused tests and full unit tests pass; browser/CI evidence is reported separately from real local GDAL and real OAM upload acceptance.
+- [x] The app detects local GDAL tools or explains how to launch it from OSGeo4W/QGIS shell or provide the GDAL bin directory.
+- [x] Inspect runs `gdalinfo -json` through argument-list subprocess calls (no shell interpolation) and reports actionable failures/timeouts.
+- [x] Product-aware validation accepts non-visual native data types and rejects invalid declared visual inputs.
+- [x] A prepared COG is a new file; source and existing outputs are never overwritten. A source file over the uploader ceiling may still be prepared; enforce the ceiling against the final selected upload asset.
+- [x] Prepared output retains dimensions, band count, geotransform, CRS, and data type; GDAL reports COG layout.
+- [x] Thumbnail and STAC metadata sidecar are generated locally without uploading imagery.
+- [x] STAC metadata uses GDAL-derived EPSG:4326 extent and user-entered metadata only; it records `oam:footprint_source=bbox` and requires acknowledgement that this is not a traced valid-pixel footprint. OAM-required `gsd`, `oam:platform_type`, and `oam:producer_name`, plus the STAC `providers` array, are placed under Item `properties`. Missing required values remain missing and block the handoff.
+- [x] OAM prefill contains supported metadata fields but no local filesystem path or `source_url`; the user manually selects and submits the file. Because the documented prefill contract does not support GSD, the uploader explicitly asks the user to re-enter it; the local STAC sidecar retains the confirmed value.
+- [x] Existing hosted app single-file contract and Discover & map workflows remain intact.
+- [x] Focused tests and full unit tests pass; browser/CI evidence is reported separately from real local GDAL and real OAM upload acceptance.
+
+## Verification record
+
+- GitHub Actions `tests` workflow run [#226](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/41583129922) passed: 59 unit tests, shadcn dependency compatibility, and desktop/mobile Streamlit browser smoke.
+- Static source scan found no `shell=True`, HTTP write calls, GDAL overwrite flags, or implicit deletion calls in `app.py`.
+- Real GDAL/QGIS execution against the user's local GeoTIFF was not performed in GitHub-hosted CI; verify it on the target Windows machine.
+- A real OAM uploader submission was not performed. The user selects the local file, re-enters GSD (not supported by the documented prefill), reviews the form, and submits manually.
+- The PR-Agent workflow's review step was skipped because its model-provider key is not configured; it is not counted as a completed review.
 
 ## Safety invariants
 
