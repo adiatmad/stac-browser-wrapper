@@ -543,7 +543,7 @@ def build_osgeo4w_commands(path: str) -> dict[str, str]:
         raise ValueError("Use the full absolute Windows path copied from File Explorer.")
     quoted = '"' + source + '"'
     powershell_path = source.replace("'", "''")
-    report_path = r"%USERPROFILE%\\gdal-report.json"
+    report_path = r"%USERPROFILE%\gdal-report.json"
     return {
         "version": "gdalinfo --version",
         "cog_driver": "gdalinfo --format COG",
