@@ -28,7 +28,7 @@ Evidence was checked against the main branch of hotosm/openaerialmap, commit e20
 - backend/uploader-api/pipeline/metadata/metadata.py: GSD, footprint, acquisition metadata and STAC generation.
 - backend/stactools-hotosm/stac-extension/json-schema/v0.3.0/schema.json and docs/dev/ingest/schema.md: current OAM STAC metadata contract.
 
-OAM accepts GeoTIFFs and creates its own COG during ingestion. Local COG creation is optional for an already-valid GeoTIFF. The uploader's current maximum file size is 100 GiB. OAM's current supported product types are visual, multispectral, SAR, elevation, and pseudocolor. A CRS is required. Only a declared visual product is constrained to 3–4 8-bit bands; non-visual products retain native data.
+OAM accepts GeoTIFFs and creates its own COG during ingestion. Local COG creation is optional for an already-valid GeoTIFF. The uploader's upstream default maximum file size is 100 GiB; deployment configuration may override it. OAM's current supported product types are visual, multispectral, SAR, elevation, and pseudocolor. A CRS is required. Only a declared visual product is constrained to 3–4 8-bit bands; non-visual products retain native data.
 
 The OAM pipeline derives GSD from pixel resolution and CRS and generates the Item geometry/footprint from the raster mask or extent. The user must confirm title, producer, platform, acquisition date, and license. The current OAM extension accepts CC-BY-4.0, CC-BY-SA-4.0, and CC-BY-NC-4.0.
 
@@ -50,7 +50,7 @@ The app's product-type suggestion is based on GDAL metadata and is not a substit
 
 ## Size checks
 
-- Upload size: hard limit of 100 GiB in the current uploader.
+- Upload size: upstream default ceiling of 100 GiB; confirm any deployment override with OAM operators.
 - Decoded size: deployment-configurable. The current upstream defaults are 130 GB for lossless conversion and approximately 216.7 GB for eligible 8-bit RGB(A) visual conversion. The local result is a preflight estimate, not a guarantee that a particular deployment will accept the file.
 
 ## OAM upload handoff
