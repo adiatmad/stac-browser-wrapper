@@ -41,7 +41,7 @@ The **Local preparation** workflow can inspect and prepare an existing raster wi
 
 1. Install GDAL through QGIS/OSGeo4W, or make `gdalinfo` and `gdal_translate` available on `PATH`.
 2. Start this app locally (for example, from the QGIS/OSGeo4W shell): `streamlit run app.py`.
-3. Paste the full path to an existing raster into **Source raster path** and press Enter. The app discovers GDAL automatically and inspects the file; there is no separate inspection button or GDAL-directory field.
+3. Paste the full path to an existing raster into **Source raster path** and click **Inspect raster**. The app checks whether the file is visible to the computer running Streamlit, discovers GDAL automatically, and reports any path or GDAL error. There is no GDAL-directory field.
 4. Choose the actual OAM product type. Only `visual` requires 3–4 8-bit bands; multispectral, SAR, elevation, and pseudocolor products retain their native data type and band count.
 5. If the raster passes the checks, create a separate lossless DEFLATE COG and (for visual RGB data) a downsampled PNG preview. The source is never overwritten. Existing output paths are refused.
 6. Enter the known acquisition metadata and generate a local STAC/OAM JSON draft. Capture time, producer, GSD, platform, and license are not inferred.
