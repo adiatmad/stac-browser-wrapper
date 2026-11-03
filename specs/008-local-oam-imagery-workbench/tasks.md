@@ -10,5 +10,5 @@
 - [x] Replace manual report-paste UI with inspect → validate → prepare → metadata → user-controlled OAM handoff.
 - [x] Add focused unit tests for GDAL invocation, product-aware checks, COG safety, STAC property placement, thumbnails, sidecar writing, and prefill privacy.
 - [x] Update README with local execution and limitations.
-- [ ] Run full unittest suite and browser smoke against the final branch head; inspect the complete diff and CI results.
+- [x] Run full unittest suite and browser smoke against the final branch head; inspect the complete diff and CI results (59 unit tests, UI dependency compatibility, and desktop/mobile browser smoke passed in GitHub Actions run #226).
 - [x] Record real-machine GDAL/QGIS execution and live OAM upload as unverified; these remain manual acceptance steps on the user's machine.
