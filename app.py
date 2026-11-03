@@ -1227,6 +1227,10 @@ if active_workflow == "Local preparation":
             inspection_error = st.session_state.get("local_imagery_inspection_error")
             if inspection_error and inspection_error.get("path") == current_source:
                 st.error(f"Could not inspect this raster: {inspection_error['message']}")
+                if st.button("Retry raster inspection", key="retry_local_imagery_inspection"):
+                    st.session_state.pop("local_imagery_inspection_attempt", None)
+                    st.session_state.pop("local_imagery_inspection_error", None)
+                    st.rerun()
     elif source_value:
         st.caption("Waiting for a valid local file path. Paste the complete path and press Enter.")
 

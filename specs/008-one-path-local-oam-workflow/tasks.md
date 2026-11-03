@@ -10,6 +10,6 @@
 - [x] Update contract tests for the new interaction contract.
 - [x] Run unit tests: GitHub Actions unit job passed (58 tests).
 - [x] Verify shadcn dependency compatibility: passed.
-- [ ] Complete desktop/mobile browser smoke; CI job is still running.
-- [ ] Verify the exact Windows path against the user's local GDAL/QGIS installation.
-- [ ] Review the full diff for regressions and scope creep.
+- [x] Complete desktop/mobile browser smoke; GitHub Actions run 238 passed.
+- [ ] Verify the exact Windows path against the user's local GDAL/QGIS installation (requires the user's machine).
+- [x] Review the full diff for regressions and scope creep.

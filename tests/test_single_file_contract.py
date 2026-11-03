@@ -18,6 +18,7 @@ class HostedSingleFileContractTests(unittest.TestCase):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn("Source raster path", source)
         self.assertIn("Inspecting raster automatically with GDAL", source)
+        self.assertIn('st.button("Retry raster inspection"', source)
         self.assertIn("local_gdal_tools = resolve_local_gdal_tools()", source)
         self.assertNotIn("Separate DroneTM task-download and mosaic workflow", source)
         self.assertNotIn("https://github.com/adiatmad/dronetm-progress-mosaic", source)
