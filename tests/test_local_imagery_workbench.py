@@ -205,6 +205,8 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
         self.assertEqual(item["assets"]["thumbnail"]["href"], "./prepared_thumbnail.png")
         self.assertEqual(item["properties"]["datetime"], "2026-11-03T02:03:04+07:00")
         self.assertEqual(item["properties"]["oam:product_type"], "visual")
+        self.assertEqual(item["properties"]["oam:footprint_source"], "bbox")
+        self.assertEqual(item["links"][0]["rel"], "self")
 
     def test_stac_item_rejects_missing_extent_or_timezone(self):
         info = self.sample_info()
