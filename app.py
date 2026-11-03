@@ -672,6 +672,10 @@ def build_local_cog(
         raise RuntimeError("COG verification failed: band count changed. The output was not deleted.")
     if [str(b.get("type", "")).upper() for b in source_bands] != [str(b.get("type", "")).upper() for b in output_bands]:
         raise RuntimeError("COG verification failed: band data types changed. The output was not deleted.")
+    source_colors = [str(b.get("colorInterpretation", "")).lower() for b in source_bands]
+    output_colors = [str(b.get("colorInterpretation", "")).lower() for b in output_bands]
+    if source_colors != output_colors:
+        raise RuntimeError("COG verification failed: band color interpretations changed. The output was not deleted.")
     if source_info.get("geoTransform") != output_info.get("geoTransform"):
         raise RuntimeError("COG verification failed: geotransform changed. The output was not deleted.")
     source_crs = source_info.get("coordinateSystem") or {}
