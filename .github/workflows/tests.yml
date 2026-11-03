@@ -36,7 +36,32 @@ jobs:
 
           installed = version("streamlit")
           assert tuple(int(part) for part in installed.split(".")[:2]) >= (1, 60), installed
-          for name in ("card", "badge", "metric_card"):
+          for name in ("card", "badge", "metric_card", "tabs"):
               assert callable(getattr(ui, name, None)), f"Missing shadcn component: {name}"
-          print(f"Streamlit {installed}; shadcn card/badge/metric_card imports passed.")
+          print(f"Streamlit {installed}; shadcn card/badge/metric_card/tabs imports passed.")
           PY
+
+  ui-browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install application and browser-test requirements
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements.txt
+          python -m pip install --disable-pip-version-check "playwright>=1.50,<2"
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run desktop/mobile Streamlit browser smoke checks
+        run: python tests/ui_browser_smoke.py
+      - name: Upload UI screenshots and server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: streamlit-ui-smoke-evidence
+          path: |
+            artifacts/*.png
+            streamlit-ui-smoke.log
+          if-no-files-found: warn
