@@ -605,7 +605,11 @@ def validate_local_oam_raster(
 def create_local_thumbnail(
     raster_path: str, info: dict[str, Any], product_type: str, tools: dict[str, str]
 ) -> str | None:
-    """Create a small PNG preview; never modify the raster or replace an existing preview."""
+    """Create a small PNG preview for visual RGB data only."""
+    bands = info.get("bands") or []
+    types = [str(b.get("type", "")).upper() for b in bands]
+    if product_type != "visual" or len(bands) < 3 or not all(t in {"BYTE", "UINT8"} for t in types[:3]):
+        return None
     source = Path(raster_path).expanduser().resolve()
     output = source.with_name(source.stem + "_thumbnail.png")
     if output.exists():
@@ -613,10 +617,6 @@ def create_local_thumbnail(
     if not tools.get("gdal_translate"):
         raise RuntimeError("gdal_translate was not found.")
     args = [tools["gdal_translate"], "-of", "PNG", "-outsize", "1024", "0"]
-    bands = info.get("bands") or []
-    types = [str(b.get("type", "")).upper() for b in bands]
-    if product_type != "visual" or len(bands) < 3 or not all(t in {"BYTE", "UINT8"} for t in types[:3]):
-        return None
     args.extend(["-b", "1", "-b", "2", "-b", "3"])
     args.extend([str(source), str(output)])
     proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, check=False)
