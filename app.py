@@ -1201,25 +1201,32 @@ if active_workflow == "Local preparation":
                 "GDAL was not found automatically. Install QGIS/OSGeo4W or make gdalinfo and "
                 "gdal_translate available on PATH, then restart this app."
             )
-        elif (not inspection or inspection.get("path") != current_source) and last_attempt != current_source:
-            st.session_state["local_imagery_inspection_attempt"] = current_source
-            try:
-                with st.spinner("Inspecting raster automatically with GDAL…"):
-                    inspected_info = run_local_gdalinfo(source_value, local_gdal_tools)
-                source_file = Path(source_value).expanduser()
-                st.session_state["local_imagery_inspection"] = {
-                    "path": current_source,
-                    "info": inspected_info,
-                    "file_size": source_file.stat().st_size,
-                }
-                st.session_state.pop("local_imagery_cog_result", None)
-                st.session_state.pop("local_oam_item_result", None)
-                st.session_state["local_cog_output_path"] = str(
-                    source_file.with_name(source_file.stem + "_prepared_cog.tif")
-                )
-                inspection = st.session_state["local_imagery_inspection"]
-            except Exception as exc:
-                st.error(f"Could not inspect this raster: {exc}")
+        elif not inspection or inspection.get("path") != current_source:
+            if last_attempt != current_source:
+                st.session_state["local_imagery_inspection_attempt"] = current_source
+                st.session_state.pop("local_imagery_inspection_error", None)
+                try:
+                    with st.spinner("Inspecting raster automatically with GDAL…"):
+                        inspected_info = run_local_gdalinfo(source_value, local_gdal_tools)
+                    source_file = Path(source_value).expanduser()
+                    st.session_state["local_imagery_inspection"] = {
+                        "path": current_source,
+                        "info": inspected_info,
+                        "file_size": source_file.stat().st_size,
+                    }
+                    st.session_state.pop("local_imagery_cog_result", None)
+                    st.session_state.pop("local_oam_item_result", None)
+                    st.session_state["local_cog_output_path"] = str(
+                        source_file.with_name(source_file.stem + "_prepared_cog.tif")
+                    )
+                    inspection = st.session_state["local_imagery_inspection"]
+                except Exception as exc:
+                    st.session_state["local_imagery_inspection_error"] = {
+                        "path": current_source, "message": str(exc)
+                    }
+            inspection_error = st.session_state.get("local_imagery_inspection_error")
+            if inspection_error and inspection_error.get("path") == current_source:
+                st.error(f"Could not inspect this raster: {inspection_error['message']}")
     elif source_value:
         st.caption("Waiting for a valid local file path. Paste the complete path and press Enter.")
 
