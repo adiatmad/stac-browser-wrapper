@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -20,6 +21,7 @@ FUNCTIONS = {
     "resolve_local_gdal_tools",
     "run_local_gdalinfo",
     "_local_decoded_bytes",
+    "has_usable_geotransform",
     "validate_local_oam_raster",
     "create_local_thumbnail",
     "build_local_cog",
@@ -55,6 +57,7 @@ def load_helpers():
         "datetime": datetime,
         "os": os,
         "json": json,
+        "math": math,
         "re": __import__("re"),
         "shutil": shutil,
         "subprocess": subprocess,
