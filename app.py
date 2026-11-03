@@ -1436,16 +1436,35 @@ if active_workflow == "Local preparation":
             "OAM also samples pixels for some four-band inputs; choose an override only when you know the source product type."
         )
         validation = validate_local_oam_raster(info, effective_product, file_size_bytes)
-        for check_index, check in enumerate(validation["checks"]):
+        size_override_confirmed = False
+        if file_size_bytes is not None and file_size_bytes > OAM_MAX_UPLOAD_BYTES:
+            size_override_confirmed = st.checkbox(
+                "I confirmed with the OAM operator that this deployment's MAX_UPLOAD_BYTES setting is higher than this file size.",
+                key=f"osgeo4w_upload_limit_override::{source_key}::{file_size_bytes}",
+            )
+        checks_for_ui = []
+        for check in validation["checks"]:
+            if check["name"] == "Source file size" and size_override_confirmed:
+                check = {
+                    **check,
+                    "status": "WARN",
+                    "detail": check["detail"] + " You confirmed a higher limit with the OAM operator.",
+                }
+            checks_for_ui.append(check)
+        for check_index, check in enumerate(checks_for_ui):
             variant = {"PASS": "default", "WARN": "secondary", "FAIL": "destructive", "INFO": "secondary"}[check["status"]]
             ui.badge(check["status"], variant=variant, key=f"osgeo4w-oam-check-{check_index}")
             st.markdown(f"**{check['name']}**  \n{check['detail']}")
-        hard_fails = [item for item in validation["checks"] if item["status"] == "FAIL"]
-        size_verified = file_size_bytes is not None and file_size_bytes <= OAM_MAX_UPLOAD_BYTES
+        hard_fails = [item for item in checks_for_ui if item["status"] == "FAIL"]
+        size_verified = file_size_bytes is not None and (
+            file_size_bytes <= OAM_MAX_UPLOAD_BYTES or size_override_confirmed
+        )
         if hard_fails:
             st.error("Do not upload this file yet. Resolve the failed checks, then inspect the resulting file again.")
         elif not size_verified:
-            st.warning("The file-size check is incomplete. Enter the exact byte count before preparing the OAM handoff.")
+            st.warning("The file-size check is incomplete or exceeds the upstream default. Confirm any deployment override before preparing the OAM handoff.")
+        elif size_override_confirmed:
+            st.warning("The file exceeds the upstream default, but you confirmed the deployed OAM upload limit with its operator.")
         elif validation["status"] == "WARN":
             st.warning("No hard raster failure was found, but review the warnings. OAM performs the authoritative validation during upload.")
         else:
