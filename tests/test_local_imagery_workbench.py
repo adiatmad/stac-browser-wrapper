@@ -205,6 +205,13 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
         self.assertEqual(item["assets"]["visual"]["href"], "./prepared.tif")
         self.assertEqual(item["assets"]["thumbnail"]["href"], "./prepared_thumbnail.png")
         self.assertEqual(item["properties"]["datetime"], "2026-11-03T02:03:04+07:00")
+        self.assertEqual(item["properties"]["gsd"], 0.05)
+        self.assertEqual(
+            item["properties"]["providers"],
+            [{"name": "Example mapping team", "roles": ["producer", "licensor"]}],
+        )
+        self.assertNotIn("gsd", item)
+        self.assertNotIn("providers", item)
         self.assertEqual(item["properties"]["oam:product_type"], "visual")
         self.assertEqual(item["properties"]["oam:footprint_source"], "bbox")
         self.assertEqual(item["links"][0]["rel"], "self")
