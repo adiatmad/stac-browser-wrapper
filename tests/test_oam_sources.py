@@ -168,7 +168,7 @@ class OAMSourceTests(unittest.TestCase):
         self.assertIn("provider=SI%20Imaging%20Services", url)
         self.assertIn("platform=satellite", url)
         self.assertIn("sensor=SpaceEye-T", url)
-        self.assertIn("license=CC-BY-4.0", url)
+        self.assertIn("license=CC-BY%204.0", url)
         self.assertIn(
             "source_url=https%3A%2F%2Fst-vvhr-opendata.s3.us-west-2.amazonaws.com%2F",
             url,
