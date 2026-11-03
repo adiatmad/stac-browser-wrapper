@@ -681,24 +681,29 @@ def validate_local_oam_raster(
             f"Estimated decoded size is {decoded / 1e9:.2f} GB; OAM's current default for this conversion path is {max_decoded_gb:g} GB (deployment-configurable).",
         )
 
-    if file_size_bytes is not None:
+    if file_size_bytes is None:
         check(
-            "PASS" if file_size_bytes <= OAM_MAX_UPLOAD_BYTES else "WARN",
+            "WARN", "Source file size",
+            "Not verified. Run the generated file-size command; OAM rejects uploads larger than 100 GiB.",
+        )
+    else:
+        check(
+            "PASS" if file_size_bytes <= OAM_MAX_UPLOAD_BYTES else "FAIL",
             "Source file size",
             (
-                f"{file_size_bytes / 1024**3:.2f} GiB; current OAM uploader ceiling is 100 GiB."
+                f"{file_size_bytes / 1024**3:.2f} GiB; within the current 100 GiB OAM uploader ceiling."
                 if file_size_bytes <= OAM_MAX_UPLOAD_BYTES
-                else f"{file_size_bytes / 1024**3:.2f} GiB exceeds the 100 GiB uploader ceiling. You can still prepare a COG; the selected upload asset is checked again before metadata handoff."
+                else f"{file_size_bytes / 1024**3:.2f} GiB exceeds the current 100 GiB uploader ceiling. OAM will reject this upload."
             ),
         )
 
     metadata = (info.get("metadata") or {}).get("IMAGE_STRUCTURE") or {}
     is_cog = str(metadata.get("LAYOUT", "")).upper() == "COG"
-    check("PASS" if is_cog else "WARN", "Cloud Optimized GeoTIFF",
-          "GDAL reports LAYOUT=COG." if is_cog else "Source is not reported as a COG; local preparation can create a separate COG.")
+    check("PASS" if is_cog else "INFO", "Cloud Optimized GeoTIFF",
+          "GDAL reports LAYOUT=COG." if is_cog else "A prebuilt COG is not required: OAM creates its own COG during ingestion.")
     has_overviews = bool(bands) and all(bool(b.get("overviews")) for b in bands)
-    check("PASS" if has_overviews else "WARN", "Overviews",
-          "Every band reports internal overviews." if has_overviews else "One or more bands have no reported overviews; COG preparation will build them when needed.")
+    check("PASS" if has_overviews else "INFO", "Overviews",
+          "Every band reports internal overviews." if has_overviews else "Local overviews are not an upload prerequisite; OAM builds the published COG.")
     extent = info.get("wgs84Extent")
     check("PASS" if isinstance(extent, dict) and extent.get("coordinates") else "WARN", "WGS84 extent",
           "GDAL supplied an EPSG:4326 geometry for metadata generation." if isinstance(extent, dict) and extent.get("coordinates") else "GDAL did not supply a WGS84 extent; metadata geometry needs manual investigation.")
@@ -899,14 +904,21 @@ def write_local_oam_item(item: dict[str, Any], output_path: str) -> str:
 
 
 def build_oam_local_prefill_url(metadata: dict[str, Any]) -> str:
-    """Build the documented OAM uploader handoff without a local path/source_url."""
+    """Build a documented OAM uploader handoff; never pass a local path or source_url."""
+    license_values = {
+        "CC-BY-4.0": "CC-BY 4.0",
+        "CC-BY-SA-4.0": "CC BY-SA 4.0",
+        "CC-BY-NC-4.0": "CC BY-NC 4.0",
+    }
     fields = {
         "title": metadata.get("title"),
         "provider": metadata.get("producer"),
         "platform": metadata.get("platform"),
-        "license": metadata.get("license"),
-        "acquisition_start": metadata.get("datetime"),
+        "license": license_values.get(metadata.get("license"), metadata.get("license")),
+        "acquisition_start": metadata.get("acquisition_start"),
+        "acquisition_end": metadata.get("acquisition_end"),
         "sensor": metadata.get("sensor"),
+        "contact": metadata.get("contact"),
         "product_type": metadata.get("product_type"),
     }
     clean = {key: value for key, value in fields.items() if value not in (None, "")}
