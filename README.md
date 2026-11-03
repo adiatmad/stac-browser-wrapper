@@ -42,20 +42,20 @@ The Local preparation tab is report-driven. It works even when this Streamlit ap
 2. Open QGIS / OSGeo4W Shell on the Windows computer that contains the file.
 3. Run the generated GDAL version, JSON inspection, and PowerShell file-size commands.
 4. Paste the JSON copied to the clipboard and the exact file size in bytes into the app.
-5. Review the GDAL report and OAM checks: driver, dimensions, CRS, band count/types, product type, decoded-size estimate, and the current 100 GiB upload ceiling.
+5. Review the GDAL report and OAM checks: driver, dimensions, CRS, band count/types, product type, decoded-size estimate, and the upstream default 100 GiB upload ceiling.
 6. If the input is not a GeoTIFF or has no declared CRS, the app can generate a separate COG GeoTIFF command. It never guesses a CRS; -a_srs is included only after the user supplies a verified EPSG code. The command refuses to overwrite an existing output.
 7. Paste the converted output path into the path field and repeat the report step before continuing.
 8. Confirm the actual dataset title, imagery producer, platform, acquisition date, and accepted CC license. Open the official OAM uploader, select the local file yourself, review the prefilled values, sign in if prompted, and submit manually.
 
 ### What OAM actually requires
 
-The current upstream uploader accepts GeoTIFF input up to **100 GiB**. Its processing pipeline then validates the raster, creates a COG, extracts metadata, and registers the STAC Item. A prebuilt local COG is therefore **not required** when the source is already a valid GeoTIFF with a CRS. The app offers local COG creation only as an optional copy for other workflows.
+The current upstream uploader defaults to a **100 GiB** upload ceiling for GeoTIFF input; deployments can override this setting. Its processing pipeline then validates the raster, creates a COG, extracts metadata, and registers the STAC Item. A prebuilt local COG is therefore **not required** when the source is already a valid GeoTIFF with a CRS. The app offers local COG creation only as an optional copy for other workflows.
 
 OAM's pipeline accepts visual, multispectral, SAR, elevation, and pseudocolor products. Three-band 8-bit imagery is detected as visual; a four-band image is only treated as visual when its fourth band is recognised as alpha. The pipeline keeps other products' native data and converts them losslessly. Eligible 8-bit RGB(A) visual imagery is converted to a JPEG quality-90 display COG; OAM retains the original upload separately.
 
 The pipeline calculates GSD from the raster's pixel size and CRS and derives the published footprint from the raster mask or extent. The local handoff therefore does not ask the user to invent GSD or draw a STAC geometry. The acquisition date, producer, platform, title, and license still need human confirmation.
 
-The decoded-size budget is deployment-configurable. Current upstream defaults are 130 GB for lossless conversion paths and approximately 216.7 GB for the eligible lossy visual path; the actual deployment may differ. The 100 GiB upload ceiling is a separate hard limit.
+The decoded-size budget is deployment-configurable. Current upstream defaults are 130 GB for lossless conversion paths and approximately 216.7 GB for the eligible lossy visual path; the actual deployment may differ. The 100 GiB upload ceiling is separate from decoded size; treat it as the active default unless the OAM deployment operator confirms an override.
 
 **Privacy and publication safeguards:** the GDAL report is pasted by the user; raster bytes remain on the user's computer. The prefill URL contains metadata only, never a local path or local source_url. The app does not store OAM credentials, upload files, or publish imagery automatically.
 
