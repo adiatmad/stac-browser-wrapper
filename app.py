@@ -1172,108 +1172,58 @@ active_workflow = ui.tabs(
 )
 
 if active_workflow == "Local preparation":
-    # ---------- Local DroneTM Progress Mosaic ----------
-    ui.card(
-        title="DroneTM progress mosaic",
-        description="Run locally on your computer",
-        content=(
-            "Large orthophoto downloads and mosaic/COG processing run on your computer, "
-            "not on this hosted Streamlit app. Your task cache and raster files stay under your control."
-        ),
-        footer=(
-            "This app cannot access local files and never automatically uploads or publishes to OpenAerialMap."
-        ),
-        key="drone-mosaic-workflow",
-    )
-    st.link_button(
-        "Open DroneTM Progress Mosaic on GitHub",
-        "https://github.com/adiatmad/dronetm-progress-mosaic",
-        help="Download or update the local-first tool. This hosted app does not access your local files or DroneTM token.",
-    )
-    with st.expander("Which local workflow should I use?"):
-        st.markdown(
-            "- **Download task orthophotos and build a mosaic:** use the local DroneTM app, paste your project link, "
-            "load/review tasks, download selected orthophotos, then build the mosaic.\n"
-            "- **Rebuild mosaic.vrt and mosaic.tif as a COG from files already downloaded:** use "
-            "rebuild_cog.bat on Windows with OSGeo4W/QGIS installed.\n"
-            "- **Keep your data safe:** the local tool preserves task_*.tif source orthophotos and does not "
-            "automatically upload or publish anything to OpenAerialMap. Review the output before any separate upload."
-        )
-    st.caption(
-        "The hosted app cannot read your Windows folders or run OSGeo4W. Local downloads, cache, and mosaic outputs "
-        "remain in the separate DroneTM tool."
-    )
-
-    # ---------- Local imagery preparation and OAM handoff ----------
+    # ---------- One-path local imagery → OAM workflow ----------
     st.header("Local geospatial imagery preparation")
     st.caption(
-        "Inspect → validate → prepare → create metadata → hand off to OAM. "
-        "GDAL runs on the machine hosting this Streamlit process."
+        "Enter one existing raster path. The app inspects it automatically, then guides you through "
+        "OAM validation, safe COG preparation, metadata, and the official uploader handoff."
     )
     st.info(
         "This feature needs Streamlit running locally on the same computer as the raster and GDAL/QGIS. "
         "A cloud-hosted copy cannot read your Windows paths or use your local QGIS installation."
     )
 
-    with st.expander("Separate DroneTM task-download and mosaic workflow"):
-        st.markdown(
-            "For downloading Tasking Manager orthophotos and building a DroneTM progress mosaic, "
-            "use the separate local tool. This workbench handles preparation of an existing raster."
-        )
-        st.link_button(
-            "Open DroneTM Progress Mosaic on GitHub",
-            "https://github.com/adiatmad/dronetm-progress-mosaic",
-        )
-
-    gdal_bin_dir = st.text_input(
-        "GDAL bin directory (optional)",
-        placeholder=r"C:\OSGeo4W\bin",
-        key="local_gdal_bin_dir",
-        help="Leave blank when gdalinfo and gdal_translate are already on PATH or launch this app from the QGIS/OSGeo4W shell.",
-    )
-    local_gdal_tools = resolve_local_gdal_tools(gdal_bin_dir)
-    if local_gdal_tools:
-        st.success("Local GDAL tools detected.")
-        st.caption(f"gdalinfo: {local_gdal_tools['gdalinfo']} · gdal_translate: {local_gdal_tools['gdal_translate']}")
-    else:
-        st.warning(
-            "GDAL CLI tools were not detected. Launch Streamlit from the QGIS/OSGeo4W shell, "
-            "or enter the folder containing both gdalinfo and gdal_translate."
-        )
-
+    local_gdal_tools = resolve_local_gdal_tools()
     source_path = st.text_input(
         "Source raster path",
-        placeholder=r"D:\imagery\orthomosaic.tif",
+        placeholder=r"D:\orthobekasigeotiff.tif",
         key="preflight_path",
-        help="The source is opened read-only. It is never copied to a remote service or overwritten.",
+        help="Paste the full local path and press Enter. The source is opened read-only and is never uploaded or overwritten.",
     )
-    inspect_clicked = st.button(
-        "Inspect raster with GDAL",
-        type="primary",
-        disabled=not (source_path.strip().strip('"') and local_gdal_tools),
-        key="run_gdal_check",
-    )
-    if inspect_clicked:
-        try:
-            with st.spinner("Reading raster metadata locally with gdalinfo…"):
-                inspected_info = run_local_gdalinfo(source_path.strip().strip('"'), local_gdal_tools)
-            st.session_state["local_imagery_inspection"] = {
-                "path": str(Path(source_path.strip().strip('"')).expanduser().resolve()),
-                "info": inspected_info,
-                "file_size": Path(source_path.strip().strip('"')).expanduser().stat().st_size,
-            }
-            st.session_state.pop("local_imagery_cog_result", None)
-            st.session_state.pop("local_oam_item_result", None)
-            st.session_state["local_cog_output_path"] = str(
-                Path(source_path.strip().strip('"')).expanduser().with_name(
-                    Path(source_path.strip().strip('"')).expanduser().stem + "_prepared_cog.tif"
-                )
+    source_value = source_path.strip().strip('"')
+    current_source = str(Path(source_value).expanduser().resolve()) if source_value else ""
+    inspection = st.session_state.get("local_imagery_inspection")
+    last_attempt = st.session_state.get("local_imagery_inspection_attempt")
+
+    if source_value and Path(source_value).is_file():
+        if not local_gdal_tools:
+            st.error(
+                "GDAL was not found automatically. Install QGIS/OSGeo4W or make gdalinfo and "
+                "gdal_translate available on PATH, then restart this app."
             )
-        except Exception as exc:
-            st.error(f"Local GDAL inspection failed: {exc}")
+        elif (not inspection or inspection.get("path") != current_source) and last_attempt != current_source:
+            st.session_state["local_imagery_inspection_attempt"] = current_source
+            try:
+                with st.spinner("Inspecting raster automatically with GDAL…"):
+                    inspected_info = run_local_gdalinfo(source_value, local_gdal_tools)
+                source_file = Path(source_value).expanduser()
+                st.session_state["local_imagery_inspection"] = {
+                    "path": current_source,
+                    "info": inspected_info,
+                    "file_size": source_file.stat().st_size,
+                }
+                st.session_state.pop("local_imagery_cog_result", None)
+                st.session_state.pop("local_oam_item_result", None)
+                st.session_state["local_cog_output_path"] = str(
+                    source_file.with_name(source_file.stem + "_prepared_cog.tif")
+                )
+                inspection = st.session_state["local_imagery_inspection"]
+            except Exception as exc:
+                st.error(f"Could not inspect this raster: {exc}")
+    elif source_value:
+        st.caption("Waiting for a valid local file path. Paste the complete path and press Enter.")
 
     inspection = st.session_state.get("local_imagery_inspection")
-    current_source = str(Path(source_path.strip().strip('"')).expanduser().resolve()) if source_path.strip().strip('"') else ""
     if inspection and inspection.get("path") == current_source:
         info = inspection["info"]
         bands = info.get("bands") or []
@@ -1483,8 +1433,8 @@ if active_workflow == "Local preparation":
                 "In the OAM uploader, select the prepared COG (or original raster if you skipped preparation), "
                 "review the prefilled metadata, and submit there yourself. No file is uploaded by this workbench."
             )
-    elif inspection and source_path.strip().strip('"'):
-        st.caption("The source path changed. Run Inspect raster with GDAL again to refresh the evidence.")
+    elif inspection and source_value and inspection.get("path") != current_source:
+        st.caption("The new source path has not been inspected yet.")
 
 
 elif active_workflow == "Discover & map":
