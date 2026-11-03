@@ -563,6 +563,10 @@ def build_oam_cog_command(source_path: str, output_path: str, epsg: str = "") ->
     output = str(output_path or "").strip().strip('"')
     if not source or not output:
         raise ValueError("Both source and output paths are required.")
+    if not ntpath.isabs(source):
+        raise ValueError("Use a full absolute Windows source path.")
+    if not ntpath.isabs(output):
+        raise ValueError("Use a full absolute Windows output path.")
     if ntpath.normcase(ntpath.normpath(source)) == ntpath.normcase(ntpath.normpath(output)):
         raise ValueError("The output path must differ from the source path.")
     epsg_code = str(epsg or "").strip()
