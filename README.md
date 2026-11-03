@@ -35,16 +35,22 @@ The OAM handoff should follow the current [OAM uploader integration contract](ht
 
 For OAM's current STAC extension, use the canonical Creative Commons identifiers `CC-BY-4.0`, `CC-BY-SA-4.0`, or `CC-BY-NC-4.0`; do not use a display-style value such as `CC-BY 4.0`. Keep `source_url` as a public HTTPS URL that resolves to the actual GeoTIFF, and only prefill acquisition dates when supported by source metadata.
 
-## Local GDAL preflight
+## Local geospatial imagery workbench
 
-The validator can consume either a raster directly or a saved `gdalinfo -json` report. The JSON path is useful when GDAL is available in QGIS/OSGeo4W but not on the current PowerShell `PATH`:
+The **Local preparation** workflow can inspect and prepare an existing raster with GDAL on the same computer that runs Streamlit:
 
-```bash
-python validate_imagery.py validate-json gdalinfo.json
-python validate_imagery.py recommend-json gdalinfo.json input.tif
-```
+1. Install GDAL through QGIS/OSGeo4W, or make `gdalinfo` and `gdal_translate` available on `PATH`.
+2. Start this app locally (for example, from the QGIS/OSGeo4W shell): `streamlit run app.py`.
+3. Select the local raster and run **Inspect raster with GDAL**. The app executes `gdalinfo -json` locally; it does not upload the raster.
+4. Choose the actual OAM product type. Only `visual` requires 3–4 8-bit bands; multispectral, SAR, elevation, and pseudocolor products retain their native data type and band count.
+5. If the raster passes the checks, create a separate lossless DEFLATE COG and (for visual RGB data) a downsampled PNG preview. The source is never overwritten. Existing output paths are refused.
+6. Enter the known acquisition metadata and generate a local STAC/OAM JSON draft. Capture time, producer, GSD, platform, and license are not inferred.
+7. Open the official OAM uploader with supported metadata prefilled, select the local raster yourself, review it, and submit there.
 
-Python's JSON parser is used for saved GDAL reports so metadata keys that PowerShell's `ConvertFrom-Json` may reject (including an empty key) do not block validation.
+**Important:** A cloud-hosted Streamlit deployment cannot access your Windows files or local QGIS/GDAL installation. Run the app locally for this workflow. OAM performs its own server-side COG conversion after upload; the local COG is a lossless preparation copy, not a replacement for OAM's processing pipeline. The OAM prefill intentionally contains no local filesystem path or `source_url`, and this app does not store credentials or upload automatically.
+
+The OAM uploader currently documents a 100 GiB file-upload ceiling. Its decoded-size validation is deployment-configurable; the workbench reports the current upstream validator default as a warning rather than treating it as a universal limit.
+
 
 ## Notes
 
