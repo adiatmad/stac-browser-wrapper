@@ -30,7 +30,7 @@ Checked hotosm/openaerialmap main at commit e20d1146059aab1408f1ae35755ff1998235
 
 Decisions:
 - The app never opens the pasted path or claims it can access the user's local filesystem. It only generates shell commands and parses the report pasted by the user.
-- The report command redirects complete `gdalinfo -json` output to `%USERPROFILE%\\gdal-report.json`; a second command copies that file with `clip < ...`. If clipboard transfer fails, the user can open the file in Notepad and copy its raw contents directly into Streamlit. A separate PowerShell command returns the exact local file size in bytes.
+- The report command redirects complete `gdalinfo -json` output to `%USERPROFILE%\gdal-report.json`; a second command copies that file with `clip < ...`. If clipboard transfer fails, the user can open the file in Notepad and copy its raw contents directly into Streamlit. A separate PowerShell command returns the exact local file size in bytes.
 - OAM requires GeoTIFF input with a declared CRS; the current upstream default upload ceiling is 100 GiB and may be overridden by deployment configuration.
 - OAM itself creates the published COG. A local COG is optional for an already-valid GeoTIFF; a separate COG GeoTIFF is generated when the source is not GeoTIFF or needs a verified CRS assignment.
 - The app never guesses CRS, product type semantics, acquisition date, producer, platform, or license.
