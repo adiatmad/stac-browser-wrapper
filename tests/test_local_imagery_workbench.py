@@ -16,9 +16,20 @@ class ReportDrivenLocalImageryWorkflowTests(unittest.TestCase):
 
         self.assertIn("build_osgeo4w_commands(source_value)", source)
         self.assertIn("gdalinfo -json", source)
+        self.assertIn('"report_file": f"gdalinfo -json {quoted} > {report_path}"', source)
+        self.assertIn('"copy_report": f"clip < {report_path}"', source)
+        self.assertIn('"open_report": f"notepad {report_path}"', source)
+        self.assertNotIn('gdalinfo -json {quoted} | clip', source)
         self.assertIn("parse_oam_gdalinfo_report(report_text)", source)
         self.assertIn("gdal_report_matches_path(info, source_value)", source)
         self.assertIn("has_usable_geotransform(info)", source)
+
+    def test_oam_handoff_opens_uploader_without_a_separate_metadata_form(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn('st.link_button("Open official OAM uploader", OAM_UPLOAD_URL)', source)
+        self.assertIn('st.markdown("### 7 · Open the OAM uploader")', source)
+        self.assertNotIn("local_oam_metadata_form", source)
+        self.assertNotIn("build_oam_local_prefill_url", source)
 
         # The hosted app must never try to inspect a user's local filesystem.
         self.assertNotIn("subprocess.run(", source)
