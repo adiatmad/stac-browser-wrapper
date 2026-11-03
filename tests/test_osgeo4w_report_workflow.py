@@ -47,8 +47,6 @@ def load_helpers():
         "math": math,
         "re": re,
         "ntpath": ntpath,
-        "urlencode": urlencode,
-        "quote": quote,
     }
     exec(compile(ast.Module(body=body, type_ignores=[]), str(SOURCE), "exec"), namespace)
     return namespace
