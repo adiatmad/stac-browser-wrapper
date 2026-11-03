@@ -1106,8 +1106,9 @@ if active_workflow == "Local preparation":
         "and prepares the correct OAM uploader handoff."
     )
     st.info(
-        "This is a report-based workflow: the app does not open your D: drive or receive raster bytes. "
-        "Run the commands on the Windows computer that contains the imagery, in the QGIS / OSGeo4W Shell."
+        "The app receives the path and GDAL metadata report you paste, but it never opens your D: drive or receives raster bytes. "
+        "Review the report for sensitive file paths or metadata before pasting. Run the commands on the Windows computer "
+        "that contains the imagery, in the QGIS / OSGeo4W Shell."
     )
 
     source_path = st.text_input(
