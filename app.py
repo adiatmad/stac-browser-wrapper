@@ -498,6 +498,7 @@ def build_osgeo4w_commands(path: str) -> dict[str, str]:
     powershell_path = source.replace("'", "''")
     return {
         "version": "gdalinfo --version",
+        "cog_driver": "gdalinfo --format COG",
         "report": f"gdalinfo -json {quoted} | clip",
         "size": (
             'powershell -NoProfile -Command "(Get-Item -LiteralPath '
@@ -1310,6 +1311,7 @@ if active_workflow == "Local preparation":
             "the shell commands run directly against your local raster."
         )
         st.code(shell_commands["version"], language="shell")
+        st.code(shell_commands["cog_driver"], language="shell")
         st.code(shell_commands["report"], language="shell")
         st.caption("The complete JSON report is copied to your clipboard by the final pipe to clip.exe.")
         st.code(shell_commands["size"], language="shell")
@@ -1330,6 +1332,7 @@ if active_workflow == "Local preparation":
         analyse_report = st.form_submit_button("Analyse GDAL report", type="primary")
 
     if analyse_report:
+        st.session_state.pop("osgeo4w_oam_prefill", None)
         st.session_state.pop("osgeo4w_report_error", None)
         try:
             if not source_key:
@@ -1354,6 +1357,7 @@ if active_workflow == "Local preparation":
 
     report_result = st.session_state.get("osgeo4w_report_result")
     if report_result and report_result.get("path") != source_key:
+        st.session_state.pop("osgeo4w_oam_prefill", None)
         st.warning("The path has changed since this report was analysed. Run the generated commands and submit a fresh report for the new path.")
     elif report_result and source_key:
         info = report_result["info"]
@@ -1523,6 +1527,12 @@ if active_workflow == "Local preparation":
                     key="osgeo4w_metadata_date",
                     help="Use the actual capture date, not the processing or upload date.",
                 )
+                metadata_end_date = st.text_input(
+                    "Acquisition end date (optional, YYYY-MM-DD)",
+                    placeholder="2026-11-04",
+                    key="osgeo4w_metadata_end_date",
+                    help="Only enter this when the imagery covers a capture period.",
+                )
                 metadata_license = st.selectbox(
                     "License",
                     options=[
@@ -1544,12 +1554,6 @@ if active_workflow == "Local preparation":
                     placeholder="Name or email for imagery enquiries",
                     key="osgeo4w_metadata_contact",
                 )
-                metadata_product_type = st.selectbox(
-                    "Product type override (optional)",
-                    options=["Use OAM auto-detection", *OAM_SUPPORTED_PRODUCTS],
-                    index=0,
-                    key="osgeo4w_metadata_product_type",
-                )
                 metadata_submitted = st.form_submit_button("Prepare OAM uploader handoff", type="primary")
 
             if metadata_submitted:
@@ -1563,6 +1567,12 @@ if active_workflow == "Local preparation":
                     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", metadata_date.strip()):
                         raise ValueError("Enter the actual acquisition date as YYYY-MM-DD.")
                     datetime.fromisoformat(metadata_date.strip())
+                    end_date = metadata_end_date.strip()
+                    if end_date:
+                        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", end_date):
+                            raise ValueError("Enter the acquisition end date as YYYY-MM-DD.")
+                        if datetime.fromisoformat(end_date) < datetime.fromisoformat(metadata_date.strip()):
+                            raise ValueError("Acquisition end date cannot be earlier than the start date.")
                     license_map = {
                         "CC-BY 4.0": "CC-BY-4.0",
                         "CC BY-SA 4.0": "CC-BY-SA-4.0",
@@ -1570,16 +1580,14 @@ if active_workflow == "Local preparation":
                     }
                     if metadata_license not in license_map:
                         raise ValueError("Select one of OAM's accepted Creative Commons licenses.")
-                    if metadata_product_type == "Use OAM auto-detection":
-                        product_override = ""
-                    else:
-                        product_override = metadata_product_type
+                    product_override = "" if product_choice == "Auto-detect in OAM" else product_choice
                     metadata = {
                         "title": metadata_title.strip(),
                         "producer": metadata_producer.strip(),
                         "platform": metadata_platform,
                         "license": license_map[metadata_license],
                         "acquisition_start": metadata_date.strip(),
+                        "acquisition_end": end_date,
                         "sensor": metadata_sensor.strip(),
                         "contact": metadata_contact.strip(),
                         "product_type": product_override,
