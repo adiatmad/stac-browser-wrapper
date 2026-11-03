@@ -18,3 +18,7 @@
 - [ ] Inspect complete PR diff for regressions, unsafe commands, and mismatch with upstream OAM.
 - [ ] Manual Windows acceptance: run generated commands in the user's QGIS / OSGeo4W Shell and paste the actual GDAL report.
 - [ ] Manual OAM acceptance: select and submit a valid local GeoTIFF in the official uploader; report result separately from CI.
+
+- [x] Verify pasted GDAL report path against the path entered in the app; warn when GDAL omits an absolute path.
+- [x] Require a usable affine geotransform for reliable OAM GSD/footprint metadata; warn on the identity transform.
+- [x] Display per-band NoData and align decoded-size estimation with the upstream validator.
