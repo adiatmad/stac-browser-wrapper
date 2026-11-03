@@ -383,12 +383,14 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
             "datetime": "2026-11-03T02:03:04Z",
             "sensor": "Camera X",
             "product_type": "visual",
+            "gsd": 0.05,
             "local_path": r"D:\imagery\prepared.tif",
         })
         fragment = url.split("#", 1)[1]
         self.assertIn("title=Jakarta", fragment)
         self.assertIn("product_type=visual", fragment)
         self.assertNotIn("source_url", fragment)
+        self.assertNotIn("gsd", fragment)
         self.assertNotIn("D%3A", fragment)
         self.assertNotIn("imagery", fragment)
 
