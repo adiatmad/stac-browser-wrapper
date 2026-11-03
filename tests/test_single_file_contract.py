@@ -160,7 +160,7 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn("Check OAM v2 for Duplicates", source)
         self.assertIn("Prepare OAM v2 upload", source)
         self.assertIn("Apply filter", source)
-        self.assertIn("No file is uploaded by this workbench", source)
+        self.assertIn("This app does not upload the file", source)
         self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
 
     def test_hallmark_workbench_navigation_and_accessibility_shell(self):
