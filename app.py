@@ -476,7 +476,7 @@ def resolve_local_gdal_tools(gdal_bin_dir: str = "") -> dict[str, str]:
 
 def run_local_gdalinfo(path: str, tools: dict[str, str]) -> dict[str, Any]:
     """Read raster metadata locally; raster bytes are never sent to a service."""
-    source = Path(path).expanduser()
+    source = Path(str(path).strip().strip('"')).expanduser()
     if not source.is_file():
         raise FileNotFoundError(f"Raster file does not exist: {source}")
     if not tools.get("gdalinfo"):
@@ -597,10 +597,9 @@ def create_local_thumbnail(
     args = [tools["gdal_translate"], "-of", "PNG", "-outsize", "1024", "0"]
     bands = info.get("bands") or []
     types = [str(b.get("type", "")).upper() for b in bands]
-    if product_type == "visual" and len(bands) >= 3 and all(t in {"BYTE", "UINT8"} for t in types[:3]):
-        args.extend(["-b", "1", "-b", "2", "-b", "3"])
-    else:
-        args.extend(["-b", "1", "-ot", "Byte", "-scale"])
+    if product_type != "visual" or len(bands) < 3 or not all(t in {"BYTE", "UINT8"} for t in types[:3]):
+        return None
+    args.extend(["-b", "1", "-b", "2", "-b", "3"])
     args.extend([str(source), str(output)])
     proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, check=False)
     if proc.returncode != 0 or not output.is_file():
@@ -613,8 +612,8 @@ def build_local_cog(
     product_type: str, tools: dict[str, str],
 ) -> dict[str, Any]:
     """Create and verify a separate lossless COG; never overwrite source/output."""
-    source = Path(source_path).expanduser().resolve(strict=True)
-    output = Path(output_path).expanduser().resolve()
+    source = Path(str(source_path).strip().strip('"')).expanduser().resolve(strict=True)
+    output = Path(str(output_path).strip().strip('"')).expanduser().resolve()
     if source == output:
         raise ValueError("Output path must differ from the source raster.")
     if output.exists():
@@ -650,6 +649,13 @@ def build_local_cog(
         raise RuntimeError("COG verification failed: band data types changed. The output was not deleted.")
     if source_info.get("geoTransform") != output_info.get("geoTransform"):
         raise RuntimeError("COG verification failed: geotransform changed. The output was not deleted.")
+    source_crs = source_info.get("coordinateSystem") or {}
+    output_crs = output_info.get("coordinateSystem") or {}
+    if bool(source_crs.get("wkt") or source_crs.get("projjson")) != bool(output_crs.get("wkt") or output_crs.get("projjson")):
+        raise RuntimeError("COG verification failed: CRS presence changed. The output was not deleted.")
+    source_crs_id, output_crs_id = source_crs.get("id"), output_crs.get("id")
+    if source_crs_id and output_crs_id and source_crs_id != output_crs_id:
+        raise RuntimeError("COG verification failed: CRS identifier changed. The output was not deleted.")
     thumbnail = None
     thumbnail_error = None
     try:
@@ -1432,6 +1438,8 @@ if active_workflow == "Local preparation":
                 }
                 selected_asset = cog_result["path"] if cog_result and cog_result.get("source") == current_source else source_path.strip()
                 selected_thumbnail = cog_result.get("thumbnail") if cog_result and cog_result.get("source") == current_source else None
+                if Path(selected_asset).stat().st_size > OAM_MAX_UPLOAD_BYTES:
+                    raise ValueError("Selected raster exceeds the current OAM 100 GiB upload ceiling.")
                 stac_item = build_local_oam_item(info, selected_asset, confirmed_metadata, selected_thumbnail)
                 metadata_path = str(
                     Path(selected_asset).with_name(Path(selected_asset).stem + "_oam_item.json")
