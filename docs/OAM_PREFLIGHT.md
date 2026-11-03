@@ -30,6 +30,8 @@ Evidence was checked against the main branch of hotosm/openaerialmap, commit e20
 
 OAM accepts GeoTIFFs and creates its own COG during ingestion. Local COG creation is optional for an already-valid GeoTIFF. The uploader's upstream default maximum file size is 100 GiB; deployment configuration may override it. OAM's current supported product types are visual, multispectral, SAR, elevation, and pseudocolor. A CRS is required. Only a declared visual product is constrained to 3–4 8-bit bands; non-visual products retain native data.
 
+As of the inspected main commit, upstream PRs [#371](https://github.com/hotosm/openaerialmap/pull/371), [#372](https://github.com/hotosm/openaerialmap/pull/372), and [#373](https://github.com/hotosm/openaerialmap/pull/373) were still open and propose ownership/queryable changes around a future v0.4.0 extension. They do not change the released v0.3.0 uploader contract used here; no `oam:owner_id` value is fabricated or prefilled.
+
 The OAM pipeline derives GSD from pixel resolution and CRS and generates the Item geometry/footprint from the raster mask or extent. The preflight requires a usable affine geotransform because an EPSG label alone cannot restore pixel-to-ground coordinates; an identity transform is flagged for manual review. The user must confirm title, producer, platform, acquisition date, and license. The current OAM extension accepts CC-BY-4.0, CC-BY-SA-4.0, and CC-BY-NC-4.0.
 
 ## Generated OSGeo4W commands
