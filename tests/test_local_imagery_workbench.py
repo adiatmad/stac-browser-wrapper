@@ -203,6 +203,7 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
         self.assertEqual(item["bbox"], [106.9, -6.3, 107.0, -6.2])
         self.assertEqual(item["geometry"]["type"], "Polygon")
         self.assertEqual(item["assets"]["visual"]["href"], "./prepared.tif")
+        self.assertEqual(item["assets"]["visual"]["roles"], ["data"])
         self.assertEqual(item["assets"]["thumbnail"]["href"], "./prepared_thumbnail.png")
         self.assertEqual(item["properties"]["datetime"], "2026-11-03T02:03:04+07:00")
         self.assertEqual(item["properties"]["gsd"], 0.05)
