@@ -207,12 +207,20 @@ def build_oam_prefill_url(
     dates must not be inferred from S3 LastModified unless the source documents
     that field as an acquisition timestamp.
     """
+    license_values = {
+        "CC-BY-4.0": "CC-BY 4.0",
+        "CC-BY-SA-4.0": "CC BY-SA 4.0",
+        "CC-BY-NC-4.0": "CC BY-NC 4.0",
+        "CC-BY 4.0": "CC-BY 4.0",
+        "CC BY-SA 4.0": "CC BY-SA 4.0",
+        "CC BY-NC 4.0": "CC BY-NC 4.0",
+    }
     fields = {
         "title": title,
         "source_url": source_url,
         "provider": provider,
         "platform": platform,
-        "license": license,
+        "license": license_values.get(license),
         "sensor": sensor,
         "acquisition_start": acquisition_start,
         "acquisition_end": acquisition_end,
