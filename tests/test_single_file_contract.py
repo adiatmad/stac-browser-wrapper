@@ -16,7 +16,7 @@ class HostedSingleFileContractTests(unittest.TestCase):
 
     def test_local_raster_workflow_uses_one_path(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn("Source raster path", source)
+        self.assertIn("Local raster path", source)
         self.assertIn("gdalinfo -json", source)
         self.assertIn("build_osgeo4w_commands(source_value)", source)
         self.assertIn('st.form("oam_gdal_report_form"', source)
