@@ -154,7 +154,8 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
         info = self.sample_info()
         result = self.helpers["validate_local_oam_raster"](info, "visual", 101 * 1024**3)
         upload_check = next(item for item in result["checks"] if item["name"] == "Upload file size")
-        self.assertEqual(upload_check["status"], "FAIL")
+        self.assertEqual(upload_check["status"], "WARN")
+        self.assertIn("You can still prepare a COG", upload_check["detail"])
 
     def test_cog_creation_preserves_source_and_refuses_existing_output(self):
         with tempfile.TemporaryDirectory() as temp:
