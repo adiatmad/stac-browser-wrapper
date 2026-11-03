@@ -7,6 +7,9 @@ import io
 import csv
 import json
 import os
+import shutil
+import subprocess
+from pathlib import Path
 from datetime import datetime
 import time
 import folium
@@ -431,6 +434,343 @@ def build_oam_recommendation(info: dict[str, Any], input_path: str, source_epsg:
             "notes": ["Creates a new file and does not overwrite the source.",
                       "Uses lossless DEFLATE so RGB and RGBA are preserved.",
                       "COG is a local output target; OAM may still perform server-side validation/transcoding."]}
+
+
+# ---------- Local GDAL / OAM imagery workbench ----------
+OAM_STAC_SCHEMA_URL = "https://docs.imagery.hotosm.org/oam/v0.3.0/schema.json"
+OAM_SUPPORTED_PRODUCTS = ("visual", "multispectral", "sar", "elevation", "pseudocolor")
+OAM_SUPPORTED_LICENSES = ("CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0")
+OAM_MAX_UPLOAD_BYTES = 100 * 1024**3
+
+
+def resolve_local_gdal_tools(gdal_bin_dir: str = "") -> dict[str, str]:
+    """Find both GDAL CLI tools without requiring a shell or changing PATH."""
+    suffix = ".exe" if os.name == "nt" else ""
+    candidates: list[Path] = []
+    if gdal_bin_dir.strip():
+        custom = Path(gdal_bin_dir.strip().strip('"')).expanduser()
+        candidates.append(custom.parent if custom.is_file() else custom)
+    for env_name in ("OSGEO4W_ROOT", "QGIS_PREFIX_PATH"):
+        root = os.environ.get(env_name, "").strip()
+        if root:
+            base = Path(root)
+            candidates.extend((base, base / "bin", base.parent / "bin"))
+    if os.name == "nt":
+        candidates.extend((Path("C:/OSGeo4W/bin"), Path("C:/OSGeo4W64/bin")))
+        program_files = Path(os.environ.get("ProgramFiles", "C:/Program Files"))
+        candidates.extend(program_files.glob("QGIS */bin"))
+    found: dict[str, str] = {}
+    for candidate in candidates:
+        if not candidate.is_dir():
+            continue
+        for tool in ("gdalinfo", "gdal_translate"):
+            executable = candidate / f"{tool}{suffix}"
+            if executable.is_file():
+                found[tool] = str(executable)
+        if len(found) == 2:
+            return found
+    for tool in ("gdalinfo", "gdal_translate"):
+        found.setdefault(tool, shutil.which(f"{tool}{suffix}") or shutil.which(tool) or "")
+    return found if all(found.values()) else {}
+
+
+def run_local_gdalinfo(path: str, tools: dict[str, str]) -> dict[str, Any]:
+    """Read raster metadata locally; raster bytes are never sent to a service."""
+    source = Path(path).expanduser()
+    if not source.is_file():
+        raise FileNotFoundError(f"Raster file does not exist: {source}")
+    if not tools.get("gdalinfo"):
+        raise RuntimeError("gdalinfo was not found. Set the GDAL bin directory or launch Streamlit from the QGIS/OSGeo4W shell.")
+    try:
+        proc = subprocess.run(
+            [tools["gdalinfo"], "-json", str(source)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=600, check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("gdalinfo timed out after 10 minutes. Check the file and local storage, then retry.") from exc
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or f"gdalinfo exited with code {proc.returncode}.")
+    try:
+        info = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"gdalinfo returned invalid JSON: {exc}") from exc
+    if not isinstance(info, dict) or not info.get("size") or not info.get("bands"):
+        raise RuntimeError("GDAL did not return a usable raster dataset description.")
+    return info
+
+
+def _local_decoded_bytes(info: dict[str, Any]) -> int | None:
+    sizes = {
+        "BYTE": 1, "UINT8": 1, "INT8": 1, "UINT16": 2, "INT16": 2,
+        "UINT32": 4, "INT32": 4, "FLOAT32": 4, "FLOAT64": 8,
+        "CINT16": 4, "CINT32": 8, "CFLOAT32": 8, "CFLOAT64": 16,
+    }
+    width, height = (info.get("size") or [0, 0])[:2]
+    bands = info.get("bands") or []
+    if not width or not height or not bands:
+        return None
+    per_band = [sizes.get(str(b.get("type", "")).upper()) for b in bands]
+    if any(value is None for value in per_band):
+        return None
+    return int(width) * int(height) * sum(int(value) for value in per_band)
+
+
+def validate_local_oam_raster(
+    info: dict[str, Any], product_type: str, file_size_bytes: int | None = None
+) -> dict[str, Any]:
+    """Apply current OAM product-aware raster checks without guessing semantics."""
+    checks: list[dict[str, str]] = []
+
+    def check(status: str, name: str, detail: str) -> None:
+        checks.append({"status": status, "name": name, "detail": detail})
+
+    driver = str(info.get("driverShortName") or info.get("driver") or "")
+    bands = info.get("bands") or []
+    types = [str(b.get("type", "")).upper() for b in bands]
+    colors = [str(b.get("colorInterpretation", "")).lower() for b in bands]
+    crs = info.get("coordinateSystem") or {}
+    crs_ok = bool(crs.get("wkt") or crs.get("projjson"))
+    width, height = (info.get("size") or [0, 0])[:2]
+    product = str(product_type or "").lower()
+
+    check("PASS" if driver.upper() == "GTIFF" else "FAIL", "GeoTIFF driver",
+          f"GDAL driver is {driver or 'unknown'}." if driver.upper() == "GTIFF" else f"OAM ingests GeoTIFF; GDAL reports {driver or 'unknown'}.")
+    check("PASS" if crs_ok else "FAIL", "Coordinate reference system",
+          "A CRS is declared." if crs_ok else "No CRS is declared. Do not assign one unless the source CRS is known.")
+    check("PASS" if width and height and bands else "FAIL", "Raster dimensions and bands",
+          f"{width:,} × {height:,}; {len(bands)} band(s)." if width and height and bands else "GDAL did not report valid dimensions and bands.")
+    check("PASS" if product in OAM_SUPPORTED_PRODUCTS else "FAIL", "OAM product type",
+          f"Declared {product}." if product in OAM_SUPPORTED_PRODUCTS else f"Choose one of: {', '.join(OAM_SUPPORTED_PRODUCTS)}.")
+
+    if product == "visual":
+        visual_ok = len(bands) in (3, 4) and bool(types) and all(t in {"BYTE", "UINT8"} for t in types)
+        check("PASS" if visual_ok else "FAIL", "Visual pixel contract",
+              f"{len(bands)} band(s), types {types}; visual requires 3–4 8-bit bands." if visual_ok else f"Found {len(bands)} band(s), types {types}; declared visual requires 3–4 8-bit bands.")
+        if visual_ok and colors[:3] != ["red", "green", "blue"]:
+            check("WARN", "Color interpretation", f"GDAL reports {colors}; verify the band order is really RGB before declaring visual.")
+        elif visual_ok and len(bands) == 4 and len(colors) > 3 and colors[3] not in {"alpha", "undefined"}:
+            check("WARN", "Fourth band", f"Band 4 is {colors[3]}, not clearly alpha. OAM may treat it as multispectral.")
+        else:
+            check("PASS", "Color interpretation", "Band interpretation is consistent with the declared visual product.")
+    else:
+        check("PASS", "Native data preservation", f"{product} products retain their native {types or ['unknown']} data types and band count; no RGB/Byte coercion is applied.")
+
+    decoded = _local_decoded_bytes(info)
+    if decoded is None:
+        check("WARN", "Decoded size", "Could not estimate decoded size from the reported band types.")
+    elif decoded > 130_000_000_000:
+        check("WARN", "Decoded size", f"Estimated decoded size is {decoded / 1e9:.1f} GB. OAM's current validator default is 130 GB, but deployments may override this.")
+    else:
+        check("PASS", "Decoded size", f"Estimated decoded size is {decoded / 1e9:.2f} GB.")
+
+    if file_size_bytes is not None:
+        check("PASS" if file_size_bytes <= OAM_MAX_UPLOAD_BYTES else "FAIL", "Upload file size",
+              f"{file_size_bytes / 1024**3:.2f} GiB; current OAM uploader ceiling is 100 GiB." if file_size_bytes <= OAM_MAX_UPLOAD_BYTES else f"{file_size_bytes / 1024**3:.2f} GiB exceeds the current 100 GiB uploader ceiling.")
+
+    metadata = (info.get("metadata") or {}).get("IMAGE_STRUCTURE") or {}
+    is_cog = str(metadata.get("LAYOUT", "")).upper() == "COG"
+    check("PASS" if is_cog else "WARN", "Cloud Optimized GeoTIFF",
+          "GDAL reports LAYOUT=COG." if is_cog else "Source is not reported as a COG; local preparation can create a separate COG.")
+    has_overviews = bool(bands) and all(bool(b.get("overviews")) for b in bands)
+    check("PASS" if has_overviews else "WARN", "Overviews",
+          "Every band reports internal overviews." if has_overviews else "One or more bands have no reported overviews; COG preparation will build them when needed.")
+    extent = info.get("wgs84Extent")
+    check("PASS" if isinstance(extent, dict) and extent.get("coordinates") else "WARN", "WGS84 extent",
+          "GDAL supplied an EPSG:4326 geometry for metadata generation." if isinstance(extent, dict) and extent.get("coordinates") else "GDAL did not supply a WGS84 extent; metadata geometry needs manual investigation.")
+
+    failures = [item for item in checks if item["status"] == "FAIL"]
+    warnings = [item for item in checks if item["status"] == "WARN"]
+    return {"status": "FAIL" if failures else ("WARN" if warnings else "PASS"), "checks": checks, "decodedBytes": decoded}
+
+
+def create_local_thumbnail(
+    raster_path: str, info: dict[str, Any], product_type: str, tools: dict[str, str]
+) -> str:
+    """Create a small PNG preview; never modify the raster or replace an existing preview."""
+    source = Path(raster_path).expanduser().resolve()
+    output = source.with_name(source.stem + "_thumbnail.png")
+    if output.exists():
+        raise FileExistsError(f"Thumbnail already exists; choose another output path: {output}")
+    if not tools.get("gdal_translate"):
+        raise RuntimeError("gdal_translate was not found.")
+    args = [tools["gdal_translate"], "-of", "PNG", "-outsize", "1024", "0"]
+    bands = info.get("bands") or []
+    types = [str(b.get("type", "")).upper() for b in bands]
+    if product_type == "visual" and len(bands) >= 3 and all(t in {"BYTE", "UINT8"} for t in types[:3]):
+        args.extend(["-b", "1", "-b", "2", "-b", "3"])
+    else:
+        args.extend(["-b", "1", "-ot", "Byte", "-scale"])
+    args.extend([str(source), str(output)])
+    proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, check=False)
+    if proc.returncode != 0 or not output.is_file():
+        raise RuntimeError(proc.stderr.strip() or "GDAL did not create the thumbnail.")
+    return str(output)
+
+
+def build_local_cog(
+    source_path: str, output_path: str, source_info: dict[str, Any],
+    product_type: str, tools: dict[str, str],
+) -> dict[str, Any]:
+    """Create and verify a separate lossless COG; never overwrite source/output."""
+    source = Path(source_path).expanduser().resolve(strict=True)
+    output = Path(output_path).expanduser().resolve()
+    if source == output:
+        raise ValueError("Output path must differ from the source raster.")
+    if output.exists():
+        raise FileExistsError(f"Output already exists; choose another path: {output}")
+    if not output.parent.is_dir():
+        raise FileNotFoundError(f"Output directory does not exist: {output.parent}")
+    if not tools.get("gdal_translate") or not tools.get("gdalinfo"):
+        raise RuntimeError("Both gdal_translate and gdalinfo are required.")
+    args = [
+        tools["gdal_translate"], "-of", "COG",
+        "-co", "COMPRESS=DEFLATE",
+        "-co", "BIGTIFF=IF_SAFER",
+        "-co", "BLOCKSIZE=512",
+        "-co", "RESAMPLING=AVERAGE",
+        "-co", "NUM_THREADS=ALL_CPUS",
+        str(source), str(output),
+    ]
+    proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=14400, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or f"gdal_translate exited with code {proc.returncode}. Any partial output was left untouched for inspection.")
+    if not output.is_file():
+        raise RuntimeError("gdal_translate reported success but the output file was not created.")
+    output_info = run_local_gdalinfo(str(output), tools)
+    output_structure = (output_info.get("metadata") or {}).get("IMAGE_STRUCTURE") or {}
+    if str(output_structure.get("LAYOUT", "")).upper() != "COG":
+        raise RuntimeError("GDAL created an output, but gdalinfo did not confirm LAYOUT=COG. The output was not deleted.")
+    if output_info.get("size") != source_info.get("size"):
+        raise RuntimeError("COG verification failed: raster dimensions changed. The output was not deleted.")
+    source_bands, output_bands = source_info.get("bands") or [], output_info.get("bands") or []
+    if len(source_bands) != len(output_bands):
+        raise RuntimeError("COG verification failed: band count changed. The output was not deleted.")
+    if [str(b.get("type", "")).upper() for b in source_bands] != [str(b.get("type", "")).upper() for b in output_bands]:
+        raise RuntimeError("COG verification failed: band data types changed. The output was not deleted.")
+    if source_info.get("geoTransform") != output_info.get("geoTransform"):
+        raise RuntimeError("COG verification failed: geotransform changed. The output was not deleted.")
+    thumbnail = None
+    thumbnail_error = None
+    try:
+        thumbnail = create_local_thumbnail(str(output), output_info, product_type, tools)
+    except Exception as exc:
+        thumbnail_error = str(exc)
+    return {"path": str(output), "info": output_info, "thumbnail": thumbnail, "thumbnail_error": thumbnail_error}
+
+
+def _geojson_positions(value: Any):
+    """Yield longitude/latitude pairs from nested GeoJSON coordinates."""
+    if isinstance(value, (list, tuple)) and len(value) >= 2 and all(isinstance(x, (int, float)) for x in value[:2]):
+        yield float(value[0]), float(value[1])
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            yield from _geojson_positions(child)
+
+
+def build_local_oam_item(
+    info: dict[str, Any], asset_path: str, metadata: dict[str, Any],
+    thumbnail_path: str | None = None,
+) -> dict[str, Any]:
+    """Build an OAM v0.3.0 STAC draft from GDAL geometry and user-confirmed fields."""
+    extent = info.get("wgs84Extent")
+    if not isinstance(extent, dict) or not extent.get("coordinates"):
+        raise ValueError("GDAL did not provide a WGS84 extent. Do not guess the Item geometry.")
+    positions = list(_geojson_positions(extent["coordinates"]))
+    if not positions:
+        raise ValueError("Could not extract longitude/latitude coordinates from GDAL's WGS84 extent.")
+    longitudes = [point[0] for point in positions]
+    latitudes = [point[1] for point in positions]
+    if max(longitudes) - min(longitudes) > 180:
+        raise ValueError("This extent crosses the antimeridian. The geometry must be split before creating a valid OAM STAC Item.")
+    required = ("title", "producer", "platform", "product_type", "license", "datetime", "gsd")
+    missing = [key for key in required if metadata.get(key) in (None, "")]
+    if missing:
+        raise ValueError("Missing user-confirmed metadata: " + ", ".join(missing))
+    if metadata["product_type"] not in OAM_SUPPORTED_PRODUCTS:
+        raise ValueError("Unsupported OAM product type.")
+    if metadata["license"] not in OAM_SUPPORTED_LICENSES:
+        raise ValueError("Choose one of OAM's accepted Creative Commons licenses.")
+    gsd = float(metadata["gsd"])
+    if gsd <= 0:
+        raise ValueError("GSD must be greater than zero.")
+    captured = datetime.fromisoformat(str(metadata["datetime"]).replace("Z", "+00:00"))
+    if captured.tzinfo is None:
+        raise ValueError("Acquisition datetime must include a timezone, e.g. Z or +07:00.")
+    producer = str(metadata["producer"]).strip()
+    if not producer:
+        raise ValueError("Producer cannot be empty.")
+    title = str(metadata["title"]).strip()
+    if not title:
+        raise ValueError("Title cannot be empty.")
+    asset_name = Path(asset_path).name
+    item_id = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(asset_path).stem).strip("-") or "local-imagery"
+    properties: dict[str, Any] = {
+        "title": title,
+        "datetime": captured.isoformat().replace("+00:00", "Z"),
+        "license": metadata["license"],
+        "oam:platform_type": metadata["platform"],
+        "oam:producer_name": producer,
+        "oam:product_type": metadata["product_type"],
+        "oam:product_type_source": "declared",
+    }
+    sensor = str(metadata.get("sensor", "")).strip()
+    if sensor:
+        properties["instruments"] = [sensor]
+    item: dict[str, Any] = {
+        "type": "Feature",
+        "stac_version": "1.0.0",
+        "stac_extensions": [OAM_STAC_SCHEMA_URL],
+        "id": item_id,
+        "geometry": extent,
+        "bbox": [min(longitudes), min(latitudes), max(longitudes), max(latitudes)],
+        "properties": properties,
+        "gsd": gsd,
+        "providers": [{"name": producer, "roles": ["producer", "licensor"]}],
+        "assets": {
+            "visual": {
+                "href": "./" + asset_name,
+                "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+                "roles": ["visual"],
+                "title": asset_name,
+            }
+        },
+        "links": [],
+    }
+    if thumbnail_path:
+        item["assets"]["thumbnail"] = {
+            "href": "./" + Path(thumbnail_path).name,
+            "type": "image/png",
+            "roles": ["thumbnail"],
+        }
+    return item
+
+
+def write_local_oam_item(item: dict[str, Any], output_path: str) -> str:
+    """Write a metadata sidecar once; never replace an existing file."""
+    output = Path(output_path).expanduser().resolve()
+    if output.exists():
+        raise FileExistsError(f"Metadata file already exists; choose another path: {output}")
+    if not output.parent.is_dir():
+        raise FileNotFoundError(f"Metadata directory does not exist: {output.parent}")
+    output.write_text(json.dumps(item, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return str(output)
+
+
+def build_oam_local_prefill_url(metadata: dict[str, Any]) -> str:
+    """Build the documented OAM uploader handoff without a local path/source_url."""
+    fields = {
+        "title": metadata.get("title"),
+        "provider": metadata.get("producer"),
+        "platform": metadata.get("platform"),
+        "license": metadata.get("license"),
+        "acquisition_start": metadata.get("datetime"),
+        "sensor": metadata.get("sensor"),
+        "product_type": metadata.get("product_type"),
+    }
+    clean = {key: value for key, value in fields.items() if value not in (None, "")}
+    return OAM_UPLOAD_URL + "#" + urlencode(clean, quote_via=quote)
+
 
 # Try importing GDAL for server-side VRT generation; fallback gracefully if unavailable
 try:
@@ -864,109 +1204,273 @@ if active_workflow == "Local preparation":
         "remain in the separate DroneTM tool."
     )
 
-    # ---------- Local OAM Drone Preflight ----------
-    st.header("OAM Drone Preflight")
-    st.caption("A guided local workflow: select an imagery path → run one GDAL command → paste the report → get the final local preparation command.")
+    # ---------- Local imagery preparation and OAM handoff ----------
+    st.header("Local geospatial imagery preparation")
+    st.caption(
+        "Inspect → validate → prepare → create metadata → hand off to OAM. "
+        "GDAL runs on the machine hosting this Streamlit process."
+    )
+    st.info(
+        "This feature needs Streamlit running locally on the same computer as the raster and GDAL/QGIS. "
+        "A cloud-hosted copy cannot read your Windows paths or use your local QGIS installation."
+    )
 
-    with st.container(border=True):
-        st.markdown("### 1 · Find the imagery file")
+    with st.expander("Separate DroneTM task-download and mosaic workflow"):
         st.markdown(
-            "Open the folder in Windows File Explorer, hold **Shift**, right-click the image, "
-            "then choose **Copy as path**."
+            "For downloading Tasking Manager orthophotos and building a DroneTM progress mosaic, "
+            "use the separate local tool. This workbench handles preparation of an existing raster."
         )
-        preflight_path = st.text_input(
-            "Local imagery path",
-            placeholder=r'"C:\drone\orthomosaic.ecw"',
-            key="preflight_path",
-            help="Paste the path copied from File Explorer. The app uses it only to build a command; it does not open or upload the image.",
+        st.link_button(
+            "Open DroneTM Progress Mosaic on GitHub",
+            "https://github.com/adiatmad/dronetm-progress-mosaic",
         )
-        preflight_local_path = preflight_path.strip().strip('"')
-        run_gdal = st.button("Generate GDAL check command", type="primary", disabled=not preflight_local_path, key="run_gdal_check")
-        if run_gdal:
-            st.session_state["preflight_gdal_command"] = f'gdalinfo "{preflight_local_path}"'
 
-    if st.session_state.get("preflight_gdal_command"):
-        st.markdown("### 2 · Run the GDAL check")
-        st.caption("Copy this command into PowerShell on the computer that has the imagery.")
-        st.code(st.session_state["preflight_gdal_command"], language="powershell")
-        st.markdown("After it finishes, copy the **complete output** and paste it below.")
-        preflight_text = st.text_area(
-            "GDAL result",
-            height=220,
-            placeholder="Paste the complete gdalinfo output here…",
-            key="preflight_text",
-        )
+    gdal_bin_dir = st.text_input(
+        "GDAL bin directory (optional)",
+        placeholder=r"C:\OSGeo4W\bin",
+        key="local_gdal_bin_dir",
+        help="Leave blank when gdalinfo and gdal_translate are already on PATH or launch this app from the QGIS/OSGeo4W shell.",
+    )
+    local_gdal_tools = resolve_local_gdal_tools(gdal_bin_dir)
+    if local_gdal_tools:
+        st.success("Local GDAL tools detected.")
+        st.caption(f"gdalinfo: {local_gdal_tools['gdalinfo']} · gdal_translate: {local_gdal_tools['gdal_translate']}")
     else:
-        preflight_text = ""
+        st.warning(
+            "GDAL CLI tools were not detected. Launch Streamlit from the QGIS/OSGeo4W shell, "
+            "or enter the folder containing both gdalinfo and gdal_translate."
+        )
 
-    if preflight_text.strip():
+    source_path = st.text_input(
+        "Source raster path",
+        placeholder=r"D:\imagery\orthomosaic.tif",
+        key="local_imagery_source_path",
+        help="The source is opened read-only. It is never copied to a remote service or overwritten.",
+    )
+    inspect_clicked = st.button(
+        "Inspect raster with GDAL",
+        type="primary",
+        disabled=not (source_path.strip() and local_gdal_tools),
+        key="inspect_local_imagery",
+    )
+    if inspect_clicked:
         try:
-            raw = preflight_text.strip()
-            if raw.startswith("```"):
-                raw = raw.split("\n", 1)[1] if "\n" in raw else raw
-                if raw.endswith("```"):
-                    raw = raw[:-3].strip()
-            if raw.lstrip().startswith("{"):
-                info = json.loads(raw)
-                evidence_format = "gdalinfo -json"
-            else:
-                info = parse_gdalinfo_text(raw)
-                evidence_format = "gdalinfo"
-
-            result = validate_info(info)
-            hard_fails = [c for c in result["checks"] if c["status"] == "FAIL"]
-            warnings = [c for c in result["checks"] if c["status"] == "WARN"]
-
-            st.markdown("### 3 · OAM check")
-            if hard_fails:
-                st.error("**Not ready** — a required check failed. Fix the item marked FAIL before upload.")
-            elif warnings:
-                st.warning("**Review before upload** — no hard OAM requirement failed, but some details need verification.")
-            else:
-                st.success("**Ready based on this report** — no OAM preflight checks failed.")
-            st.caption(f"Parsed from {evidence_format}. The raster itself was not uploaded.")
-
-            for check_index, check in enumerate(result["checks"]):
-                badge_variant = {"PASS": "default", "WARN": "secondary", "FAIL": "destructive"}[check["status"]]
-                ui.badge(
-                    check["status"],
-                    variant=badge_variant,
-                    key=f"preflight-status-{check_index}",
+            with st.spinner("Reading raster metadata locally with gdalinfo…"):
+                inspected_info = run_local_gdalinfo(source_path.strip(), local_gdal_tools)
+            st.session_state["local_imagery_inspection"] = {
+                "path": str(Path(source_path.strip()).expanduser().resolve()),
+                "info": inspected_info,
+                "file_size": Path(source_path.strip()).expanduser().stat().st_size,
+            }
+            st.session_state.pop("local_imagery_cog_result", None)
+            st.session_state.pop("local_oam_item_result", None)
+            st.session_state["local_cog_output_path"] = str(
+                Path(source_path.strip()).expanduser().with_name(
+                    Path(source_path.strip()).expanduser().stem + "_prepared_cog.tif"
                 )
-                st.markdown(f"**{check['name']}**  \n{check['detail']}")
-
-            source_epsg = None
-            if not result["summary"]["crsPresent"]:
-                st.markdown("**CRS needed**")
-                epsg_text = st.text_input("Source EPSG", placeholder="Example: 32751", key="preflight_epsg", help="Enter the CRS actually used by your workflow. Do not guess.")
-                if epsg_text.strip():
-                    try:
-                        source_epsg = int(epsg_text.strip())
-                    except ValueError:
-                        st.error("Source EPSG must be an integer, e.g. 32751.")
-
-            needs_conversion = result["summary"]["driver"].upper() != "GTIFF"
-            if needs_conversion and not hard_fails and (result["summary"]["crsPresent"] or source_epsg is not None):
-                rec = build_oam_recommendation(info, preflight_local_path, source_epsg=source_epsg)
-                if rec["ready"]:
-                    st.markdown("### 4 · Final local preparation command")
-                    st.caption("Copy this one combined PowerShell command. It creates a new file and then runs gdalinfo on that output for verification. The original is not overwritten.")
-                    output = rec["output"]
-                    quoted_output = "'" + output.replace("'", "''") + "'"
-                    combined = (
-                        f"$out={quoted_output}; "
-                        "if (Test-Path -LiteralPath $out) { "
-                        "throw 'Output already exists; choose a different output path.' }; "
-                        f'{rec["command"]}; if ($LASTEXITCODE -eq 0) {{ gdalinfo "$out" }}'
-                    )
-                    st.code(combined, language="powershell")
-                    st.caption("Paste the resulting gdalinfo output back into the GDAL result box above to verify the converted file.")
-            elif not needs_conversion:
-                st.info("This report is already for GeoTIFF. No conversion command is needed; review the OAM checks above and upload the source if they are satisfied.")
-        except json.JSONDecodeError as exc:
-            st.error(f"Could not parse the GDAL output: {exc}")
+            )
         except Exception as exc:
-            st.error(f"Preflight could not be processed: {exc}")
+            st.error(f"Local GDAL inspection failed: {exc}")
+
+    inspection = st.session_state.get("local_imagery_inspection")
+    current_source = str(Path(source_path.strip()).expanduser().resolve()) if source_path.strip() else ""
+    if inspection and inspection.get("path") == current_source:
+        info = inspection["info"]
+        bands = info.get("bands") or []
+        width, height = info.get("size") or [0, 0]
+        crs = info.get("coordinateSystem") or {}
+        crs_id = crs.get("id") or {}
+        epsg = crs_id.get("code") if isinstance(crs_id, dict) else crs_id
+        image_structure = (info.get("metadata") or {}).get("IMAGE_STRUCTURE") or {}
+        decoded = _local_decoded_bytes(info)
+
+        st.markdown("### 1 · Inspect")
+        metric_cols = st.columns(4)
+        metric_cols[0].metric("Raster", f"{width:,} × {height:,}" if width and height else "Unknown")
+        metric_cols[1].metric("Bands", str(len(bands)))
+        metric_cols[2].metric("CRS", f"EPSG:{epsg}" if epsg else ("Declared" if crs.get("wkt") else "Missing"))
+        metric_cols[3].metric("File size", format_bytes(inspection["file_size"]))
+        if decoded is not None:
+            st.caption(f"Estimated decoded size: {decoded / 1_000_000_000:.2f} GB · GDAL compression: {image_structure.get('COMPRESSION', 'not reported')} · COG layout: {image_structure.get('LAYOUT', 'not reported')}")
+        st.markdown("**Band details**")
+        for band in bands:
+            block = band.get("block") or []
+            overview = band.get("overviews") or []
+            st.markdown(
+                f"- Band {band.get('band', '?')}: **{band.get('type', 'unknown')}** · "
+                f"{band.get('colorInterpretation', 'unknown')} · "
+                f"block {block[0]}×{block[1] if len(block) > 1 else '?'} · "
+                f"{len(overview)} overview level(s)"
+            )
+        with st.expander("Georeferencing and full GDAL metadata"):
+            st.json({
+                "driver": info.get("driverShortName") or info.get("driver"),
+                "size": info.get("size"),
+                "geoTransform": info.get("geoTransform"),
+                "coordinateSystem": info.get("coordinateSystem"),
+                "cornerCoordinates": info.get("cornerCoordinates"),
+                "wgs84Extent": info.get("wgs84Extent"),
+                "imageStructure": image_structure,
+            })
+
+        st.markdown("### 2 · Validate against OAM")
+        product_type = st.selectbox(
+            "OAM product type",
+            options=list(OAM_SUPPORTED_PRODUCTS),
+            index=0,
+            key="local_oam_product_type",
+            help="Choose from the actual data. Only visual requires 3–4 8-bit bands; other products retain native values.",
+        )
+        validation = validate_local_oam_raster(info, product_type, inspection["file_size"])
+        for check_index, check in enumerate(validation["checks"]):
+            variant = {"PASS": "default", "WARN": "secondary", "FAIL": "destructive"}[check["status"]]
+            ui.badge(check["status"], variant=variant, key=f"local-oam-check-{check_index}")
+            st.markdown(f"**{check['name']}**  \n{check['detail']}")
+        hard_fails = [item for item in validation["checks"] if item["status"] == "FAIL"]
+        if hard_fails:
+            st.error("This raster fails one or more OAM checks. Resolve the failed items before preparing it for publication.")
+        elif validation["status"] == "WARN":
+            st.warning("No hard OAM raster failure was detected, but review the warnings and confirm the source metadata.")
+        else:
+            st.success("The raster passes the current local OAM checks.")
+
+        st.markdown("### 3 · Prepare a separate COG")
+        st.caption(
+            "Creates a lossless DEFLATE COG with internal overviews where needed. "
+            "It preserves the source data type and all bands; it does not reproject, rescale, or alter the source. "
+            "OAM will still run its own server-side conversion after upload."
+        )
+        output_path = st.text_input(
+            "Prepared COG output path",
+            key="local_cog_output_path",
+            help="The output must be a new path. Existing files are never overwritten.",
+        )
+        prepare_clicked = st.button(
+            "Prepare lossless COG and thumbnail",
+            disabled=bool(hard_fails) or not output_path.strip() or not local_gdal_tools,
+            key="prepare_local_cog",
+        )
+        if prepare_clicked:
+            try:
+                with st.spinner("Creating and verifying the COG locally. Large rasters may take time…"):
+                    cog_result = build_local_cog(
+                        source_path.strip(), output_path.strip(), info,
+                        product_type, local_gdal_tools,
+                    )
+                st.session_state["local_imagery_cog_result"] = {
+                    "source": current_source,
+                    **cog_result,
+                }
+                st.session_state.pop("local_oam_item_result", None)
+            except Exception as exc:
+                st.error(f"Local COG preparation failed: {exc}")
+
+        cog_result = st.session_state.get("local_imagery_cog_result")
+        if cog_result and cog_result.get("source") == current_source:
+            st.success(f"Verified COG created: {cog_result['path']}")
+            st.caption("GDAL confirms LAYOUT=COG; dimensions, band count, data types, and geotransform match the source.")
+            if cog_result.get("thumbnail"):
+                st.image(cog_result["thumbnail"], caption="Local downsampled preview", use_container_width=True)
+            elif cog_result.get("thumbnail_error"):
+                st.warning(f"COG is ready, but thumbnail creation failed: {cog_result['thumbnail_error']}")
+
+        st.markdown("### 4 · Create OAM metadata and hand off")
+        st.caption(
+            "Metadata is built from GDAL's WGS84 extent and details you confirm below. "
+            "Acquisition time, producer, GSD, platform, and license are never guessed."
+        )
+        with st.form("local_oam_metadata_form"):
+            metadata_title = st.text_input(
+                "Title",
+                value=Path(source_path.strip()).stem,
+                key="local_oam_title",
+            )
+            metadata_producer = st.text_input(
+                "Imagery producer",
+                placeholder="Person or organisation that produced the imagery",
+                key="local_oam_producer",
+            )
+            metadata_platform = st.selectbox(
+                "Platform type",
+                options=["uav", "kite", "balloon", "aircraft", "satellite"],
+                key="local_oam_platform",
+            )
+            metadata_gsd = st.text_input(
+                "GSD (metres per pixel)",
+                placeholder="Example: 0.05",
+                key="local_oam_gsd",
+                help="Enter the measured/known GSD. Do not use angular pixel size as metres.",
+            )
+            metadata_datetime = st.text_input(
+                "Acquisition datetime (ISO 8601 with timezone)",
+                placeholder="2026-11-03T02:03:04Z",
+                key="local_oam_datetime",
+            )
+            metadata_license = st.selectbox(
+                "License",
+                options=list(OAM_SUPPORTED_LICENSES),
+                key="local_oam_license",
+            )
+            metadata_sensor = st.text_input(
+                "Sensor / camera (optional)",
+                placeholder="Camera model or sensor name",
+                key="local_oam_sensor",
+            )
+            metadata_submitted = st.form_submit_button("Generate local STAC metadata")
+        if metadata_submitted:
+            try:
+                gsd_value = float(metadata_gsd)
+                confirmed_metadata = {
+                    "title": metadata_title.strip(),
+                    "producer": metadata_producer.strip(),
+                    "platform": metadata_platform,
+                    "product_type": product_type,
+                    "gsd": gsd_value,
+                    "datetime": metadata_datetime.strip(),
+                    "license": metadata_license,
+                    "sensor": metadata_sensor.strip(),
+                }
+                selected_asset = cog_result["path"] if cog_result and cog_result.get("source") == current_source else source_path.strip()
+                selected_thumbnail = cog_result.get("thumbnail") if cog_result and cog_result.get("source") == current_source else None
+                stac_item = build_local_oam_item(info, selected_asset, confirmed_metadata, selected_thumbnail)
+                metadata_path = str(
+                    Path(selected_asset).with_name(Path(selected_asset).stem + "_oam_item.json")
+                )
+                written_metadata_path = write_local_oam_item(stac_item, metadata_path)
+                st.session_state["local_oam_item_result"] = {
+                    "item": stac_item,
+                    "path": written_metadata_path,
+                    "metadata": confirmed_metadata,
+                    "asset": selected_asset,
+                }
+            except Exception as exc:
+                st.error(f"Could not create OAM metadata: {exc}")
+
+        oam_item_result = st.session_state.get("local_oam_item_result")
+        if oam_item_result and oam_item_result.get("asset") == (
+            cog_result["path"] if cog_result and cog_result.get("source") == current_source else source_path.strip()
+        ):
+            item_json = json.dumps(oam_item_result["item"], indent=2, ensure_ascii=False)
+            st.success(f"Local STAC/OAM metadata draft saved: {oam_item_result['path']}")
+            st.download_button(
+                "Download STAC metadata JSON",
+                data=item_json,
+                file_name=Path(oam_item_result["path"]).name,
+                mime="application/geo+json",
+            )
+            st.caption(
+                "The local Item uses a relative asset href. It is a preparation draft, not a published catalogue Item; "
+                "replace the relative href with a public asset URL if you later reuse it as a remote STAC Item."
+            )
+            oam_prefill = build_oam_local_prefill_url(oam_item_result["metadata"])
+            st.link_button("Open official OAM uploader with metadata", oam_prefill)
+            st.warning(
+                "In the OAM uploader, select the prepared COG (or original raster if you skipped preparation), "
+                "review the prefilled metadata, and submit there yourself. No file is uploaded by this workbench."
+            )
+    elif inspection and source_path.strip():
+        st.caption("The source path changed. Run Inspect raster with GDAL again to refresh the evidence.")
+
 
 elif active_workflow == "Discover & map":
     st.header("Choose an imagery source")
