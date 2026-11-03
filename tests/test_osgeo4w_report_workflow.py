@@ -133,7 +133,7 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "numeric EPSG"):
             build(r"D:\scene.ecw", r"D:\scene_oam_ready.tif", "EPSG:4326")
 
-    def test_oam_upload_size_is_a_hard_limit_but_prebuilt_cog_is_not_required(self):
+    def test_oam_default_upload_ceiling_and_optional_cog_requirement(self):
         info = self.sample_info()
         too_large = self.helpers["validate_local_oam_raster"](
             info, "visual", 101 * 1024**3
@@ -142,7 +142,7 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
             item for item in too_large["checks"] if item["name"] == "Source file size"
         )
         self.assertEqual(upload_check["status"], "FAIL")
-        self.assertIn("OAM will reject", upload_check["detail"])
+        self.assertIn("deployed service may override", upload_check["detail"])
 
         no_size = self.helpers["validate_local_oam_raster"](info, "visual")
         upload_check = next(
