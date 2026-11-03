@@ -650,7 +650,7 @@ def validate_local_oam_raster(
     check("PASS" if width and height and bands else "FAIL", "Raster dimensions and bands",
           f"{width:,} × {height:,}; {len(bands)} band(s)." if width and height and bands else "GDAL did not report valid dimensions and bands.")
     check("PASS" if product in OAM_SUPPORTED_PRODUCTS else "FAIL", "OAM product type",
-          f"Declared {product}." if product in OAM_SUPPORTED_PRODUCTS else f"Choose one of: {', '.join(OAM_SUPPORTED_PRODUCTS)}.")
+          f"Preflight evaluated as {product}; OAM may use pixel sampling when auto-detecting some four-band data." if product in OAM_SUPPORTED_PRODUCTS else f"Choose one of: {', '.join(OAM_SUPPORTED_PRODUCTS)}.")
 
     if product == "visual":
         visual_ok = len(bands) in (3, 4) and bool(types) and all(t in {"BYTE", "UINT8"} for t in types)
@@ -658,8 +658,8 @@ def validate_local_oam_raster(
               f"{len(bands)} band(s), types {types}; visual requires 3–4 8-bit bands." if visual_ok else f"Found {len(bands)} band(s), types {types}; declared visual requires 3–4 8-bit bands.")
         if visual_ok and colors[:3] != ["red", "green", "blue"]:
             check("WARN", "Color interpretation", f"GDAL reports {colors}; verify the band order is really RGB before declaring visual.")
-        elif visual_ok and len(bands) == 4 and len(colors) > 3 and colors[3] not in {"alpha", "undefined"}:
-            check("WARN", "Fourth band", f"Band 4 is {colors[3]}, not clearly alpha. OAM may treat it as multispectral.")
+        elif visual_ok and len(bands) == 4 and len(colors) > 3 and colors[3] != "alpha":
+            check("WARN", "Fourth band", f"Band 4 is {colors[3]}; GDAL does not explicitly identify it as alpha. OAM may sample its pixels to distinguish alpha from NIR or another data band.")
         else:
             check("PASS", "Color interpretation", "Band interpretation is consistent with the declared visual product.")
     elif product in OAM_SUPPORTED_PRODUCTS:
@@ -1428,6 +1428,10 @@ if active_workflow == "Local preparation":
             help="OAM detects the type from raster metadata and pixels. Choose an override only when you know the data type.",
         )
         effective_product = suggested_product if product_choice == "Auto-detect in OAM" else product_choice
+        st.caption(
+            f"Metadata-only suggestion: {suggested_product}. "
+            "OAM also samples pixels for some four-band inputs; choose an override only when you know the source product type."
+        )
         validation = validate_local_oam_raster(info, effective_product, file_size_bytes)
         for check_index, check in enumerate(validation["checks"]):
             variant = {"PASS": "default", "WARN": "secondary", "FAIL": "destructive", "INFO": "secondary"}[check["status"]]
