@@ -7,6 +7,7 @@ import io
 import csv
 import json
 import os
+import ntpath
 import shutil
 import subprocess
 from pathlib import Path
@@ -442,6 +443,104 @@ OAM_SUPPORTED_PRODUCTS = ("visual", "multispectral", "sar", "elevation", "pseudo
 OAM_SUPPORTED_PLATFORMS = ("kite", "balloon", "uav", "aircraft", "satellite")
 OAM_SUPPORTED_LICENSES = ("CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0")
 OAM_MAX_UPLOAD_BYTES = 100 * 1024**3
+
+
+def parse_oam_gdalinfo_report(report_text: str) -> dict[str, Any]:
+    """Parse the complete JSON report produced by gdalinfo -json."""
+    raw = str(report_text or "").strip()
+    fence = chr(96) * 3
+    if raw.startswith(fence):
+        raw = raw.split("\n", 1)[1] if "\n" in raw else ""
+        if raw.rstrip().endswith(fence):
+            raw = raw.rstrip()[:-3].strip()
+    try:
+        info = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "The report is not complete GDAL JSON. Run the generated gdalinfo -json command, "
+            "paste the clipboard contents, and submit the complete report."
+        ) from exc
+    if not isinstance(info, dict) or not isinstance(info.get("size"), list) or not isinstance(info.get("bands"), list):
+        raise ValueError("The report is valid JSON but does not contain GDAL raster dimensions and bands.")
+    if len(info["size"]) != 2 or not info["bands"]:
+        raise ValueError("GDAL did not report a usable raster with dimensions and at least one band.")
+    return info
+
+
+def suggest_oam_product_type(info: dict[str, Any]) -> str:
+    """Mirror OAM's metadata-based product detection without inspecting pixels."""
+    bands = info.get("bands") or []
+    types = [str(b.get("type", "")).upper() for b in bands]
+    colors = [str(b.get("colorInterpretation", "")).lower() for b in bands]
+    if len(bands) == 1 and colors == ["palette"]:
+        return "pseudocolor"
+    if len(bands) == 1 and types and types[0].startswith("FLOAT"):
+        return "elevation"
+    if len(bands) == 3 and types and all(t in {"BYTE", "UINT8"} for t in types):
+        return "visual"
+    if (
+        len(bands) == 4
+        and types
+        and all(t in {"BYTE", "UINT8"} for t in types)
+        and len(colors) > 3
+        and colors[3] == "alpha"
+    ):
+        return "visual"
+    return "multispectral"
+
+
+def build_osgeo4w_commands(path: str) -> dict[str, str]:
+    """Build copy-ready OSGeo4W Shell commands; never access the local path here."""
+    source = str(path or "").strip().strip('"')
+    if not source:
+        raise ValueError("Paste the full raster path first.")
+    quoted = '"' + source + '"'
+    powershell_path = source.replace("'", "''")
+    return {
+        "version": "gdalinfo --version",
+        "report": f"gdalinfo -json {quoted} | clip",
+        "size": (
+            'powershell -NoProfile -Command "(Get-Item -LiteralPath '
+            + "'"
+            + powershell_path
+            + "'"
+            + ').Length"'
+        ),
+    }
+
+
+def build_oam_cog_command(source_path: str, output_path: str, epsg: str = "") -> str:
+    """Build a non-overwriting local COG command, assigning CRS only when confirmed."""
+    source = str(source_path or "").strip().strip('"')
+    output = str(output_path or "").strip().strip('"')
+    if not source or not output:
+        raise ValueError("Both source and output paths are required.")
+    if ntpath.normcase(ntpath.normpath(source)) == ntpath.normcase(ntpath.normpath(output)):
+        raise ValueError("The output path must differ from the source path.")
+    epsg_code = str(epsg or "").strip()
+    if epsg_code and not re.fullmatch(r"\d{3,6}", epsg_code):
+        raise ValueError("Enter only a verified numeric EPSG code.")
+    args = [
+        "gdal_translate", "-of", "COG",
+        "-co", "COMPRESS=DEFLATE",
+        "-co", "BIGTIFF=IF_SAFER",
+        "-co", "BLOCKSIZE=512",
+        "-co", "RESAMPLING=AVERAGE",
+    ]
+    if epsg_code:
+        args.extend(["-a_srs", f"EPSG:{epsg_code}"])
+    args.extend(['"' + source + '"', '"' + output + '"'])
+    command = " ".join(args)
+    return (
+        'if exist "' + output + '" '
+        + '(echo ERROR: output already exists; choose a different output path) '
+        + 'else (' + command + ')'
+    )
+
+
+def build_osgeo4w_verify_commands(path: str) -> dict[str, str]:
+    """Build the same report and file-size commands for a converted output."""
+    return build_osgeo4w_commands(path)
 
 
 def resolve_local_gdal_tools(gdal_bin_dir: str = "") -> dict[str, str]:
