@@ -31,6 +31,7 @@ FUNCTIONS = {
 CONSTANTS = {
     "OAM_STAC_SCHEMA_URL",
     "OAM_SUPPORTED_PRODUCTS",
+    "OAM_SUPPORTED_PLATFORMS",
     "OAM_SUPPORTED_LICENSES",
     "OAM_MAX_UPLOAD_BYTES",
     "OAM_UPLOAD_URL",
@@ -207,6 +208,15 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
         self.assertEqual(item["properties"]["oam:product_type"], "visual")
         self.assertEqual(item["properties"]["oam:footprint_source"], "bbox")
         self.assertEqual(item["links"][0]["rel"], "self")
+
+    def test_stac_item_rejects_unconfirmed_platform(self):
+        metadata = {
+            "title": "T", "producer": "P", "platform": "Select platform type",
+            "product_type": "visual", "gsd": 0.05,
+            "datetime": "2026-11-03T02:03:04Z", "license": "CC-BY-4.0",
+        }
+        with self.assertRaisesRegex(ValueError, "platform type"):
+            self.helpers["build_local_oam_item"](self.sample_info(), "image.tif", metadata)
 
     def test_stac_item_rejects_missing_extent_or_timezone(self):
         info = self.sample_info()
