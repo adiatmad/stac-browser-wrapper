@@ -8,6 +8,8 @@
 - [x] Preserve the downstream OAM validation, safe COG, metadata, and manual uploader stages.
 - [x] Update the README to describe the one-path workflow.
 - [x] Update contract tests for the new interaction contract.
-- [ ] Run focused and full tests; inspect CI results.
+- [x] Run unit tests: GitHub Actions unit job passed (58 tests).
+- [x] Verify shadcn dependency compatibility: passed.
+- [ ] Complete desktop/mobile browser smoke; CI job is still running.
 - [ ] Verify the exact Windows path against the user's local GDAL/QGIS installation.
 - [ ] Review the full diff for regressions and scope creep.
