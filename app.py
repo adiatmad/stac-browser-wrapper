@@ -583,8 +583,15 @@ def validate_local_oam_raster(
         )
 
     if file_size_bytes is not None:
-        check("PASS" if file_size_bytes <= OAM_MAX_UPLOAD_BYTES else "FAIL", "Upload file size",
-              f"{file_size_bytes / 1024**3:.2f} GiB; current OAM uploader ceiling is 100 GiB." if file_size_bytes <= OAM_MAX_UPLOAD_BYTES else f"{file_size_bytes / 1024**3:.2f} GiB exceeds the current 100 GiB uploader ceiling.")
+        check(
+            "PASS" if file_size_bytes <= OAM_MAX_UPLOAD_BYTES else "WARN",
+            "Source file size",
+            (
+                f"{file_size_bytes / 1024**3:.2f} GiB; current OAM uploader ceiling is 100 GiB."
+                if file_size_bytes <= OAM_MAX_UPLOAD_BYTES
+                else f"{file_size_bytes / 1024**3:.2f} GiB exceeds the 100 GiB uploader ceiling. You can still prepare a COG; the selected upload asset is checked again before metadata handoff."
+            ),
+        )
 
     metadata = (info.get("metadata") or {}).get("IMAGE_STRUCTURE") or {}
     is_cog = str(metadata.get("LAYOUT", "")).upper() == "COG"
