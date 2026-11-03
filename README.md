@@ -38,10 +38,10 @@ For a remote import, source_url must be a public HTTPS URL that resolves directl
 
 The Local preparation tab is report-driven. It works even when this Streamlit app is hosted because it never tries to open the user's local path or read raster bytes.
 
-1. Paste the full raster path, for example `D:\\orthobekasigeotiff.tif`.
+1. Paste the full raster path, for example `D:\orthobekasigeotiff.tif`.
 2. Open QGIS / OSGeo4W Shell on the Windows computer that contains the file.
 3. Run the generated GDAL version and COG-driver checks.
-4. Run the generated report-save command. It writes the complete raw JSON to `%USERPROFILE%\\gdal-report.json`. Then run the clipboard command to copy that file's contents.
+4. Run the generated report-save command. It writes the complete raw JSON to `%USERPROFILE%\gdal-report.json`. Then run the clipboard command to copy that file's contents.
 5. Return to Streamlit and paste directly into the report box. Do not paste through Word, ChatGPT, or another editor. If the clipboard is empty, open the JSON file in Notepad, press Ctrl+A then Ctrl+C, and paste directly into Streamlit. Run the PowerShell file-size command and enter the exact number of bytes.
 6. Review the GDAL report and OAM checks: report-to-path match, affine georeferencing, dimensions, CRS, bands/types, per-band NoData, extent, compression, overviews, product type, decoded-size estimate, and the upstream default 100 GiB upload ceiling.
 7. If the input is not a GeoTIFF or has no declared CRS, the app can generate a separate COG GeoTIFF command. It never guesses a CRS; `-a_srs` is included only after the user supplies a verified EPSG code. The command refuses to overwrite an existing output. If you create a converted output, repeat steps 1–6 for that file.
