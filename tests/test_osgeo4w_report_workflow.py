@@ -8,7 +8,6 @@ import re
 import unittest
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,12 +23,10 @@ FUNCTIONS = {
     "build_osgeo4w_commands",
     "build_oam_cog_command",
     "build_osgeo4w_verify_commands",
-    "build_oam_local_prefill_url",
 }
 CONSTANTS = {
     "OAM_MAX_UPLOAD_BYTES",
     "OAM_SUPPORTED_PRODUCTS",
-    "OAM_UPLOAD_URL",
 }
 
 
@@ -140,14 +137,17 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
         crs_check = next(item for item in result["checks"] if item["name"] == "Coordinate reference system")
         self.assertEqual(crs_check["status"], "PASS")
 
-    def test_osgeo4w_commands_use_the_pasted_windows_path_and_clip_report(self):
+    def test_osgeo4w_commands_save_json_then_copy_it_and_report_file_size(self):
         commands = self.helpers["build_osgeo4w_commands"](r"D:\imagery folder\orthomosaic.tif")
         self.assertEqual(commands["version"], "gdalinfo --version")
         self.assertEqual(commands["cog_driver"], "gdalinfo --format COG")
         self.assertEqual(
-            commands["report"],
-            r'gdalinfo -json "D:\imagery folder\orthomosaic.tif" | clip',
+            commands["report_file"],
+            r'gdalinfo -json "D:\imagery folder\orthomosaic.tif" > "%USERPROFILE%\gdal-report.json"',
         )
+        self.assertEqual(commands["copy_report"], r'clip < "%USERPROFILE%\gdal-report.json"')
+        self.assertEqual(commands["open_report"], r'notepad "%USERPROFILE%\gdal-report.json"')
+        self.assertNotIn("report", commands)
         self.assertIn("Get-Item -LiteralPath 'D:\\imagery folder\\orthomosaic.tif'", commands["size"])
         self.assertIn(".Length", commands["size"])
 
@@ -213,30 +213,7 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
         self.assertEqual(cog_check["status"], "INFO")
         self.assertIn("not required", cog_check["detail"])
 
-    def test_uploader_prefill_uses_supported_fields_and_matching_license_display_values(self):
-        url = self.helpers["build_oam_local_prefill_url"](
-            {
-                "title": "Metinaro orthomosaic",
-                "producer": "KFF",
-                "platform": "uav",
-                "license": "CC-BY-4.0",
-                "acquisition_start": "2026-11-03",
-                "acquisition_end": "2026-11-04",
-                "contact": "team@example.org",
-                "product_type": "",
-            }
-        )
-        parsed = urlsplit(url)
-        fields = parse_qs(parsed.fragment)
-        self.assertEqual(fields["title"], ["Metinaro orthomosaic"])
-        self.assertEqual(fields["provider"], ["KFF"])
-        self.assertEqual(fields["license"], ["CC-BY 4.0"])
-        self.assertEqual(fields["acquisition_start"], ["2026-11-03"])
-        self.assertEqual(fields["acquisition_end"], ["2026-11-04"])
-        self.assertNotIn("source_url", fields)
-        self.assertNotIn("gsd", fields)
-        self.assertNotIn("product_type", fields)
-        self.assertNotIn("D:", url)
+
 
 
 if __name__ == "__main__":
