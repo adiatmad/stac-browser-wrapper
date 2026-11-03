@@ -43,7 +43,7 @@ Decisions:
 ## Acceptance criteria
 
 1. One pasted local path generates OSGeo4W Shell commands without requiring local Streamlit or GDAL access by the app.
-2. The generated commands report GDAL version, copy complete gdalinfo -json output to the clipboard, and report file size in bytes.
+2. The generated commands report the GDAL version, check COG-driver availability, save complete raw gdalinfo -json output to a quoted file under %USERPROFILE%, copy that file to the clipboard, provide a Notepad fallback, and report file size in bytes.
 3. The app parses a complete pasted GDAL JSON report, rejects incomplete JSON, and checks GDAL's reported absolute source path against the path entered in the app. Reports without a source path are clearly marked unverified.
 4. The app reports driver, dimensions, CRS, affine georeferencing, bands/types/color interpretation, per-band NoData, compression/COG layout, decoded-size estimate, and current OAM checks. A missing or singular affine transform blocks the handoff because OAM derives GSD and footprint from it.
 5. Exceeding the upstream default 100 GiB upload ceiling is a preflight failure unless an OAM deployment override is confirmed; an unknown file size blocks the handoff until checked.
