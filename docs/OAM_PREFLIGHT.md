@@ -1,78 +1,60 @@
-# OAM Drone Imagery Preflight
+# OAM local imagery preflight
 
-This feature is a local pre-upload helper for visual drone orthomosaics.
+This workflow prepares an existing local raster for manual submission through the current HOT OpenAerialMap uploader.
 
-## Workflow
+## User workflow
 
-1. Keep the raster on the user's computer.
-2. Run `gdalinfo` locally; plain text or `gdalinfo -json` output is accepted.
-3. Paste the complete output into the Streamlit preflight page.
-4. Review PASS / WARNING / FAIL checks.
-5. If the metadata is sufficient, copy one generated PowerShell command.
-6. The command creates a new lossless COG GeoTIFF and never overwrites the source.
+1. Paste the local raster path into Local preparation.
+2. Open QGIS / OSGeo4W Shell on the Windows machine that contains the raster.
+3. Run the generated GDAL version, JSON inspection, and file-size commands.
+4. Paste the complete JSON report and file size in bytes into the app.
+5. Review raster and OAM checks.
+6. If necessary, run a generated non-overwriting COG conversion command. A CRS is assigned only when the user supplies a verified EPSG code.
+7. Reinspect the converted output by pasting its path and repeating the report step.
+8. Confirm the OAM metadata fields and open the official uploader. Select the local file and submit there.
 
-The app does not receive the raster bytes.
+The Streamlit app does not open the local path, inspect local files, or receive raster bytes. The user runs GDAL locally and supplies its text report.
 
-## Scope
+## Current upstream OAM contract
 
-The first version targets visual orthomosaics:
+Evidence was checked against the main branch of hotosm/openaerialmap, commit e20d1146059aab1408f1ae35755ff19982359048 (3 November 2026):
 
-- 3-band RGB or 4-band RGBA
-- Byte / 8-bit data
-- valid CRS
-- non-zero raster extent
-- GeoTIFF as the final output
-- COG output for efficient downstream access when local preparation is requested
+- backend/uploader-api/README.md: upload and prefill integration contract.
+- backend/uploader-api/app/templates/upload.html: current upload fields and local file selection.
+- backend/uploader-api/app/uploads/schemas.py: accepted TIFF content types and metadata keys.
+- backend/uploader-api/app/config.py: 100 GiB upload ceiling.
+- backend/uploader-api/pipeline/validate/validate.py: GeoTIFF driver, CRS, product-type and decoded-size validation.
+- backend/uploader-api/pipeline/convert/convert.py: server-side COG conversion and verification.
+- backend/uploader-api/pipeline/metadata/metadata.py: GSD, footprint, acquisition metadata and STAC generation.
+- backend/stactools-hotosm/stac-extension/json-schema/v0.3.0/schema.json and docs/dev/ingest/schema.md: current OAM STAC metadata contract.
 
-DEM, multispectral, SAR and other non-visual products are intentionally outside this workflow.
+OAM accepts GeoTIFFs and creates its own COG during ingestion. Local COG creation is optional for an already-valid GeoTIFF. The uploader's current maximum file size is 100 GiB. OAM's current supported product types are visual, multispectral, SAR, elevation, and pseudocolor. A CRS is required. Only a declared visual product is constrained to 3–4 8-bit bands; non-visual products retain native data.
 
-## CRS safety
+The OAM pipeline derives GSD from pixel resolution and CRS and generates the Item geometry/footprint from the raster mask or extent. The user must confirm title, producer, platform, acquisition date, and license. The current OAM extension accepts CC-BY-4.0, CC-BY-SA-4.0, and CC-BY-NC-4.0.
 
-The tool never guesses a missing CRS. If `gdalinfo` reports no CRS, the user must enter the EPSG code that represents the source imagery. The resulting command then uses that supplied CRS for local preparation. The user is responsible for choosing the true source CRS.
+## Generated OSGeo4W commands
 
-## Compression
+The app provides commands to:
 
-The generated visual COG uses DEFLATE rather than JPEG. This avoids introducing intentional lossy compression before upload. OAM may perform its own server-side processing after upload.
+- verify the active GDAL version;
+- run gdalinfo -json and copy the complete report to the clipboard;
+- retrieve the exact local file size in bytes;
+- create a separate COG GeoTIFF when the input is not already a GeoTIFF or needs a verified CRS assignment;
+- inspect the generated output and repeat the same report workflow.
 
-## Why COG is a warning rather than an upload blocker
+The conversion command uses the COG driver, tiled DEFLATE compression, and a BigTIFF-safe setting. It refuses to overwrite an existing output and never edits the source. When -a_srs is used, it assigns the verified CRS without reprojecting coordinates. The user must not run that option with an inferred or guessed EPSG code.
 
-Current OAM ingestion is designed to accept valid GeoTIFF input and handle conversion/transcoding as part of the ingestion pipeline. Therefore an already-existing COG is useful but is not treated as a prerequisite by this helper.
+## Product-type interpretation
 
-## Windows / QGIS GDAL setup
+The app's product-type suggestion is based on GDAL metadata and is not a substitute for understanding the source. OAM performs its own detection from raster metadata and, for some four-band inputs, pixel sampling. In particular, an undefined fourth band is not assumed to be alpha. SAR cannot reliably be inferred from band count and data type alone.
 
-If QGIS is installed but `gdalinfo --formats` does not list ECW, configure the current PowerShell session to use QGIS's GDAL plugin and data directories:
+## Size checks
 
-```powershell
-$qgis="C:\Program Files\QGIS 4.2.0"; $env:PATH="$qgis\bin;$qgis\apps\gdal\bin;"+$env:PATH; $env:GDAL_DRIVER_PATH="$qgis\apps\gdal\lib\gdalplugins"; $env:GDAL_DATA="$qgis\apps\gdal\share\gdal"
-```
+- Upload size: hard limit of 100 GiB in the current uploader.
+- Decoded size: deployment-configurable. The current upstream defaults are 130 GB for lossless conversion and approximately 216.7 GB for eligible 8-bit RGB(A) visual conversion. The local result is a preflight estimate, not a guarantee that a particular deployment will accept the file.
 
-Then verify:
+## OAM upload handoff
 
-```powershell
-gdalinfo --formats | Select-String "ECW|JP2ECW"
-```
+The handoff uses the documented URL fragment fields only. For local files it does not include source_url, because a local Windows path is not publicly reachable by OAM. The user chooses Upload a file, selects the local GeoTIFF, reviews the prefilled metadata, signs in if required, and submits manually.
 
-This is a shell-environment fix, not an application upload or raster-processing dependency. Do not copy individual GDAL/ECW DLLs from unrelated installations.
-
-## Verified representative ECW
-
-The representative test file supplied for this feature is readable through QGIS 4.2.0's GDAL 3.13.1 after the environment above is configured. GDAL reports:
-
-- ECW driver, SDK 5.5
-- 26482 × 25891 pixels
-- EPSG:4326
-- 4 Byte bands
-- 256 × 256 blocks
-- 7 overview levels per band
-- WGS84 geographic extent
-- `ColorInterp=Undefined` for all four bands
-
-The last point is intentionally surfaced as a warning: GDAL's metadata does not prove that the four bands are RGB + alpha. The preflight therefore does not claim RGBA semantics automatically. The same warning remains after COG conversion unless the source already carries explicit RGB/RGBA color interpretation.
-
-The decoded-size estimate is about 2.7 GB, comfortably below the current 130 GB OAM validation limit. This is an estimate from dimensions, band count and Byte storage, not the compressed ECW file size.
-
-## Verification status
-
-Automated regression tests cover the representative ECW metadata and command generation.
-
-Manual verification has confirmed that the real ECW can be opened with GDAL after the QGIS environment is configured. The real ECW has now been converted locally to a GeoTIFF using the COG driver. The supplied output inspection reports GTiff, 26482 × 25891, four Byte bands, 512 × 512 blocks, and seven overview levels per band. GDAL still reports `ColorInterp=Undefined`, so the preflight must keep this as a verification warning rather than asserting RGBA semantics. The supplied inspection did not include the `Image Structure Metadata` section, so COG layout and compression are not claimed as independently verified yet. The final convergence step is to feed the complete output `gdalinfo` back through the preflight and review the final diff.
+No raster bytes, credentials, or automatic publication are handled by this app.
