@@ -461,7 +461,7 @@ def parse_oam_gdalinfo_report(report_text: str) -> dict[str, Any]:
             "paste the clipboard contents, and submit the complete report."
         ) from exc
     if not isinstance(info, dict) or not isinstance(info.get("size"), list) or not isinstance(info.get("bands"), list):
-        raise ValueError("The report is valid JSON but does not contain GDAL raster dimensions and bands.")
+        raise ValueError("The GDAL JSON report is incomplete: raster dimensions and bands are missing.")
     if len(info["size"]) != 2 or not info["bands"]:
         raise ValueError("GDAL did not report a usable raster with dimensions and at least one band.")
     return info
@@ -1284,7 +1284,7 @@ active_workflow = ui.tabs(
 )
 
 if active_workflow == "Local preparation":
-    st.header("Local raster → OAM upload guidance")
+    st.header("Local geospatial imagery preparation")
     st.caption(
         "Paste the raster path once. The app generates OSGeo4W Shell commands, analyses the GDAL report you paste back, "
         "and prepares the correct OAM uploader handoff."
@@ -1297,7 +1297,7 @@ if active_workflow == "Local preparation":
     source_path = st.text_input(
         "1 · Local raster path",
         placeholder=r"D:\orthobekasigeotiff.tif",
-        key="osgeo4w_source_path",
+        key="preflight_path",
         help="Paste the full path. Quotes copied from File Explorer are accepted.",
     )
     source_value = source_path.strip().strip('"')
