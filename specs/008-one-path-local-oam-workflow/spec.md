@@ -11,9 +11,9 @@ The old preflight guidance also treated local COG creation and a local STAC draf
 
 ## User outcome
 
-The user pastes one local raster path and receives copy-ready OSGeo4W Shell commands. The user runs GDAL on the Windows machine that contains the raster, pastes the JSON report and file size back into Streamlit, receives evidence-based OAM checks and any required safe conversion command, then gets a metadata-prefilled link to the official uploader.
+The user pastes one local raster path and receives copy-ready OSGeo4W Shell commands. The user runs GDAL on the Windows machine that contains the raster, pastes the JSON report and file size back into Streamlit, receives evidence-based OAM checks and any required safe conversion command, then opens the official OAM uploader directly.
 
-Path → OSGeo4W commands → pasted GDAL report → OAM diagnosis → optional/required local conversion → report verification → confirmed metadata → manual OAM upload.
+Path → OSGeo4W commands → saved JSON report → direct clipboard copy → OAM diagnosis → optional/required local conversion → report verification → direct OAM uploader → manual upload.
 
 ## Upstream evidence and decisions
 
@@ -30,12 +30,12 @@ Checked hotosm/openaerialmap main at commit e20d1146059aab1408f1ae35755ff1998235
 
 Decisions:
 - The app never opens the pasted path or claims it can access the user's local filesystem. It only generates shell commands and parses the report pasted by the user.
-- The report command uses gdalinfo -json "path" | clip; a separate PowerShell command returns the exact local file size in bytes.
+- The report command redirects complete `gdalinfo -json` output to `%USERPROFILE%\\gdal-report.json`; a second command copies that file with `clip < ...`. If clipboard transfer fails, the user can open the file in Notepad and copy its raw contents directly into Streamlit. A separate PowerShell command returns the exact local file size in bytes.
 - OAM requires GeoTIFF input with a declared CRS; the current upstream default upload ceiling is 100 GiB and may be overridden by deployment configuration.
 - OAM itself creates the published COG. A local COG is optional for an already-valid GeoTIFF; a separate COG GeoTIFF is generated when the source is not GeoTIFF or needs a verified CRS assignment.
 - The app never guesses CRS, product type semantics, acquisition date, producer, platform, or license.
 - OAM derives GSD and footprint from the raster; the app does not ask the user to invent either.
-- The uploader prefill uses only documented URL-fragment fields. A local filesystem path is never passed as source_url.
+- The workbench opens the official OAM uploader directly and does not ask the user to complete a separate metadata form in Streamlit. The user selects the local file and completes any fields required by the uploader; a local filesystem path is never passed as source_url.
 - The user selects the local file and confirms upload in the official OAM uploader. No credentials or automatic upload are added.
 - Open upstream OAM PRs [#371](https://github.com/hotosm/openaerialmap/pull/371), [#372](https://github.com/hotosm/openaerialmap/pull/372), and [#373](https://github.com/hotosm/openaerialmap/pull/373) propose v0.4 ownership identity and related queryable/coverage changes, but were still open at the inspected main commit. Keep this workflow on the released v0.3.0 contract; do not invent or prefill an unmerged `oam:owner_id` field.
 - Preserve the native Streamlit appearance and the Discover & map workflow.
@@ -51,8 +51,8 @@ Decisions:
 7. Non-GeoTIFF input gets a separate non-overwriting COG GeoTIFF command. A missing CRS gets no command until the user supplies a verified EPSG code; -a_srs assigns and does not reproject.
 8. The output can be reinspected by repeating the path/report workflow.
 9. A prebuilt COG is informational, not a prerequisite, when the input is already a valid GeoTIFF with CRS.
-10. Metadata handoff confirms title, producer, platform, acquisition date, and accepted CC license. Product type override, sensor and contact are optional.
-11. The handoff uses only documented uploader fields, contains no local path or source_url, and requires manual file selection and submission.
+10. The app opens the official OAM uploader directly after successful preflight; no separate metadata form or metadata-prefilled URL is generated in Streamlit.
+11. The user selects the local file and completes any fields required by the official uploader. No local path or source_url is sent, and submission remains manual.
 12. The app explains that OAM computes GSD and footprint and performs server-side COG conversion.
 13. Native Streamlit styling, navigation and Discover & map behavior remain unchanged.
 14. Focused tests and repository CI pass; real OSGeo4W execution and a live OAM upload remain manual acceptance checks.
