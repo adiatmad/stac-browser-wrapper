@@ -27,7 +27,7 @@ Turn the existing Local preparation workflow into a local-first geospatial image
    - Report uncertain color interpretation, missing WGS84 extent, unusually large decoded size, and non-COG layout as warnings rather than inventing facts.
 5. Prepare a separate lossless COG using local GDAL, preserving source dimensions, band count, georeferencing, and data type. Refuse to overwrite source or existing output. Do not coerce arbitrary data to Byte or silently drop bands.
 6. Generate a downsampled local PNG preview where GDAL can do so without changing the source raster.
-7. Generate a local STAC/OAM metadata draft from GDAL's WGS84 extent plus user-confirmed metadata. Never infer acquisition time, producer, license, platform, or GSD.
+7. Generate a local STAC/OAM metadata draft from GDAL's WGS84 extent plus user-confirmed metadata. Explicitly label the generated extent rectangle as a bbox-derived footprint and require user acknowledgement. Never infer acquisition time, producer, license, platform, or GSD.
 8. Open the official OAM uploader using documented URL-fragment prefill fields. Do not include a local path as `source_url`, store credentials, call authenticated OAM APIs, or upload automatically. The user selects the local raster and confirms submission in OAM.
 9. Keep the existing Discover & map workflow, UI navigation, hosted single-file app contract, and publication safeguards intact.
 
@@ -47,7 +47,7 @@ Turn the existing Local preparation workflow into a local-first geospatial image
 - [ ] A prepared COG is a new file; source and existing outputs are never overwritten.
 - [ ] Prepared output retains dimensions, band count, geotransform, CRS, and data type; GDAL reports COG layout.
 - [ ] Thumbnail and STAC metadata sidecar are generated locally without uploading imagery.
-- [ ] STAC metadata uses GDAL-derived EPSG:4326 extent and user-entered metadata only; missing required values remain missing and block the handoff.
+- [ ] STAC metadata uses GDAL-derived EPSG:4326 extent and user-entered metadata only; it records `oam:footprint_source=bbox` and requires acknowledgement that this is not a traced valid-pixel footprint. Missing required values remain missing and block the handoff.
 - [ ] OAM prefill contains supported metadata fields but no local filesystem path or `source_url`; the user manually selects and submits the file.
 - [ ] Existing hosted app single-file contract and Discover & map workflows remain intact.
 - [ ] Focused tests and full unit tests pass; browser/CI evidence is reported separately from real local GDAL and real OAM upload acceptance.
