@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 import ntpath
 import re
 import unittest
@@ -14,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app.py"
 FUNCTIONS = {
     "_local_decoded_bytes",
+    "gdal_report_matches_path",
+    "has_usable_geotransform",
     "validate_local_oam_raster",
     "parse_oam_gdalinfo_report",
     "suggest_oam_product_type",
@@ -43,6 +46,7 @@ def load_helpers():
     namespace = {
         "Any": Any,
         "json": json,
+        "math": math,
         "re": re,
         "ntpath": ntpath,
         "urlencode": urlencode,
@@ -60,6 +64,8 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
     def sample_info(self, *, driver="GTiff", dtype="Byte", count=3, colors=None):
         colors = colors or ["Red", "Green", "Blue"][:count]
         return {
+            "description": r"D:\imagery folder\orthomosaic.tif",
+            "files": [r"D:\imagery folder\orthomosaic.tif"],
             "driverShortName": driver,
             "size": [1000, 500],
             "geoTransform": [106.9, 0.00001, 0, -6.2, 0, -0.00001],
@@ -86,6 +92,40 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
         self.assertEqual(parsed["size"], [1000, 500])
         with self.assertRaisesRegex(ValueError, "GDAL JSON report is incomplete"):
             self.helpers["parse_oam_gdalinfo_report"]('{"driverShortName":"GTiff"}')
+ 
+    def test_report_must_match_the_path_and_warns_when_gdal_omits_it(self):
+        info = self.sample_info()
+        matches = self.helpers["gdal_report_matches_path"]
+        self.assertIs(matches(info, r"D:\imagery folder\orthomosaic.tif"), True)
+        self.assertIs(matches(info, r"D:\other\orthomosaic.tif"), False)
+        info.pop("description")
+        info.pop("files")
+        self.assertIsNone(matches(info, r"D:\imagery folder\orthomosaic.tif"))
+
+    def test_osgeo4w_path_must_be_absolute(self):
+        with self.assertRaisesRegex(ValueError, "full absolute Windows path"):
+            self.helpers["build_osgeo4w_commands"]("orthomosaic.tif")
+
+    def test_affine_geotransform_is_required_for_reliable_oam_metadata(self):
+        has_transform = self.helpers["has_usable_geotransform"]
+        info = self.sample_info()
+        self.assertTrue(has_transform(info))
+        info["geoTransform"] = [0, 0, 0, 0, 0, 0]
+        self.assertFalse(has_transform(info))
+        info.pop("geoTransform")
+        self.assertFalse(has_transform(info))
+
+    def test_oam_decoded_size_uses_the_first_band_dtype_like_upstream(self):
+        info = self.sample_info()
+        info["bands"][1]["type"] = "Float32"
+        self.assertEqual(self.helpers["_local_decoded_bytes"](info), 1000 * 500 * 3)
+
+    def test_crs_identifier_alone_counts_as_a_declared_crs(self):
+        info = self.sample_info()
+        info["coordinateSystem"] = {"id": {"authority": "EPSG", "code": 4326}}
+        result = self.helpers["validate_local_oam_raster"](info, "visual", 1024)
+        crs_check = next(item for item in result["checks"] if item["name"] == "Coordinate reference system")
+        self.assertEqual(crs_check["status"], "PASS")
 
     def test_osgeo4w_commands_use_the_pasted_windows_path_and_clip_report(self):
         commands = self.helpers["build_osgeo4w_commands"](r"D:\imagery folder\orthomosaic.tif")
@@ -115,7 +155,7 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
             item for item in result["checks"] if item["name"] == "Fourth band"
         )
         self.assertEqual(fourth_band["status"], "WARN")
-        self.assertIn("OAM may sample its pixels", fourth_band["detail"])
+        self.assertIn("JPEG conversion path only treats band 4 as alpha", fourth_band["detail"])
 
     def test_cog_command_is_non_overwriting_and_assigns_only_an_explicit_epsg(self):
         build = self.helpers["build_oam_cog_command"]
