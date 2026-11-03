@@ -31,7 +31,7 @@ Checked hotosm/openaerialmap main at commit e20d1146059aab1408f1ae35755ff1998235
 Decisions:
 - The app never opens the pasted path or claims it can access the user's local filesystem. It only generates shell commands and parses the report pasted by the user.
 - The report command uses gdalinfo -json "path" | clip; a separate PowerShell command returns the exact local file size in bytes.
-- OAM requires GeoTIFF input with a declared CRS and currently caps uploads at 100 GiB.
+- OAM requires GeoTIFF input with a declared CRS; the current upstream default upload ceiling is 100 GiB and may be overridden by deployment configuration.
 - OAM itself creates the published COG. A local COG is optional for an already-valid GeoTIFF; a separate COG GeoTIFF is generated when the source is not GeoTIFF or needs a verified CRS assignment.
 - The app never guesses CRS, product type semantics, acquisition date, producer, platform, or license.
 - OAM derives GSD and footprint from the raster; the app does not ask the user to invent either.
@@ -45,7 +45,7 @@ Decisions:
 2. The generated commands report GDAL version, copy complete gdalinfo -json output to the clipboard, and report file size in bytes.
 3. The app parses a complete pasted GDAL JSON report and rejects incomplete or unrelated JSON with actionable feedback.
 4. The app reports driver, dimensions, CRS, bands/types/color interpretation, compression/COG layout, decoded-size estimate, and current OAM checks.
-5. The 100 GiB upload ceiling is a hard failure; an unknown file size blocks the upload handoff until checked.
+5. Exceeding the upstream default 100 GiB upload ceiling is a preflight failure unless an OAM deployment override is confirmed; an unknown file size blocks the handoff until checked.
 6. The checks align with current OAM ingestion: GeoTIFF driver, CRS, supported product types, 3–4 8-bit bands only for declared visual imagery, and deployment-configurable decoded-size guidance.
 7. Non-GeoTIFF input gets a separate non-overwriting COG GeoTIFF command. A missing CRS gets no command until the user supplies a verified EPSG code; -a_srs assigns and does not reproject.
 8. The output can be reinspected by repeating the path/report workflow.
