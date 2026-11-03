@@ -531,7 +531,7 @@ def has_usable_geotransform(info: dict[str, Any]) -> bool:
     if not all(math.isfinite(value) for value in values):
         return False
     determinant = values[1] * values[5] - values[2] * values[4]
-    return abs(determinant) > 1e-15
+    return determinant != 0.0
 
 
 def build_osgeo4w_commands(path: str) -> dict[str, str]:
