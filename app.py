@@ -719,6 +719,7 @@ def build_local_oam_item(
         "oam:producer_name": producer,
         "oam:product_type": metadata["product_type"],
         "oam:product_type_source": "declared",
+        "oam:footprint_source": "bbox",
     }
     sensor = str(metadata.get("sensor", "")).strip()
     if sensor:
@@ -741,7 +742,7 @@ def build_local_oam_item(
                 "title": asset_name,
             }
         },
-        "links": [],
+        "links": [{"rel": "self", "href": "./" + item_id + "_oam_item.json", "type": "application/geo+json"}],
     }
     if thumbnail_path:
         item["assets"]["thumbnail"] = {
@@ -1417,6 +1418,10 @@ if active_workflow == "Local preparation":
                 options=list(OAM_SUPPORTED_LICENSES),
                 key="local_oam_license",
             )
+            extent_confirmed = st.checkbox(
+                "I understand the generated geometry is the GDAL extent rectangle, not a traced valid-pixel footprint.",
+                key="local_oam_extent_confirmed",
+            )
             metadata_sensor = st.text_input(
                 "Sensor / camera (optional)",
                 placeholder="Camera model or sensor name",
@@ -1425,6 +1430,8 @@ if active_workflow == "Local preparation":
             metadata_submitted = st.form_submit_button("Generate local STAC metadata")
         if metadata_submitted:
             try:
+                if not extent_confirmed:
+                    raise ValueError("Confirm that the generated geometry is a rectangular GDAL extent, not a traced valid-pixel footprint.")
                 gsd_value = float(metadata_gsd)
                 confirmed_metadata = {
                     "title": metadata_title.strip(),
