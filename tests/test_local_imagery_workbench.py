@@ -196,8 +196,8 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
             "sensor": "Example camera",
         }
         item = self.helpers["build_local_oam_item"](
-            self.sample_info(), r"D:\imagery\prepared.tif", metadata,
-            r"D:\imagery\prepared_thumbnail.png",
+            self.sample_info(), "/imagery/prepared.tif", metadata,
+            "/imagery/prepared_thumbnail.png",
         )
         self.assertEqual(item["bbox"], [106.9, -6.3, 107.0, -6.2])
         self.assertEqual(item["geometry"]["type"], "Polygon")
