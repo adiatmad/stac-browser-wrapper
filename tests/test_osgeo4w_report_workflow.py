@@ -111,6 +111,9 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
         has_transform = self.helpers["has_usable_geotransform"]
         info = self.sample_info()
         self.assertTrue(has_transform(info))
+        tiny_pixels = self.sample_info()
+        tiny_pixels["geoTransform"] = [0, 1e-9, 0, 0, 0, -1e-9]
+        self.assertTrue(has_transform(tiny_pixels))
         info["geoTransform"] = [0, 0, 0, 0, 0, 0]
         self.assertFalse(has_transform(info))
         info.pop("geoTransform")
