@@ -41,11 +41,11 @@ The **Local preparation** workflow can inspect and prepare an existing raster wi
 
 1. Install GDAL through QGIS/OSGeo4W, or make `gdalinfo` and `gdal_translate` available on `PATH`.
 2. Start this app locally (for example, from the QGIS/OSGeo4W shell): `streamlit run app.py`.
-3. Select the local raster and run **Inspect raster with GDAL**. The app executes `gdalinfo -json` locally; it does not upload the raster.
+3. Paste the full path to an existing raster into **Source raster path** and press Enter. The app discovers GDAL automatically and inspects the file; there is no separate inspection button or GDAL-directory field.
 4. Choose the actual OAM product type. Only `visual` requires 3–4 8-bit bands; multispectral, SAR, elevation, and pseudocolor products retain their native data type and band count.
 5. If the raster passes the checks, create a separate lossless DEFLATE COG and (for visual RGB data) a downsampled PNG preview. The source is never overwritten. Existing output paths are refused.
 6. Enter the known acquisition metadata and generate a local STAC/OAM JSON draft. Capture time, producer, GSD, platform, and license are not inferred.
-7. Open the official OAM uploader with supported metadata prefilled, select the local raster yourself, re-enter GSD (the documented prefill contract does not include it), review, and submit there.
+7. Open the official OAM uploader with supported metadata prefilled, select the prepared COG (or original raster if you skipped preparation), re-enter GSD (the documented prefill contract does not include it), review, and submit there.
 
 **Important:** A cloud-hosted Streamlit deployment cannot access your Windows files or local QGIS/GDAL installation. Run the app locally for this workflow. OAM performs its own server-side COG conversion after upload; the local COG is a lossless preparation copy, not a replacement for OAM's processing pipeline. The OAM prefill intentionally contains no local filesystem path or `source_url`, and this app does not store credentials or upload automatically.
 

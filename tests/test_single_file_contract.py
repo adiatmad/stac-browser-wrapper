@@ -14,11 +14,14 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertNotIn("from utils.oam_sources import", source)
         self.assertNotIn("from mosaic_core import", source)
 
-    def test_drone_workflow_is_explicitly_local(self):
+    def test_local_raster_workflow_uses_one_path(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn("run on your computer", source)
-        self.assertIn("https://github.com/adiatmad/dronetm-progress-mosaic", source)
-        self.assertIn("cannot read your Windows folders or run OSGeo4W", source)
+        self.assertIn("Source raster path", source)
+        self.assertIn("Inspecting raster automatically with GDAL", source)
+        self.assertIn('st.button("Retry raster inspection"', source)
+        self.assertIn("local_gdal_tools = resolve_local_gdal_tools()", source)
+        self.assertNotIn("Separate DroneTM task-download and mosaic workflow", source)
+        self.assertNotIn("https://github.com/adiatmad/dronetm-progress-mosaic", source)
         self.assertNotIn("api.drone.hotosm.org", source)
         self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
 
@@ -141,7 +144,6 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         ast.parse(source, filename="app.py")
         self.assertIn("import streamlit_shadcn_ui as ui", source)
-        self.assertIn("ui.card(", source)
         self.assertIn("ui.badge(", source)
         self.assertIn("ui.metric_card(", source)
         self.assertRegex(requirements, r"(?m)^streamlit>=1\.60\.0$")
@@ -149,11 +151,10 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
 
     def test_ui_refresh_preserves_imagery_and_publication_safeguards(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn("https://github.com/adiatmad/dronetm-progress-mosaic", source)
         self.assertIn("Check OAM v2 for Duplicates", source)
         self.assertIn("Prepare OAM v2 upload", source)
         self.assertIn("Apply filter", source)
-        self.assertIn("never automatically uploads or publishes to OpenAerialMap", source)
+        self.assertIn("No file is uploaded by this workbench", source)
         self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
 
     def test_hallmark_workbench_navigation_and_accessibility_shell(self):
@@ -166,7 +167,6 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn('key="active-workflow-tabs"', source)
         for existing_key in (
             "preflight_path",
-            "run_gdal_check",
             "source_mode",
             "location_filter_map",
         ):
@@ -179,6 +179,11 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn('No OAM-compatible STAC items are available', source)
         self.assertIn('st.header("Choose an imagery source")', source)
         self.assertIn('st.header("Local geospatial imagery preparation")', source)
+        self.assertIn('key="preflight_path"', source)
+        self.assertIn('Inspecting raster automatically with GDAL', source)
+        self.assertNotIn('Inspect raster with GDAL', source)
+        self.assertNotIn('GDAL bin directory (optional)', source)
+        self.assertNotIn('Separate DroneTM task-download and mosaic workflow', source)
         self.assertNotIn("<style>", source)
         self.assertNotIn("--app-canvas:", source)
-        self.assertIn("never automatically uploads or publishes to OpenAerialMap", source)
+        self.assertIn("No file is uploaded by this workbench", source)
