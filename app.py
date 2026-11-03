@@ -693,14 +693,14 @@ def validate_local_oam_raster(
     if file_size_bytes is None:
         check(
             "WARN", "Source file size",
-            "Not verified. Run the generated file-size command; OAM rejects uploads larger than 100 GiB.",
+            "Not verified. Run the generated file-size command; the upstream default is 100 GiB; deployments may override it.",
         )
     else:
         check(
             "PASS" if file_size_bytes <= OAM_MAX_UPLOAD_BYTES else "FAIL",
             "Source file size",
             (
-                f"{file_size_bytes / 1024**3:.2f} GiB; within the current 100 GiB OAM uploader ceiling."
+                f"{file_size_bytes / 1024**3:.2f} GiB; within the upstream default 100 GiB OAM uploader ceiling."
                 if file_size_bytes <= OAM_MAX_UPLOAD_BYTES
                 else f"{file_size_bytes / 1024**3:.2f} GiB exceeds the current 100 GiB uploader ceiling. OAM will reject this upload."
             ),
@@ -1326,7 +1326,7 @@ if active_workflow == "Local preparation":
             "If the clipboard stays empty, rerun the report command without | clip to see GDAL's error."
         )
         st.code(shell_commands["size"], language="shell")
-        st.caption("Copy the number printed by the file-size command. It is needed to check OAM's 100 GiB upload ceiling.")
+        st.caption("Copy the number printed by the file-size command. It is needed to check the upstream default 100 GiB upload ceiling.")
 
     with st.form("oam_gdal_report_form", clear_on_submit=False):
         report_text = st.text_area(
@@ -1421,7 +1421,7 @@ if active_workflow == "Local preparation":
         st.markdown("### 5 · Check against current OAM ingestion")
         st.caption(
             "The checks mirror the current HOTOSM uploader pipeline: GeoTIFF input, declared CRS, "
-            "a 100 GiB upload ceiling, and product-aware raster handling. The server still performs final validation."
+            "the default 100 GiB upload ceiling, and product-aware raster handling. The server still performs final validation."
         )
         product_choice = st.selectbox(
             "Product type",
