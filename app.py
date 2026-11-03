@@ -794,7 +794,8 @@ def write_local_oam_item(item: dict[str, Any], output_path: str) -> str:
         raise FileExistsError(f"Metadata file already exists; choose another path: {output}")
     if not output.parent.is_dir():
         raise FileNotFoundError(f"Metadata directory does not exist: {output.parent}")
-    output.write_text(json.dumps(item, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    with output.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(item, indent=2, ensure_ascii=False) + "\n")
     return str(output)
 
 
