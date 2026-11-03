@@ -8,6 +8,7 @@ import csv
 import json
 import os
 import ntpath
+import math
 import shutil
 import subprocess
 from pathlib import Path
@@ -497,11 +498,53 @@ def suggest_oam_product_type(info: dict[str, Any]) -> str:
     return "multispectral"
 
 
+def _normalise_windows_path(path: str) -> str:
+    """Normalise a Windows path for case-insensitive report/path comparison."""
+    value = str(path or "").strip().strip('"').replace("/", "\\")
+    if value.startswith("\\\\?\\"):
+        value = value[4:]
+    return ntpath.normcase(ntpath.normpath(value))
+
+
+def gdal_report_matches_path(info: dict[str, Any], expected_path: str) -> bool | None:
+    """Return whether gdalinfo identifies the pasted path; None if it omits paths."""
+    candidates = [info.get("description")]
+    files = info.get("files") or []
+    if isinstance(files, list):
+        candidates.extend(files)
+    expected = _normalise_windows_path(expected_path)
+    reported = [
+        _normalise_windows_path(candidate)
+        for candidate in candidates
+        if isinstance(candidate, str) and ntpath.isabs(candidate)
+    ]
+    if not reported:
+        return None
+    return expected in reported
+
+
+def has_usable_geotransform(info: dict[str, Any]) -> bool:
+    """Check that GDAL reported a finite, non-singular affine pixel transform."""
+    transform = info.get("geoTransform")
+    if not isinstance(transform, list) or len(transform) != 6:
+        return False
+    try:
+        values = [float(value) for value in transform]
+    except (TypeError, ValueError):
+        return False
+    if not all(math.isfinite(value) for value in values):
+        return False
+    determinant = values[1] * values[5] - values[2] * values[4]
+    return abs(determinant) > 1e-15
+
+
 def build_osgeo4w_commands(path: str) -> dict[str, str]:
     """Build copy-ready OSGeo4W Shell commands; never access the local path here."""
     source = str(path or "").strip().strip('"')
     if not source:
         raise ValueError("Paste the full raster path first.")
+    if not ntpath.isabs(source):
+        raise ValueError("Use the full absolute Windows path copied from File Explorer.")
     quoted = '"' + source + '"'
     powershell_path = source.replace("'", "''")
     return {
@@ -610,6 +653,7 @@ def run_local_gdalinfo(path: str, tools: dict[str, str]) -> dict[str, Any]:
 
 
 def _local_decoded_bytes(info: dict[str, Any]) -> int | None:
+    """Mirror OAM's validator: first-band dtype multiplied by the band count."""
     sizes = {
         "BYTE": 1, "UINT8": 1, "INT8": 1, "UINT16": 2, "INT16": 2,
         "UINT32": 4, "INT32": 4, "FLOAT32": 4, "FLOAT64": 8,
@@ -619,10 +663,10 @@ def _local_decoded_bytes(info: dict[str, Any]) -> int | None:
     bands = info.get("bands") or []
     if not width or not height or not bands:
         return None
-    per_band = [sizes.get(str(b.get("type", "")).upper()) for b in bands]
-    if any(value is None for value in per_band):
+    bytes_per_sample = sizes.get(str(bands[0].get("type", "")).upper())
+    if bytes_per_sample is None:
         return None
-    return int(width) * int(height) * sum(int(value) for value in per_band)
+    return int(width) * int(height) * len(bands) * bytes_per_sample
 
 
 def validate_local_oam_raster(
@@ -639,7 +683,7 @@ def validate_local_oam_raster(
     types = [str(b.get("type", "")).upper() for b in bands]
     colors = [str(b.get("colorInterpretation", "")).lower() for b in bands]
     crs = info.get("coordinateSystem") or {}
-    crs_ok = bool(crs.get("wkt") or crs.get("projjson"))
+    crs_ok = bool(crs.get("wkt") or crs.get("projjson") or crs.get("id"))
     width, height = (info.get("size") or [0, 0])[:2]
     product = str(product_type or "").lower()
 
@@ -659,7 +703,7 @@ def validate_local_oam_raster(
         if visual_ok and colors[:3] != ["red", "green", "blue"]:
             check("WARN", "Color interpretation", f"GDAL reports {colors}; verify the band order is really RGB before declaring visual.")
         elif visual_ok and len(bands) == 4 and len(colors) > 3 and colors[3] != "alpha":
-            check("WARN", "Fourth band", f"Band 4 is {colors[3]}; GDAL does not explicitly identify it as alpha. OAM may sample its pixels to distinguish alpha from NIR or another data band.")
+            check("WARN", "Fourth band", f"Band 4 is {colors[3]}; OAM's metadata step may sample pixels to classify the product, but its JPEG conversion path only treats band 4 as alpha when GDAL explicitly labels it alpha. This may therefore remain a lossless conversion.")
         else:
             check("PASS", "Color interpretation", "Band interpretation is consistent with the declared visual product.")
     elif product in OAM_SUPPORTED_PRODUCTS:
@@ -713,6 +757,22 @@ def validate_local_oam_raster(
     has_overviews = bool(bands) and all(bool(b.get("overviews")) for b in bands)
     check("PASS" if has_overviews else "INFO", "Overviews",
           "Every band reports internal overviews." if has_overviews else "Local overviews are not an upload prerequisite; OAM builds the published COG.")
+    transform = info.get("geoTransform")
+    transform_ok = has_usable_geotransform(info)
+    identity_transform = (
+        isinstance(transform, list)
+        and len(transform) == 6
+        and all(abs(float(a) - float(b)) < 1e-12 for a, b in zip(transform, [0, 1, 0, 0, 0, 1]))
+    )
+    if not transform_ok:
+        check("FAIL", "Affine georeferencing",
+              "GDAL did not report a usable affine geotransform. A CRS label alone cannot supply pixel locations, GSD, or a footprint; restore the correct georeferencing before upload.")
+    elif identity_transform:
+        check("WARN", "Affine georeferencing",
+              "GDAL reports the identity transform. Confirm the pixel origin and resolution are intentional; OAM derives GSD and footprint from this transform.")
+    else:
+        check("PASS", "Affine georeferencing", "A finite, non-singular pixel-to-ground transform is present.")
+
     extent = info.get("wgs84Extent")
     check("PASS" if isinstance(extent, dict) and extent.get("coordinates") else "WARN", "WGS84 extent",
           "GDAL supplied an EPSG:4326 geometry for metadata generation." if isinstance(extent, dict) and extent.get("coordinates") else "GDAL did not supply a WGS84 extent; metadata geometry needs manual investigation.")
@@ -1349,6 +1409,12 @@ if active_workflow == "Local preparation":
             if not source_key:
                 raise ValueError("Paste the local raster path before analysing its report.")
             info = parse_oam_gdalinfo_report(report_text)
+            path_match = gdal_report_matches_path(info, source_value)
+            if path_match is False:
+                raise ValueError(
+                    "The pasted GDAL report identifies a different file. Re-run the generated "
+                    "gdalinfo command for the path currently entered above."
+                )
             size_value = file_size_text.strip().replace(",", "")
             file_size_bytes = int(size_value) if size_value else None
             if file_size_bytes is not None and file_size_bytes <= 0:
@@ -1357,6 +1423,7 @@ if active_workflow == "Local preparation":
                 "path": source_key,
                 "info": info,
                 "file_size": file_size_bytes,
+                "path_verified": path_match,
             }
         except Exception as exc:
             st.session_state.pop("osgeo4w_report_result", None)
@@ -1373,6 +1440,8 @@ if active_workflow == "Local preparation":
     elif report_result and source_key:
         info = report_result["info"]
         file_size_bytes = report_result.get("file_size")
+        if report_result.get("path_verified") is None:
+            st.warning("This GDAL report did not include an absolute source path, so the report-to-path match could not be verified. Confirm it came from the file entered above.")
         bands = info.get("bands") or []
         width, height = info.get("size") or [0, 0]
         crs = info.get("coordinateSystem") or {}
@@ -1404,6 +1473,8 @@ if active_workflow == "Local preparation":
                 f"block {block[0]}×{block[1] if len(block) > 1 else '?'} · "
                 f"{len(overview)} overview level(s)"
             )
+            if band.get("noDataValue") is not None:
+                st.caption(f"Band {band.get('band', '?')} NoData: {band['noDataValue']}")
             if band.get("description"):
                 st.caption(f"Band {band.get('band', '?')} description: {band['description']}")
 
@@ -1475,8 +1546,15 @@ if active_workflow == "Local preparation":
         source_stem = ntpath.splitext(ntpath.basename(source_value))[0] or "imagery"
         default_output = ntpath.join(ntpath.dirname(source_value), source_stem + "_oam_ready.tif")
         needs_conversion = driver != "GTIFF" or not crs_ok
+        geotransform_ok = has_usable_geotransform(info)
         st.markdown("### 6 · Local correction / preparation commands")
-        if needs_conversion:
+        if not geotransform_ok:
+            st.error(
+                "GDAL did not report a usable affine geotransform. Do not try to fix this by assigning an EPSG code: "
+                "that labels coordinates but cannot create missing pixel-to-ground coordinates. Restore the correct "
+                "georeferencing or world file in QGIS, then inspect the raster again."
+            )
+        elif needs_conversion:
             st.warning(
                 "This source is not yet an OAM-ready GeoTIFF with a declared CRS. "
                 "Create a separate output, then paste that output path above and analyse it again."
