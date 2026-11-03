@@ -8,10 +8,10 @@
 - [x] Align raster validation: GeoTIFF, CRS, product-aware bands, decoded-size guidance, and non-mandatory local COG.
 - [x] Generate guarded COG conversion command only when required or explicitly requested; require verified EPSG before CRS assignment.
 - [x] Add report reinspection instructions for converted output.
-- [x] Align metadata prefill with the current uploader fields and display license values.
-- [x] Keep local path/source_url out of the prefill and preserve manual file selection/submission.
+- [x] Replace the clipboard pipe with a saved raw JSON report, explicit clipboard-copy command, and Notepad fallback.
+- [x] Replace the Streamlit metadata form and prefill URL with a direct link to the official OAM uploader.
 - [x] Route the legacy OAM preflight page to the unified workflow.
-- [x] Update README, OAM preflight docs, specification, and acceptance tasks.
+- [x] Update README, OAM preflight docs, specification, acceptance tasks, and focused regression tests.
 - [x] Add focused OSGeo4W/report/OAM contract tests and update upload-size regression coverage.
 - [ ] Run focused and full unit tests; inspect and fix failures.
 - [ ] Verify GitHub Actions unit, dependency compatibility, and browser smoke jobs.
