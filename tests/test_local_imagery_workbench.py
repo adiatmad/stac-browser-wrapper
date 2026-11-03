@@ -218,6 +218,16 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "timezone"):
             self.helpers["build_local_oam_item"](self.sample_info(), "image.tif", metadata)
 
+    def test_nonvisual_thumbnail_is_not_fabricated_as_rgb(self):
+        info = self.sample_info(dtype="Float32", count=1, colors=["Gray"])
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "elevation.tif"
+            source.write_bytes(b"source")
+            result = self.helpers["create_local_thumbnail"](
+                str(source), info, "elevation", {"gdal_translate": "gdal_translate"}
+            )
+        self.assertIsNone(result)
+
     def test_metadata_writer_refuses_overwrite(self):
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp) / "item.json"
