@@ -1,5 +1,7 @@
 # Feature Specification: Local Geospatial Imagery Preparation and OAM Handoff
 
+> **Superseded UI contract (3 November 2026):** The direct local-inspection workflow described below is retained only as historical design evidence. Its local GDAL execution, COG, thumbnail, and STAC-sidecar helpers were removed from the hosted app because they are not part of the accepted workflow. The active UI contract and acceptance tests are in [008-one-path-local-oam-workflow](../008-one-path-local-oam-workflow/spec.md): paste a path, run generated commands in OSGeo4W Shell, paste the GDAL report, and receive OAM-aligned guidance. OAM performs its own COG conversion and metadata/footprint generation; local COG and local STAC sidecars are not mandatory for upload.
+
 **Status:** Implemented on `feat/local-oam-imagery-workbench`; automated CI passed on commit `095e6a6350104dc1126f71f820aeace4a57247fa`. Real local GDAL/QGIS execution and live OAM submission remain manual acceptance checks.
 
 ## User outcome

@@ -55,11 +55,11 @@ class OAMV030PreflightTests(unittest.TestCase):
         self.assertEqual(license_check["status"], "FAIL")
 
 
-    def test_generated_commands_refuse_existing_output_paths(self):
+    def test_legacy_preflight_page_routes_to_the_unified_local_workflow(self):
         page = (Path(__file__).resolve().parents[1] / "pages" / "1_OAM_Preflight.py").read_text(encoding="utf-8")
-        self.assertNotIn("Remove-Item $out -Force", page)
-        self.assertIn("Test-Path -LiteralPath $out", page)
-        self.assertIn("Output already exists; choose a different output path.", page)
+        self.assertIn('st.page_link("app.py"', page)
+        self.assertIn("OSGeo4W Shell", page)
+        self.assertNotIn("Remove-Item", page)
 
 if __name__ == "__main__":
     unittest.main()
