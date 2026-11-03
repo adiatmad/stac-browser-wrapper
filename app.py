@@ -439,6 +439,7 @@ def build_oam_recommendation(info: dict[str, Any], input_path: str, source_epsg:
 # ---------- Local GDAL / OAM imagery workbench ----------
 OAM_STAC_SCHEMA_URL = "https://docs.imagery.hotosm.org/oam/v0.3.0/schema.json"
 OAM_SUPPORTED_PRODUCTS = ("visual", "multispectral", "sar", "elevation", "pseudocolor")
+OAM_SUPPORTED_PLATFORMS = ("kite", "balloon", "uav", "aircraft", "satellite")
 OAM_SUPPORTED_LICENSES = ("CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0")
 OAM_MAX_UPLOAD_BYTES = 100 * 1024**3
 
@@ -553,7 +554,7 @@ def validate_local_oam_raster(
             check("WARN", "Fourth band", f"Band 4 is {colors[3]}, not clearly alpha. OAM may treat it as multispectral.")
         else:
             check("PASS", "Color interpretation", "Band interpretation is consistent with the declared visual product.")
-    else:
+    elif product in OAM_SUPPORTED_PRODUCTS:
         check("PASS", "Native data preservation", f"{product} products retain their native {types or ['unknown']} data types and band count; no RGB/Byte coercion is applied.")
 
     decoded = _local_decoded_bytes(info)
@@ -694,7 +695,9 @@ def build_local_oam_item(
     if missing:
         raise ValueError("Missing user-confirmed metadata: " + ", ".join(missing))
     if metadata["product_type"] not in OAM_SUPPORTED_PRODUCTS:
-        raise ValueError("Unsupported OAM product type.")
+        raise ValueError("Choose a supported OAM product type.")
+    if metadata["platform"] not in OAM_SUPPORTED_PLATFORMS:
+        raise ValueError("Choose the actual platform type; it is not inferred.")
     if metadata["license"] not in OAM_SUPPORTED_LICENSES:
         raise ValueError("Choose one of OAM's accepted Creative Commons licenses.")
     gsd = float(metadata["gsd"])
@@ -1323,7 +1326,7 @@ if active_workflow == "Local preparation":
         st.markdown("### 2 · Validate against OAM")
         product_type = st.selectbox(
             "OAM product type",
-            options=list(OAM_SUPPORTED_PRODUCTS),
+            options=["Select product type", *OAM_SUPPORTED_PRODUCTS],
             index=0,
             key="local_oam_product_type",
             help="Choose from the actual data. Only visual requires 3–4 8-bit bands; other products retain native values.",
@@ -1392,6 +1395,7 @@ if active_workflow == "Local preparation":
                 value=Path(source_path.strip().strip('"')).stem,
                 key="local_oam_title",
             )
+            st.caption("Review the filename-based title suggestion. Producer, platform, GSD, acquisition time, and license must reflect the real source.")
             metadata_producer = st.text_input(
                 "Imagery producer",
                 placeholder="Person or organisation that produced the imagery",
@@ -1399,7 +1403,8 @@ if active_workflow == "Local preparation":
             )
             metadata_platform = st.selectbox(
                 "Platform type",
-                options=["uav", "kite", "balloon", "aircraft", "satellite"],
+                options=["Select platform type", *OAM_SUPPORTED_PLATFORMS],
+                index=0,
                 key="local_oam_platform",
             )
             metadata_gsd = st.text_input(
@@ -1415,7 +1420,8 @@ if active_workflow == "Local preparation":
             )
             metadata_license = st.selectbox(
                 "License",
-                options=list(OAM_SUPPORTED_LICENSES),
+                options=["Select license", *OAM_SUPPORTED_LICENSES],
+                index=0,
                 key="local_oam_license",
             )
             extent_confirmed = st.checkbox(
