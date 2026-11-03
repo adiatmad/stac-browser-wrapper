@@ -760,8 +760,7 @@ def validate_local_oam_raster(
     transform = info.get("geoTransform")
     transform_ok = has_usable_geotransform(info)
     identity_transform = (
-        isinstance(transform, list)
-        and len(transform) == 6
+        transform_ok
         and all(abs(float(a) - float(b)) < 1e-12 for a, b in zip(transform, [0, 1, 0, 0, 0, 1]))
     )
     if not transform_ok:
@@ -1371,7 +1370,9 @@ if active_workflow == "Local preparation":
     source_value = source_path.strip().strip('"')
     source_key = ntpath.normcase(ntpath.normpath(source_value)) if source_value else ""
 
-    if source_value:
+    if source_value and not ntpath.isabs(source_value):
+        st.error("Use the full absolute Windows path copied from File Explorer, for example D:\\orthomosaic.tif.")
+    elif source_value:
         shell_commands = build_osgeo4w_commands(source_value)
         st.markdown("**2 · Open OSGeo4W Shell and run these commands**")
         st.caption(
