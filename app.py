@@ -1250,14 +1250,14 @@ if active_workflow == "Local preparation":
     source_path = st.text_input(
         "Source raster path",
         placeholder=r"D:\imagery\orthomosaic.tif",
-        key="local_imagery_source_path",
+        key="preflight_path",
         help="The source is opened read-only. It is never copied to a remote service or overwritten.",
     )
     inspect_clicked = st.button(
         "Inspect raster with GDAL",
         type="primary",
         disabled=not (source_path.strip().strip('"') and local_gdal_tools),
-        key="inspect_local_imagery",
+        key="run_gdal_check",
     )
     if inspect_clicked:
         try:
