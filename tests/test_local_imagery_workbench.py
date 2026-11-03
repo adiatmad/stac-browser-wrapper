@@ -122,6 +122,27 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
         visual_failure = next(item for item in visual["checks"] if item["name"] == "Visual pixel contract")
         self.assertEqual(visual_failure["status"], "FAIL")
 
+    def test_decoded_size_budget_matches_oam_conversion_path(self):
+        info = self.sample_info()
+        info["size"] = [500_000, 100_000]  # 150 GB decoded for three Byte bands.
+
+        visual = self.helpers["validate_local_oam_raster"](info, "visual")
+        visual_size = next(item for item in visual["checks"] if item["name"] == "Decoded size")
+        self.assertEqual(visual_size["status"], "PASS")
+        self.assertIn("216.7 GB", visual_size["detail"])
+
+        elevation = self.helpers["validate_local_oam_raster"](info, "elevation")
+        elevation_size = next(item for item in elevation["checks"] if item["name"] == "Decoded size")
+        self.assertEqual(elevation_size["status"], "WARN")
+        self.assertIn("130 GB", elevation_size["detail"])
+
+        rgba = self.sample_info(count=4, colors=["Red", "Green", "Blue", "Alpha"])
+        rgba["size"] = [500_000, 100_000]
+        rgba_result = self.helpers["validate_local_oam_raster"](rgba, "visual")
+        rgba_size = next(item for item in rgba_result["checks"] if item["name"] == "Decoded size")
+        self.assertEqual(rgba_size["status"], "PASS")
+        self.assertIn("216.7 GB", rgba_size["detail"])
+
     def test_missing_crs_is_a_hard_failure(self):
         info = self.sample_info()
         info["coordinateSystem"] = {}
