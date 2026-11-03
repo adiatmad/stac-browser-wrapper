@@ -182,7 +182,7 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn('st.header("Choose an imagery source")', source)
         self.assertIn('st.header("Local geospatial imagery preparation")', source)
         self.assertIn('key="preflight_path"', source)
-        self.assertIn('Inspecting raster automatically with GDAL', source)
+        self.assertIn('st.form_submit_button("Inspect raster", type="primary")', source)
         self.assertNotIn('Inspect raster with GDAL', source)
         self.assertNotIn('GDAL bin directory (optional)', source)
         self.assertNotIn('Separate DroneTM task-download and mosaic workflow', source)
