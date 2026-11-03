@@ -207,6 +207,37 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
                 helpers["run_local_gdalinfo"] = original_run_gdalinfo
                 helpers["create_local_thumbnail"] = original_thumbnail
 
+    def test_cog_creation_rejects_changed_crs_without_authority_id(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source.tif"
+            output = root / "prepared.tif"
+            source.write_bytes(b"original")
+            source_info = self.sample_info()
+            source_info["coordinateSystem"] = {"wkt": "SOURCE CRS WKT"}
+            output_info = self.sample_info()
+            output_info["coordinateSystem"] = {"wkt": "DIFFERENT CRS WKT"}
+            helpers = self.helpers
+            original_run_gdalinfo = helpers["run_local_gdalinfo"]
+            original_thumbnail = helpers["create_local_thumbnail"]
+
+            def fake_run(args, **kwargs):
+                Path(args[-1]).write_bytes(b"cog")
+                return subprocess.CompletedProcess(args, 0, "", "")
+
+            helpers["run_local_gdalinfo"] = lambda path, tools: output_info
+            helpers["create_local_thumbnail"] = lambda *args: None
+            try:
+                with mock.patch.object(helpers["subprocess"], "run", side_effect=fake_run):
+                    with self.assertRaisesRegex(RuntimeError, "CRS definition changed"):
+                        helpers["build_local_cog"](
+                            str(source), str(output), source_info, "visual",
+                            {"gdalinfo": "gdalinfo", "gdal_translate": "gdal_translate"},
+                        )
+            finally:
+                helpers["run_local_gdalinfo"] = original_run_gdalinfo
+                helpers["create_local_thumbnail"] = original_thumbnail
+
     def test_stac_item_uses_gdal_extent_and_user_metadata(self):
         metadata = {
             "title": "Jakarta orthomosaic",
