@@ -7,7 +7,7 @@ This workflow prepares an existing local raster for manual submission through th
 1. Paste the local raster path into Local preparation.
 2. Open QGIS / OSGeo4W Shell on the Windows machine that contains the raster.
 3. Run the generated GDAL version and COG-driver checks.
-4. Run the report-save command. It writes raw JSON to `%USERPROFILE%\\gdal-report.json`. Then run the clipboard command to copy that file's contents.
+4. Run the report-save command. It writes raw JSON to `%USERPROFILE%\gdal-report.json`. Then run the clipboard command to copy that file's contents.
 5. Paste directly into the Streamlit report box. Do not route the JSON through Word, ChatGPT, or another editor. If the clipboard is empty, open the saved file in Notepad, press Ctrl+A then Ctrl+C, and paste directly into Streamlit. Run the PowerShell file-size command and enter the exact byte count.
 6. Review raster and OAM checks, including affine georeferencing, per-band NoData, extent, compression, and overviews.
 7. If necessary, run a generated non-overwriting COG conversion command. A CRS is assigned only when the user supplies a verified EPSG code. Reinspect the converted output by repeating steps 1–6.
@@ -39,7 +39,7 @@ The OAM pipeline derives GSD from pixel resolution and CRS and generates the Ite
 The app provides commands to:
 
 - verify the active GDAL version;
-- save the complete raw gdalinfo -json report to `%USERPROFILE%\\gdal-report.json`, then copy that file to the clipboard with `clip < ...`;
+- save the complete raw gdalinfo -json report to `%USERPROFILE%\gdal-report.json`, then copy that file to the clipboard with `clip < ...`;
 - retrieve the exact local file size in bytes;
 - create a separate COG GeoTIFF when the input is not already a GeoTIFF or needs a verified CRS assignment;
 - inspect the generated output and repeat the same report workflow.
