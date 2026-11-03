@@ -259,15 +259,51 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "timezone"):
             self.helpers["build_local_oam_item"](self.sample_info(), "image.tif", metadata)
 
+    def test_visual_thumbnail_uses_local_gdal_and_refuses_overwrite(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "visual.tif"
+            source.write_bytes(b"source")
+
+            def fake_run(args, **kwargs):
+                Path(args[-1]).write_bytes(b"png")
+                return subprocess.CompletedProcess(args, 0, "", "")
+
+            with mock.patch.object(self.helpers["subprocess"], "run", side_effect=fake_run) as run:
+                preview = self.helpers["create_local_thumbnail"](
+                    str(source), self.sample_info(), "visual",
+                    {"gdal_translate": "gdal_translate"},
+                )
+            self.assertEqual(Path(preview).read_bytes(), b"png")
+            args = run.call_args.args[0]
+            self.assertEqual(args[1:6], ["-of", "PNG", "-outsize", "1024", "0"])
+            self.assertEqual(args[6:12], ["-b", "1", "-b", "2", "-b", "3"])
+            self.assertEqual(source.read_bytes(), b"source")
+            with self.assertRaises(FileExistsError):
+                self.helpers["create_local_thumbnail"](
+                    str(source), self.sample_info(), "visual",
+                    {"gdal_translate": "gdal_translate"},
+                )
+
     def test_nonvisual_thumbnail_is_not_fabricated_as_rgb(self):
         info = self.sample_info(dtype="Float32", count=1, colors=["Gray"])
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "elevation.tif"
             source.write_bytes(b"source")
+            existing_preview = source.with_name("elevation_thumbnail.png")
+            existing_preview.write_bytes(b"keep")
             result = self.helpers["create_local_thumbnail"](
-                str(source), info, "elevation", {"gdal_translate": "gdal_translate"}
+                str(source), info, "elevation", {}
             )
-        self.assertIsNone(result)
+            self.assertIsNone(result)
+            self.assertEqual(existing_preview.read_bytes(), b"keep")
+
+    def test_metadata_writer_saves_local_sidecar(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "item.json"
+            item = {"type": "Feature", "id": "sample"}
+            written = self.helpers["write_local_oam_item"](item, str(output))
+            self.assertEqual(Path(written), output.resolve())
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8")), item)
 
     def test_metadata_writer_refuses_overwrite(self):
         with tempfile.TemporaryDirectory() as temp:
