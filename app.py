@@ -676,11 +676,14 @@ def build_local_cog(
         raise RuntimeError("COG verification failed: geotransform changed. The output was not deleted.")
     source_crs = source_info.get("coordinateSystem") or {}
     output_crs = output_info.get("coordinateSystem") or {}
-    if bool(source_crs.get("wkt") or source_crs.get("projjson")) != bool(output_crs.get("wkt") or output_crs.get("projjson")):
+    source_has_crs = bool(source_crs.get("wkt") or source_crs.get("projjson") or source_crs.get("id"))
+    output_has_crs = bool(output_crs.get("wkt") or output_crs.get("projjson") or output_crs.get("id"))
+    if source_has_crs != output_has_crs:
         raise RuntimeError("COG verification failed: CRS presence changed. The output was not deleted.")
-    source_crs_id, output_crs_id = source_crs.get("id"), output_crs.get("id")
-    if source_crs_id and output_crs_id and source_crs_id != output_crs_id:
-        raise RuntimeError("COG verification failed: CRS identifier changed. The output was not deleted.")
+    for field, label in (("id", "identifier"), ("projjson", "definition"), ("wkt", "definition")):
+        source_value, output_value = source_crs.get(field), output_crs.get(field)
+        if source_value and output_value and source_value != output_value:
+            raise RuntimeError(f"COG verification failed: CRS {label} changed. The output was not deleted.")
     thumbnail = None
     thumbnail_error = None
     try:
