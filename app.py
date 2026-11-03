@@ -586,7 +586,7 @@ def validate_local_oam_raster(
 
 def create_local_thumbnail(
     raster_path: str, info: dict[str, Any], product_type: str, tools: dict[str, str]
-) -> str:
+) -> str | None:
     """Create a small PNG preview; never modify the raster or replace an existing preview."""
     source = Path(raster_path).expanduser().resolve()
     output = source.with_name(source.stem + "_thumbnail.png")
@@ -1256,30 +1256,30 @@ if active_workflow == "Local preparation":
     inspect_clicked = st.button(
         "Inspect raster with GDAL",
         type="primary",
-        disabled=not (source_path.strip() and local_gdal_tools),
+        disabled=not (source_path.strip().strip('"') and local_gdal_tools),
         key="inspect_local_imagery",
     )
     if inspect_clicked:
         try:
             with st.spinner("Reading raster metadata locally with gdalinfo…"):
-                inspected_info = run_local_gdalinfo(source_path.strip(), local_gdal_tools)
+                inspected_info = run_local_gdalinfo(source_path.strip().strip('"'), local_gdal_tools)
             st.session_state["local_imagery_inspection"] = {
-                "path": str(Path(source_path.strip()).expanduser().resolve()),
+                "path": str(Path(source_path.strip().strip('"')).expanduser().resolve()),
                 "info": inspected_info,
-                "file_size": Path(source_path.strip()).expanduser().stat().st_size,
+                "file_size": Path(source_path.strip().strip('"')).expanduser().stat().st_size,
             }
             st.session_state.pop("local_imagery_cog_result", None)
             st.session_state.pop("local_oam_item_result", None)
             st.session_state["local_cog_output_path"] = str(
-                Path(source_path.strip()).expanduser().with_name(
-                    Path(source_path.strip()).expanduser().stem + "_prepared_cog.tif"
+                Path(source_path.strip().strip('"')).expanduser().with_name(
+                    Path(source_path.strip().strip('"')).expanduser().stem + "_prepared_cog.tif"
                 )
             )
         except Exception as exc:
             st.error(f"Local GDAL inspection failed: {exc}")
 
     inspection = st.session_state.get("local_imagery_inspection")
-    current_source = str(Path(source_path.strip()).expanduser().resolve()) if source_path.strip() else ""
+    current_source = str(Path(source_path.strip().strip('"')).expanduser().resolve()) if source_path.strip().strip('"') else ""
     if inspection and inspection.get("path") == current_source:
         info = inspection["info"]
         bands = info.get("bands") or []
@@ -1360,7 +1360,7 @@ if active_workflow == "Local preparation":
             try:
                 with st.spinner("Creating and verifying the COG locally. Large rasters may take time…"):
                     cog_result = build_local_cog(
-                        source_path.strip(), output_path.strip(), info,
+                        source_path.strip().strip('"'), output_path.strip(), info,
                         product_type, local_gdal_tools,
                     )
                 st.session_state["local_imagery_cog_result"] = {
@@ -1388,7 +1388,7 @@ if active_workflow == "Local preparation":
         with st.form("local_oam_metadata_form"):
             metadata_title = st.text_input(
                 "Title",
-                value=Path(source_path.strip()).stem,
+                value=Path(source_path.strip().strip('"')).stem,
                 key="local_oam_title",
             )
             metadata_producer = st.text_input(
@@ -1436,7 +1436,7 @@ if active_workflow == "Local preparation":
                     "license": metadata_license,
                     "sensor": metadata_sensor.strip(),
                 }
-                selected_asset = cog_result["path"] if cog_result and cog_result.get("source") == current_source else source_path.strip()
+                selected_asset = cog_result["path"] if cog_result and cog_result.get("source") == current_source else source_path.strip().strip('"')
                 selected_thumbnail = cog_result.get("thumbnail") if cog_result and cog_result.get("source") == current_source else None
                 if Path(selected_asset).stat().st_size > OAM_MAX_UPLOAD_BYTES:
                     raise ValueError("Selected raster exceeds the current OAM 100 GiB upload ceiling.")
@@ -1456,7 +1456,7 @@ if active_workflow == "Local preparation":
 
         oam_item_result = st.session_state.get("local_oam_item_result")
         if oam_item_result and oam_item_result.get("asset") == (
-            cog_result["path"] if cog_result and cog_result.get("source") == current_source else source_path.strip()
+            cog_result["path"] if cog_result and cog_result.get("source") == current_source else source_path.strip().strip('"')
         ):
             item_json = json.dumps(oam_item_result["item"], indent=2, ensure_ascii=False)
             st.success(f"Local STAC/OAM metadata draft saved: {oam_item_result['path']}")
@@ -1476,7 +1476,7 @@ if active_workflow == "Local preparation":
                 "In the OAM uploader, select the prepared COG (or original raster if you skipped preparation), "
                 "review the prefilled metadata, and submit there yourself. No file is uploaded by this workbench."
             )
-    elif inspection and source_path.strip():
+    elif inspection and source_path.strip().strip('"'):
         st.caption("The source path changed. Run Inspect raster with GDAL again to refresh the evidence.")
 
 
