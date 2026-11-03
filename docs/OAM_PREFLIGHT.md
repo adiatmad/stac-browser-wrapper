@@ -7,13 +7,13 @@ This workflow prepares an existing local raster for manual submission through th
 1. Paste the local raster path into Local preparation.
 2. Open QGIS / OSGeo4W Shell on the Windows machine that contains the raster.
 3. Run the generated GDAL version, JSON inspection, and file-size commands.
-4. Paste the complete JSON report and file size in bytes into the app.
-5. Review raster and OAM checks.
+4. Paste the complete JSON report and file size in bytes into the app. The report must identify the same file path; if it does not include an absolute path, the app marks that match as unverified.
+5. Review raster and OAM checks, including affine georeferencing, per-band NoData, extent, compression, and overviews.
 6. If necessary, run a generated non-overwriting COG conversion command. A CRS is assigned only when the user supplies a verified EPSG code.
 7. Reinspect the converted output by pasting its path and repeating the report step.
 8. Confirm the OAM metadata fields and open the official uploader. Select the local file and submit there.
 
-The Streamlit app does not open the local path, inspect local files, or receive raster bytes. The user runs GDAL locally and supplies its text report.
+The Streamlit app does not open the local path, inspect local files, or receive raster bytes. The user runs GDAL locally and supplies its text report. The path, file size, and GDAL report are sent to the Streamlit app; the report may contain local paths and embedded metadata, so review it for sensitive information before pasting.
 
 ## Current upstream OAM contract
 
@@ -30,7 +30,7 @@ Evidence was checked against the main branch of hotosm/openaerialmap, commit e20
 
 OAM accepts GeoTIFFs and creates its own COG during ingestion. Local COG creation is optional for an already-valid GeoTIFF. The uploader's upstream default maximum file size is 100 GiB; deployment configuration may override it. OAM's current supported product types are visual, multispectral, SAR, elevation, and pseudocolor. A CRS is required. Only a declared visual product is constrained to 3–4 8-bit bands; non-visual products retain native data.
 
-The OAM pipeline derives GSD from pixel resolution and CRS and generates the Item geometry/footprint from the raster mask or extent. The user must confirm title, producer, platform, acquisition date, and license. The current OAM extension accepts CC-BY-4.0, CC-BY-SA-4.0, and CC-BY-NC-4.0.
+The OAM pipeline derives GSD from pixel resolution and CRS and generates the Item geometry/footprint from the raster mask or extent. The preflight requires a usable affine geotransform because an EPSG label alone cannot restore pixel-to-ground coordinates; an identity transform is flagged for manual review. The user must confirm title, producer, platform, acquisition date, and license. The current OAM extension accepts CC-BY-4.0, CC-BY-SA-4.0, and CC-BY-NC-4.0.
 
 ## Generated OSGeo4W commands
 
