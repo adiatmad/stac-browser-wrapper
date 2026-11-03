@@ -181,6 +181,10 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
 
         assigned = build(r"D:\scene.ecw", r"D:\scene_oam_ready.tif", "32751")
         self.assertIn("-a_srs EPSG:32751", assigned)
+        with self.assertRaisesRegex(ValueError, "absolute Windows source path"):
+            build("scene.ecw", r"D:\scene_oam_ready.tif")
+        with self.assertRaisesRegex(ValueError, "absolute Windows output path"):
+            build(r"D:\scene.ecw", "scene_oam_ready.tif")
         with self.assertRaisesRegex(ValueError, "differ from the source"):
             build(r"D:\scene.tif", r"d:\SCENE.tif")
         with self.assertRaisesRegex(ValueError, "numeric EPSG"):
