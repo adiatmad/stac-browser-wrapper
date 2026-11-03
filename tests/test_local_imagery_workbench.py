@@ -153,7 +153,7 @@ class LocalImageryWorkbenchTests(unittest.TestCase):
     def test_upload_size_ceiling_is_reported(self):
         info = self.sample_info()
         result = self.helpers["validate_local_oam_raster"](info, "visual", 101 * 1024**3)
-        upload_check = next(item for item in result["checks"] if item["name"] == "Upload file size")
+        upload_check = next(item for item in result["checks"] if item["name"] == "Source file size")
         self.assertEqual(upload_check["status"], "WARN")
         self.assertIn("You can still prepare a COG", upload_check["detail"])
 
