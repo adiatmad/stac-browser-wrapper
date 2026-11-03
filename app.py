@@ -718,6 +718,8 @@ def build_local_oam_item(
         "title": title,
         "datetime": captured.isoformat().replace("+00:00", "Z"),
         "license": metadata["license"],
+        "gsd": gsd,
+        "providers": [{"name": producer, "roles": ["producer", "licensor"]}],
         "oam:platform_type": metadata["platform"],
         "oam:producer_name": producer,
         "oam:product_type": metadata["product_type"],
@@ -735,8 +737,6 @@ def build_local_oam_item(
         "geometry": extent,
         "bbox": [min(longitudes), min(latitudes), max(longitudes), max(latitudes)],
         "properties": properties,
-        "gsd": gsd,
-        "providers": [{"name": producer, "roles": ["producer", "licensor"]}],
         "assets": {
             "visual": {
                 "href": "./" + asset_name,
