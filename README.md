@@ -42,7 +42,7 @@ The Local preparation tab is report-driven. It works even when this Streamlit ap
 2. Open QGIS / OSGeo4W Shell on the Windows computer that contains the file.
 3. Run the generated GDAL version, JSON inspection, and PowerShell file-size commands.
 4. Paste the JSON copied to the clipboard and the exact file size in bytes into the app.
-5. Review the GDAL report and OAM checks: driver, dimensions, CRS, band count/types, product type, decoded-size estimate, and the upstream default 100 GiB upload ceiling.
+5. Review the GDAL report and OAM checks: report-to-path match, affine georeferencing, dimensions, CRS, bands/types, per-band NoData, extent, compression, overviews, product type, decoded-size estimate, and the upstream default 100 GiB upload ceiling.
 6. If the input is not a GeoTIFF or has no declared CRS, the app can generate a separate COG GeoTIFF command. It never guesses a CRS; -a_srs is included only after the user supplies a verified EPSG code. The command refuses to overwrite an existing output.
 7. Paste the converted output path into the path field and repeat the report step before continuing.
 8. Confirm the actual dataset title, imagery producer, platform, acquisition date, and accepted CC license. Open the official OAM uploader, select the local file yourself, review the prefilled values, sign in if prompted, and submit manually.
@@ -57,7 +57,7 @@ The pipeline calculates GSD from the raster's pixel size and CRS and derives the
 
 The decoded-size budget is deployment-configurable. Current upstream defaults are 130 GB for lossless conversion paths and approximately 216.7 GB for the eligible lossy visual path; the actual deployment may differ. The 100 GiB upload ceiling is separate from decoded size; treat it as the active default unless the OAM deployment operator confirms an override.
 
-**Privacy and publication safeguards:** the GDAL report is pasted by the user; raster bytes remain on the user's computer. The prefill URL contains metadata only, never a local path or local source_url. The app does not store OAM credentials, upload files, or publish imagery automatically.
+**Privacy and publication safeguards:** the user sends the pasted path, GDAL JSON report, and file size to the Streamlit app; the report may contain local paths and embedded metadata, so review it before pasting. Raster bytes remain on the user's computer. The OAM prefill URL contains metadata only, never a local path or local source_url. The app does not store OAM credentials, upload files, or publish imagery automatically.
 
 ## Notes
 
