@@ -185,4 +185,4 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertNotIn('Separate DroneTM task-download and mosaic workflow', source)
         self.assertNotIn("<style>", source)
         self.assertNotIn("--app-canvas:", source)
-        self.assertIn("never automatically uploads or publishes to OpenAerialMap", source)
+        self.assertIn("No file is uploaded by this workbench", source)
