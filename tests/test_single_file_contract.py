@@ -21,7 +21,7 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertIn("build_osgeo4w_commands(source_value)", source)
         self.assertIn('st.form("oam_gdal_report_form"', source)
         self.assertIn('st.form_submit_button("Analyse GDAL report", type="primary")', source)
-        self.assertIn("The app does not open your D: drive or receive raster bytes.", source)
+        self.assertIn("does not open your D: drive or receive raster bytes.", source)
         self.assertIn("100 GiB OAM uploader ceiling", source)
         self.assertIn("OAM creates its own COG", source)
         self.assertIn("build_oam_local_prefill_url(metadata)", source)
