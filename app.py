@@ -1187,7 +1187,7 @@ if active_workflow == "Local preparation":
     with st.form("local_raster_inspection_form", clear_on_submit=False):
         source_path = st.text_input(
             "Source raster path",
-            placeholder=r"D:\\orthobekasigeotiff.tif",
+            placeholder=r"D:\orthobekasigeotiff.tif",
             key="preflight_path",
             help="Paste the full path on the computer running Streamlit, then click Inspect raster.",
         )
