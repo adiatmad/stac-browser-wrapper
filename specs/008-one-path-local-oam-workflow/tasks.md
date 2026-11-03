@@ -3,7 +3,7 @@
 - [x] Inspect current wrapper implementation, tests, repository rules, and current HOTOSM/OpenAerialMap uploader and ingestion code.
 - [x] Confirm current upstream OAM upload size, accepted input, product-type, metadata, COG, and prefill contracts.
 - [x] Replace local Streamlit file inspection with path-driven OSGeo4W Shell commands and pasted GDAL JSON.
-- [x] Add exact local file-size command and enforce the current 100 GiB uploader ceiling.
+- [x] Add exact local file-size command and enforce the upstream default 100 GiB uploader ceiling.
 - [x] Add report parser and OAM-aligned product-type suggestions.
 - [x] Align raster validation: GeoTIFF, CRS, product-aware bands, decoded-size guidance, and non-mandatory local COG.
 - [x] Generate guarded COG conversion command only when required or explicitly requested; require verified EPSG before CRS assignment.
