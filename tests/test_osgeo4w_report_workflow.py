@@ -84,7 +84,7 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
         info = self.sample_info()
         parsed = self.helpers["parse_oam_gdalinfo_report"](json.dumps(info))
         self.assertEqual(parsed["size"], [1000, 500])
-        with self.assertRaisesRegex(ValueError, "complete GDAL JSON"):
+        with self.assertRaisesRegex(ValueError, "GDAL JSON report is incomplete"):
             self.helpers["parse_oam_gdalinfo_report"]('{"driverShortName":"GTiff"}')
 
     def test_osgeo4w_commands_use_the_pasted_windows_path_and_clip_report(self):
