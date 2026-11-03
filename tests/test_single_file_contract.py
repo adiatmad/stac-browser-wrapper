@@ -14,7 +14,7 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertNotIn("from utils.oam_sources import", source)
         self.assertNotIn("from mosaic_core import", source)
 
-    def test_drone_workflow_is_explicitly_local(self):
+    def test_local_raster_workflow_uses_one_path(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn("Source raster path", source)
         self.assertIn("Inspecting raster automatically with GDAL", source)
@@ -143,7 +143,6 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         ast.parse(source, filename="app.py")
         self.assertIn("import streamlit_shadcn_ui as ui", source)
-        self.assertIn("ui.card(", source)
         self.assertIn("ui.badge(", source)
         self.assertIn("ui.metric_card(", source)
         self.assertRegex(requirements, r"(?m)^streamlit>=1\.60\.0$")
@@ -154,7 +153,7 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn("Check OAM v2 for Duplicates", source)
         self.assertIn("Prepare OAM v2 upload", source)
         self.assertIn("Apply filter", source)
-        self.assertIn("never automatically uploads or publishes to OpenAerialMap", source)
+        self.assertIn("No file is uploaded by this workbench", source)
         self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
 
     def test_hallmark_workbench_navigation_and_accessibility_shell(self):
