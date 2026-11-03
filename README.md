@@ -49,7 +49,7 @@ The Local preparation tab is report-driven. It works even when this Streamlit ap
 
 ### What OAM actually requires
 
-The current upstream uploader defaults to a **100 GiB** upload ceiling for GeoTIFF input; deployments can override this setting. Its processing pipeline then validates the raster, creates a COG, extracts metadata, and registers the STAC Item. A prebuilt local COG is therefore **not required** when the source is already a valid GeoTIFF with a CRS. The app offers local COG creation only as an optional copy for other workflows.
+The current upstream uploader defaults to a **100 GiB** upload ceiling for GeoTIFF input; deployments can override this setting. Its processing pipeline then validates the raster, creates a COG, extracts metadata, and registers the STAC Item. A prebuilt local COG is therefore **not required** when the source is already a valid GeoTIFF with a CRS. If the source is another raster format or needs a verified CRS assignment, the app generates a separate COG GeoTIFF conversion command; otherwise a local COG copy is optional.
 
 OAM's pipeline accepts visual, multispectral, SAR, elevation, and pseudocolor products. Three-band 8-bit imagery is detected as visual; a four-band image is only treated as visual when its fourth band is recognised as alpha. The pipeline keeps other products' native data and converts them losslessly. Eligible 8-bit RGB(A) visual imagery is converted to a JPEG quality-90 display COG; OAM retains the original upload separately.
 
