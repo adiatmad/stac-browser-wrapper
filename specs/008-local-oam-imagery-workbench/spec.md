@@ -48,7 +48,7 @@ Turn the existing Local preparation workflow into a local-first geospatial image
 - [ ] Prepared output retains dimensions, band count, geotransform, CRS, and data type; GDAL reports COG layout.
 - [ ] Thumbnail and STAC metadata sidecar are generated locally without uploading imagery.
 - [ ] STAC metadata uses GDAL-derived EPSG:4326 extent and user-entered metadata only; it records `oam:footprint_source=bbox` and requires acknowledgement that this is not a traced valid-pixel footprint. OAM-required `gsd`, `oam:platform_type`, and `oam:producer_name`, plus the STAC `providers` array, are placed under Item `properties`. Missing required values remain missing and block the handoff.
-- [ ] OAM prefill contains supported metadata fields but no local filesystem path or `source_url`; the user manually selects and submits the file.
+- [ ] OAM prefill contains supported metadata fields but no local filesystem path or `source_url`; the user manually selects and submits the file. Because the documented prefill contract does not support GSD, the uploader explicitly asks the user to re-enter it; the local STAC sidecar retains the confirmed value.
 - [ ] Existing hosted app single-file contract and Discover & map workflows remain intact.
 - [ ] Focused tests and full unit tests pass; browser/CI evidence is reported separately from real local GDAL and real OAM upload acceptance.
 
