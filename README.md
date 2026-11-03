@@ -49,7 +49,7 @@ The **Local preparation** workflow can inspect and prepare an existing raster wi
 
 **Important:** A cloud-hosted Streamlit deployment cannot access your Windows files or local QGIS/GDAL installation. Run the app locally for this workflow. OAM performs its own server-side COG conversion after upload; the local COG is a lossless preparation copy, not a replacement for OAM's processing pipeline. The OAM prefill intentionally contains no local filesystem path or `source_url`, and this app does not store credentials or upload automatically.
 
-The OAM uploader currently documents a 100 GiB file-upload ceiling. Its decoded-size validation is deployment-configurable; the workbench reports the current upstream validator default as a warning rather than treating it as a universal limit.
+The OAM uploader currently documents a 100 GiB file-upload ceiling. Its decoded-size validation is deployment-configurable; the workbench mirrors the current upstream default budget as a warning: 130 GB for lossless conversion paths, or about 216.7 GB for eligible 8-bit RGB/RGBA-with-alpha visual JPEG conversion. The deployed limit may differ.
 
 
 ## Notes
