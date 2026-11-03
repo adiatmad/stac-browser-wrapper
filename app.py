@@ -741,7 +741,7 @@ def build_local_oam_item(
             "visual": {
                 "href": "./" + asset_name,
                 "type": "image/tiff; application=geotiff; profile=cloud-optimized",
-                "roles": ["visual"],
+                "roles": ["data"],
                 "title": asset_name,
             }
         },
