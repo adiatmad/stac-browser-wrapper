@@ -558,12 +558,29 @@ def validate_local_oam_raster(
         check("PASS", "Native data preservation", f"{product} products retain their native {types or ['unknown']} data types and band count; no RGB/Byte coercion is applied.")
 
     decoded = _local_decoded_bytes(info)
+    # Match OAM's current validator budget: JPEG visual conversion gets
+    # 130 / 0.6 GB; all lossless paths retain the 130 GB default.
+    lossy_visual = (
+        product == "visual"
+        and len(bands) in (3, 4)
+        and bool(types)
+        and types[0] in {"BYTE", "UINT8"}
+        and (len(bands) == 3 or (len(colors) > 3 and colors[3] == "alpha"))
+    )
+    max_decoded_gb = round(130.0 / 0.6, 1) if lossy_visual else 130.0
+    decoded_limit_bytes = max_decoded_gb * 1_000_000_000
     if decoded is None:
         check("WARN", "Decoded size", "Could not estimate decoded size from the reported band types.")
-    elif decoded > 130_000_000_000:
-        check("WARN", "Decoded size", f"Estimated decoded size is {decoded / 1e9:.1f} GB. OAM's current validator default is 130 GB, but deployments may override this.")
+    elif decoded > decoded_limit_bytes:
+        check(
+            "WARN", "Decoded size",
+            f"Estimated decoded size is {decoded / 1e9:.1f} GB; OAM's current default for this conversion path is {max_decoded_gb:g} GB. Deployments may override this.",
+        )
     else:
-        check("PASS", "Decoded size", f"Estimated decoded size is {decoded / 1e9:.2f} GB.")
+        check(
+            "PASS", "Decoded size",
+            f"Estimated decoded size is {decoded / 1e9:.2f} GB; OAM's current default for this conversion path is {max_decoded_gb:g} GB (deployment-configurable).",
+        )
 
     if file_size_bytes is not None:
         check("PASS" if file_size_bytes <= OAM_MAX_UPLOAD_BYTES else "FAIL", "Upload file size",
