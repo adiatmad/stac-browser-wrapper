@@ -114,6 +114,15 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
         self.assertFalse(has_transform(info))
         info.pop("geoTransform")
         self.assertFalse(has_transform(info))
+        result = self.helpers["validate_local_oam_raster"](info, "visual", 1024)
+        georeferencing = next(item for item in result["checks"] if item["name"] == "Affine georeferencing")
+        self.assertEqual(georeferencing["status"], "FAIL")
+
+        identity = self.sample_info()
+        identity["geoTransform"] = [0, 1, 0, 0, 0, 1]
+        result = self.helpers["validate_local_oam_raster"](identity, "visual", 1024)
+        georeferencing = next(item for item in result["checks"] if item["name"] == "Affine georeferencing")
+        self.assertEqual(georeferencing["status"], "WARN")
 
     def test_oam_decoded_size_uses_the_first_band_dtype_like_upstream(self):
         info = self.sample_info()
