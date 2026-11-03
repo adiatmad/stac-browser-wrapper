@@ -1321,7 +1321,10 @@ if active_workflow == "Local preparation":
         st.code(shell_commands["version"], language="shell")
         st.code(shell_commands["cog_driver"], language="shell")
         st.code(shell_commands["report"], language="shell")
-        st.caption("The complete JSON report is copied to your clipboard by the final pipe to clip.exe.")
+        st.caption(
+            "The complete JSON report is copied to your clipboard by the final pipe to clip.exe. "
+            "If the clipboard stays empty, rerun the report command without | clip to see GDAL's error."
+        )
         st.code(shell_commands["size"], language="shell")
         st.caption("Copy the number printed by the file-size command. It is needed to check OAM's 100 GiB upload ceiling.")
 
@@ -1348,8 +1351,8 @@ if active_workflow == "Local preparation":
             info = parse_oam_gdalinfo_report(report_text)
             size_value = file_size_text.strip().replace(",", "")
             file_size_bytes = int(size_value) if size_value else None
-            if file_size_bytes is not None and file_size_bytes < 0:
-                raise ValueError("File size must be a non-negative number of bytes.")
+            if file_size_bytes is not None and file_size_bytes <= 0:
+                raise ValueError("File size must be a positive number of bytes.")
             st.session_state["osgeo4w_report_result"] = {
                 "path": source_key,
                 "info": info,
@@ -1567,8 +1570,10 @@ if active_workflow == "Local preparation":
                     key="osgeo4w_metadata_contact",
                 )
                 metadata_submitted = st.form_submit_button("Prepare OAM uploader handoff", type="primary")
+            st.caption("The uploader link reflects the last successful form submission. Submit again after changing any metadata field.")
 
             if metadata_submitted:
+                st.session_state.pop("osgeo4w_oam_prefill", None)
                 try:
                     if not metadata_title.strip():
                         raise ValueError("Dataset title is required.")
@@ -1608,6 +1613,7 @@ if active_workflow == "Local preparation":
                     st.session_state["osgeo4w_oam_prefill"] = {
                         "path": source_key,
                         "url": prefill,
+                        "metadata": metadata,
                     }
                 except Exception as exc:
                     st.error(f"Could not prepare the OAM handoff: {exc}")
@@ -1616,6 +1622,17 @@ if active_workflow == "Local preparation":
             if handoff and handoff.get("path") == source_key:
                 st.success("OAM uploader handoff is ready. The local path and raster bytes are not included.")
                 st.link_button("Open official OAM uploader with metadata", handoff["url"])
+                submitted_metadata = handoff["metadata"]
+                st.caption(
+                    "Prefilled: "
+                    + submitted_metadata["title"]
+                    + " · "
+                    + submitted_metadata["producer"]
+                    + " · "
+                    + submitted_metadata["platform"]
+                    + " · "
+                    + submitted_metadata["acquisition_start"]
+                )
                 st.warning(
                     "In the uploader, choose **Upload a file**, select the GeoTIFF you inspected, "
                     "review every prefilled field, sign in if prompted, and click Start upload yourself. "
