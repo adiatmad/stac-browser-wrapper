@@ -1184,55 +1184,74 @@ if active_workflow == "Local preparation":
     )
 
     local_gdal_tools = resolve_local_gdal_tools()
-    source_path = st.text_input(
-        "Source raster path",
-        placeholder=r"D:\orthobekasigeotiff.tif",
-        key="preflight_path",
-        help="Paste the full local path and press Enter. The source is opened read-only and is never uploaded or overwritten.",
-    )
-    source_value = source_path.strip().strip('"')
-    current_source = str(Path(source_value).expanduser().resolve()) if source_value else ""
-    inspection = st.session_state.get("local_imagery_inspection")
-    last_attempt = st.session_state.get("local_imagery_inspection_attempt")
+    with st.form("local_raster_inspection_form", clear_on_submit=False):
+        source_path = st.text_input(
+            "Source raster path",
+            placeholder=r"D:\\orthobekasigeotiff.tif",
+            key="preflight_path",
+            help="Paste the full path on the computer running Streamlit, then click Inspect raster.",
+        )
+        inspect_clicked = st.form_submit_button("Inspect raster", type="primary")
 
-    if source_value and Path(source_value).is_file():
-        if not local_gdal_tools:
-            st.error(
-                "GDAL was not found automatically. Install QGIS/OSGeo4W or make gdalinfo and "
-                "gdal_translate available on PATH, then restart this app."
+    source_value = source_path.strip().strip('"')
+    source_file = Path(source_value).expanduser() if source_value else None
+    current_source = str(source_file.resolve()) if source_file else ""
+    inspection = st.session_state.get("local_imagery_inspection")
+    inspection_error = st.session_state.get("local_imagery_inspection_error")
+
+    if inspect_clicked:
+        st.session_state.pop("local_imagery_inspection_error", None)
+        try:
+            if not source_value:
+                raise ValueError("Enter the full path to an existing raster before inspecting it.")
+            if not source_file.exists():
+                raise FileNotFoundError(
+                    f"The Streamlit process cannot see this path: {source_value}. "
+                    "The path is checked on the computer running Streamlit, not in your browser. "
+                    "If you opened a hosted app URL, start the app locally on the same Windows computer "
+                    "that contains the raster. If it is already local, check the drive letter, spelling, "
+                    "file extension, and whether Streamlit runs under an account that can access that drive."
+                )
+            if not source_file.is_file():
+                raise ValueError(f"The path exists but is not a file: {source_value}")
+            if not local_gdal_tools:
+                raise RuntimeError(
+                    "GDAL tools were not found. Both gdalinfo and gdal_translate are required. "
+                    "Install QGIS/OSGeo4W, or launch Streamlit from the QGIS/OSGeo4W shell so its "
+                    "GDAL environment is available, then restart the app."
+                )
+
+            with st.spinner("Inspecting raster with local GDAL…"):
+                inspected_info = run_local_gdalinfo(source_value, local_gdal_tools)
+
+            st.session_state["local_imagery_inspection"] = {
+                "path": current_source,
+                "info": inspected_info,
+                "file_size": source_file.stat().st_size,
+            }
+            st.session_state.pop("local_imagery_cog_result", None)
+            st.session_state.pop("local_oam_item_result", None)
+            st.session_state["local_cog_output_path"] = str(
+                source_file.with_name(source_file.stem + "_prepared_cog.tif")
             )
-        elif not inspection or inspection.get("path") != current_source:
-            if last_attempt != current_source:
-                st.session_state["local_imagery_inspection_attempt"] = current_source
-                st.session_state.pop("local_imagery_inspection_error", None)
-                try:
-                    with st.spinner("Inspecting raster automatically with GDAL…"):
-                        inspected_info = run_local_gdalinfo(source_value, local_gdal_tools)
-                    source_file = Path(source_value).expanduser()
-                    st.session_state["local_imagery_inspection"] = {
-                        "path": current_source,
-                        "info": inspected_info,
-                        "file_size": source_file.stat().st_size,
-                    }
-                    st.session_state.pop("local_imagery_cog_result", None)
-                    st.session_state.pop("local_oam_item_result", None)
-                    st.session_state["local_cog_output_path"] = str(
-                        source_file.with_name(source_file.stem + "_prepared_cog.tif")
-                    )
-                    inspection = st.session_state["local_imagery_inspection"]
-                except Exception as exc:
-                    st.session_state["local_imagery_inspection_error"] = {
-                        "path": current_source, "message": str(exc)
-                    }
-            inspection_error = st.session_state.get("local_imagery_inspection_error")
-            if inspection_error and inspection_error.get("path") == current_source:
-                st.error(f"Could not inspect this raster: {inspection_error['message']}")
-                if st.button("Retry raster inspection", key="retry_local_imagery_inspection"):
-                    st.session_state.pop("local_imagery_inspection_attempt", None)
-                    st.session_state.pop("local_imagery_inspection_error", None)
-                    st.rerun()
-    elif source_value:
-        st.caption("Waiting for a valid local file path. Paste the complete path and press Enter.")
+            inspection = st.session_state["local_imagery_inspection"]
+            st.session_state.pop("local_imagery_inspection_error", None)
+            st.success("Raster inspected successfully. Review the metadata below.")
+        except Exception as exc:
+            st.session_state["local_imagery_inspection_error"] = {
+                "path": current_source,
+                "message": str(exc),
+            }
+            inspection_error = st.session_state["local_imagery_inspection_error"]
+
+    inspection_error = st.session_state.get("local_imagery_inspection_error")
+    if inspection_error and inspection_error.get("path") == current_source:
+        st.error(f"Raster inspection could not start or complete: {inspection_error['message']}")
+    elif source_value and (not inspection or inspection.get("path") != current_source):
+        st.info(
+            "Path entered but not inspected yet. Click **Inspect raster**. "
+            "The file must be accessible to the computer running this Streamlit app."
+        )
 
     inspection = st.session_state.get("local_imagery_inspection")
     if inspection and inspection.get("path") == current_source:
