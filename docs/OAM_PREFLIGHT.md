@@ -6,12 +6,12 @@ This workflow prepares an existing local raster for manual submission through th
 
 1. Paste the local raster path into Local preparation.
 2. Open QGIS / OSGeo4W Shell on the Windows machine that contains the raster.
-3. Run the generated GDAL version, JSON inspection, and file-size commands.
-4. Paste the complete JSON report and file size in bytes into the app. The report must identify the same file path; if it does not include an absolute path, the app marks that match as unverified.
-5. Review raster and OAM checks, including affine georeferencing, per-band NoData, extent, compression, and overviews.
-6. If necessary, run a generated non-overwriting COG conversion command. A CRS is assigned only when the user supplies a verified EPSG code.
-7. Reinspect the converted output by pasting its path and repeating the report step.
-8. Confirm the OAM metadata fields and open the official uploader. Select the local file and submit there.
+3. Run the generated GDAL version and COG-driver checks.
+4. Run the report-save command. It writes raw JSON to `%USERPROFILE%\\gdal-report.json`. Then run the clipboard command to copy that file's contents.
+5. Paste directly into the Streamlit report box. Do not route the JSON through Word, ChatGPT, or another editor. If the clipboard is empty, open the saved file in Notepad, press Ctrl+A then Ctrl+C, and paste directly into Streamlit. Run the PowerShell file-size command and enter the exact byte count.
+6. Review raster and OAM checks, including affine georeferencing, per-band NoData, extent, compression, and overviews.
+7. If necessary, run a generated non-overwriting COG conversion command. A CRS is assigned only when the user supplies a verified EPSG code. Reinspect the converted output by repeating steps 1–6.
+8. Open the [official OAM uploader](https://upload.imagery.hotosm.org/), choose **Upload a file**, select the same local GeoTIFF, review any fields required by the uploader, and submit manually. No separate metadata form is needed in this workbench.
 
 The Streamlit app does not open the local path, inspect local files, or receive raster bytes. The user runs GDAL locally and supplies its text report. The path, file size, and GDAL report are sent to the Streamlit app; the report may contain local paths and embedded metadata, so review it for sensitive information before pasting.
 
@@ -39,7 +39,7 @@ The OAM pipeline derives GSD from pixel resolution and CRS and generates the Ite
 The app provides commands to:
 
 - verify the active GDAL version;
-- run gdalinfo -json and copy the complete report to the clipboard;
+- save the complete raw gdalinfo -json report to `%USERPROFILE%\\gdal-report.json`, then copy that file to the clipboard with `clip < ...`;
 - retrieve the exact local file size in bytes;
 - create a separate COG GeoTIFF when the input is not already a GeoTIFF or needs a verified CRS assignment;
 - inspect the generated output and repeat the same report workflow.
@@ -57,6 +57,6 @@ The app's product-type suggestion is based on GDAL metadata and is not a substit
 
 ## OAM upload handoff
 
-The handoff uses the documented URL fragment fields only. For local files it does not include source_url, because a local Windows path is not publicly reachable by OAM. The user chooses Upload a file, selects the local GeoTIFF, reviews the prefilled metadata, signs in if required, and submits manually.
+The local workbench opens the official OAM uploader directly; it does not build a metadata-prefilled URL or ask the user to complete a separate metadata form in Streamlit. The user chooses Upload a file, selects the local GeoTIFF, completes any fields the uploader itself requires, signs in if required, and submits manually. A local Windows path is never sent as `source_url`.
 
 No raster bytes, credentials, or automatic publication are handled by this app.
