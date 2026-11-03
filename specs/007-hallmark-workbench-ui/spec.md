@@ -21,7 +21,7 @@ The interface should feel like a focused technical workbench, not a marketing la
 
 - Modern-minimal, restrained, high-contrast, and data-first.
 - Keep Streamlit and the existing shadcn UI 1.x components.
-- Introduce a small tokenized visual system in the app stylesheet; do not add fonts, icons, frontend frameworks, or runtime dependencies.
+- Use Streamlit's native theme and component styling; do not inject app-wide CSS overrides, fonts, or visual tokens.
 - Use the existing `streamlit-shadcn-ui` Tabs V2 component as the top-level navigation, and render only the selected workflow so local preparation does not trigger STAC discovery.
 - Keep controls, maps, metrics, result details, and workflow copy close to their existing logic.
 - Remove decorative emoji from UI labels; rely on clear text and existing semantic status components.
@@ -34,7 +34,7 @@ The interface should feel like a focused technical workbench, not a marketing la
 4. Local DroneTM processing remains a separate local tool. The hosted app does not access local files, upload raster bytes, or automatically publish to OAM.
 5. Existing widget keys, form fields, callback behavior, session-state contracts, external URLs, and workflow logic are preserved.
 6. Existing shadcn card, badge, and metric-card integrations remain intact. No new runtime dependency or project-specific Python module is introduced.
-7. UI styling uses declared tokens for colors and fonts, includes visible keyboard focus, supports reduced motion, and prevents horizontal overflow.
+7. The app does not inject a global stylesheet; native Streamlit styling remains responsible for text contrast, component colors, and focus treatment.
 8. Controls and navigation remain usable at narrow viewport widths, including the top-level shadcn Tabs control.
 9. Contract tests verify the app parses, the new navigation and tokenized styling exist, and the local-only/no-automatic-publication safeguards remain.
 10. CI unit tests pass.\n11. A Playwright browser smoke test loads the real Streamlit app, switches between both workflows, verifies that only the selected workflow is rendered, exercises keyboard tab navigation, checks horizontal overflow at 390px, and saves desktop/mobile screenshots as CI artifacts.
@@ -77,3 +77,8 @@ Record any repeated Reflex waiver or recurring UI exception for later review; do
 - Review the full diff for lost controls, keys, links, handlers, or changed data behavior.
 - Perform a live Streamlit/browser check at desktop and mobile widths, including keyboard focus and empty/error/loading states.
 - If live browser access is unavailable, mark visual acceptance as blocked/unverified and provide the exact manual checks still needed.
+
+
+## User feedback and follow-up
+
+The Hallmark stylesheet was rolled back after user feedback that the current theme made parts of the interface difficult to read. The workflow navigation, task grouping, and imagery/OAM behavior remain in scope; do not reintroduce global CSS without explicit visual acceptance.

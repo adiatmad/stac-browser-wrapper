@@ -16,3 +16,6 @@
 - [x] Verify the live app in a browser at desktop and mobile widths, including keyboard activation and mutually exclusive workflow content.
   - Evidence: Playwright browser smoke passed on commit `6402315`; desktop/mobile screenshots and server log uploaded as artifact `13141909478`. I inspected the four screenshots: both workflows render at 1440px and 390px, content wraps, and no horizontal overflow was reported. The smoke also waits for the STAC crawl to finish before capturing the Discover screen.
 - [x] Update this checklist with actual evidence and known limitations; keep the PR as draft and unmerged pending user approval.
+
+- [ ] Roll back the Hallmark global stylesheet after user readability feedback; preserve workflow navigation and imagery/OAM behavior.
+  - Acceptance: no injected `<style>` block or `--app-*` theme tokens remain; contract tests enforce the rollback; CI and browser smoke are re-run.

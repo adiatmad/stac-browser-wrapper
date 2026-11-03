@@ -1160,48 +1160,6 @@ def run_crawl(real_url: str):
 # ---------- Streamlit Main Application UI ----------
 st.set_page_config(page_title="STAC Imagery Workbench", layout="wide", initial_sidebar_state="collapsed")
 
-st.markdown(
-    """<style>
-/* Hallmark · app screen · modern-minimal · full redesign · v2.0.0 */
-/* Hallmark · pre-emit critique: P4 H5 E5 S5 R5 V4 · weakest: P, keep the workbench task-led rather than adding a marketing hero */
-:root {
-    --app-canvas: #f2f6f7;
-    --app-surface: #f9fbfb;
-    --app-ink: #20343a;
-    --app-muted: #5a6e73;
-    --app-border: #d7e2e3;
-    --app-accent: #176b72;
-    --app-accent-soft: #e2f0ef;
-    --app-focus: #0c7881;
-    --app-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --app-radius: 12px;
-}
-html, body { overflow-x: clip; }
-body, [data-testid="stAppViewContainer"] { font-family: var(--app-font); color: var(--app-ink); }
-[data-testid="stAppViewContainer"] { background: var(--app-canvas); }
-[data-testid="stHeader"] { background: transparent; }
-[data-testid="stMainBlockContainer"] { max-width: 1480px; padding-top: 1.75rem; padding-bottom: 3rem; }
-h1 { color: var(--app-ink); font-size: 1.8rem; letter-spacing: -0.025em; }
-h2, h3 { color: var(--app-ink); letter-spacing: -0.012em; }
-[data-testid="stMarkdownContainer"] p { color: var(--app-ink); line-height: 1.55; }
-[data-testid="stTabs"] [role="tablist"] { gap: 0.25rem; border-bottom: 1px solid var(--app-border); }
-[data-testid="stTabs"] button[role="tab"] { min-height: 44px; padding: 0.55rem 1rem; color: var(--app-muted); }
-[data-testid="stTabs"] button[aria-selected="true"] { color: var(--app-accent); border-bottom-color: var(--app-accent); }
-[data-testid="stVerticalBlockBorderWrapper"] { background: var(--app-surface); border-color: var(--app-border); border-radius: var(--app-radius); }
-[data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea { font-size: 16px; }
-button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [role="tab"]:focus-visible { outline: 2px solid var(--app-focus); outline-offset: 2px; }
-::selection { background: var(--app-accent-soft); color: var(--app-ink); }
-@media (max-width: 768px) {
-    [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
-    [data-testid="stTabs"] [role="tablist"] { overflow-x: auto; flex-wrap: nowrap; }
-}
-@media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
-}
-</style>""",
-    unsafe_allow_html=True,
-)
-
 st.title("STAC Imagery Workbench")
 st.markdown("Find imagery, inspect coverage, and prepare mapping or OpenAerialMap handoffs.")
 
