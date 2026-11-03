@@ -1517,6 +1517,10 @@ if active_workflow == "Local preparation":
             )
             oam_prefill = build_oam_local_prefill_url(oam_item_result["metadata"])
             st.link_button("Open official OAM uploader with metadata", oam_prefill)
+            st.caption(
+                "OAM's documented prefill fields do not include GSD. Re-enter the same GSD in the uploader; "
+                "the value is already saved in the local STAC metadata sidecar."
+            )
             st.warning(
                 "In the OAM uploader, select the prepared COG (or original raster if you skipped preparation), "
                 "review the prefilled metadata, and submit there yourself. No file is uploaded by this workbench."
