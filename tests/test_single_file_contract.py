@@ -230,7 +230,7 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn('No STAC imagery links were found.', source)
         self.assertIn('No OAM-compatible STAC items are available', source)
         self.assertIn('st.header("Choose an imagery source")', source)
-        self.assertIn('st.header("OAM Drone Preflight")', source)
+        self.assertIn('st.header("Local geospatial imagery preparation")', source)
         self.assertIn("--app-accent:", source)
         self.assertIn(":focus-visible", source)
         self.assertIn("overflow-x: clip", source)
