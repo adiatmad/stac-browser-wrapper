@@ -90,6 +90,7 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
     def test_osgeo4w_commands_use_the_pasted_windows_path_and_clip_report(self):
         commands = self.helpers["build_osgeo4w_commands"](r"D:\imagery folder\orthomosaic.tif")
         self.assertEqual(commands["version"], "gdalinfo --version")
+        self.assertEqual(commands["cog_driver"], "gdalinfo --format COG")
         self.assertEqual(
             commands["report"],
             r'gdalinfo -json "D:\imagery folder\orthomosaic.tif" | clip',
@@ -106,6 +107,15 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
 
         ambiguous_four_band = self.sample_info(count=4, colors=["Red", "Green", "Blue", "Undefined"])
         self.assertEqual(self.helpers["suggest_oam_product_type"](ambiguous_four_band), "multispectral")
+
+    def test_declared_visual_with_undefined_fourth_band_gets_a_warning(self):
+        info = self.sample_info(count=4)
+        result = self.helpers["validate_local_oam_raster"](info, "visual", 1024)
+        fourth_band = next(
+            item for item in result["checks"] if item["name"] == "Fourth band"
+        )
+        self.assertEqual(fourth_band["status"], "WARN")
+        self.assertIn("OAM may sample its pixels", fourth_band["detail"])
 
     def test_cog_command_is_non_overwriting_and_assigns_only_an_explicit_epsg(self):
         build = self.helpers["build_oam_cog_command"]
@@ -154,6 +164,7 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
                 "platform": "uav",
                 "license": "CC-BY-4.0",
                 "acquisition_start": "2026-11-03",
+                "acquisition_end": "2026-11-04",
                 "contact": "team@example.org",
                 "product_type": "",
             }
@@ -164,6 +175,7 @@ class OSGeo4WReportWorkflowTests(unittest.TestCase):
         self.assertEqual(fields["provider"], ["KFF"])
         self.assertEqual(fields["license"], ["CC-BY 4.0"])
         self.assertEqual(fields["acquisition_start"], ["2026-11-03"])
+        self.assertEqual(fields["acquisition_end"], ["2026-11-04"])
         self.assertNotIn("source_url", fields)
         self.assertNotIn("gsd", fields)
         self.assertNotIn("product_type", fields)
