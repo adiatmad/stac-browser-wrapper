@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app.py"
 FUNCTIONS = {
     "_local_decoded_bytes",
+    "_normalise_windows_path",
     "gdal_report_matches_path",
     "has_usable_geotransform",
     "validate_local_oam_raster",
