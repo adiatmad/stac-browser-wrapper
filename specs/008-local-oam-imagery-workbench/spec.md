@@ -44,7 +44,7 @@ Turn the existing Local preparation workflow into a local-first geospatial image
 - [ ] The app detects local GDAL tools or explains how to launch it from OSGeo4W/QGIS shell or provide the GDAL bin directory.
 - [ ] Inspect runs `gdalinfo -json` through argument-list subprocess calls (no shell interpolation) and reports actionable failures/timeouts.
 - [ ] Product-aware validation accepts non-visual native data types and rejects invalid declared visual inputs.
-- [ ] A prepared COG is a new file; source and existing outputs are never overwritten.
+- [ ] A prepared COG is a new file; source and existing outputs are never overwritten. A source file over the uploader ceiling may still be prepared; enforce the ceiling against the final selected upload asset.
 - [ ] Prepared output retains dimensions, band count, geotransform, CRS, and data type; GDAL reports COG layout.
 - [ ] Thumbnail and STAC metadata sidecar are generated locally without uploading imagery.
 - [ ] STAC metadata uses GDAL-derived EPSG:4326 extent and user-entered metadata only; it records `oam:footprint_source=bbox` and requires acknowledgement that this is not a traced valid-pixel footprint. OAM-required `gsd`, `oam:platform_type`, and `oam:producer_name`, plus the STAC `providers` array, are placed under Item `properties`. Missing required values remain missing and block the handoff.
