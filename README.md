@@ -38,14 +38,14 @@ For a remote import, source_url must be a public HTTPS URL that resolves directl
 
 The Local preparation tab is report-driven. It works even when this Streamlit app is hosted because it never tries to open the user's local path or read raster bytes.
 
-1. Paste the full raster path, for example D:\orthobekasigeotiff.tif.
+1. Paste the full raster path, for example `D:\orthobekasigeotiff.tif`.
 2. Open QGIS / OSGeo4W Shell on the Windows computer that contains the file.
-3. Run the generated GDAL version, JSON inspection, and PowerShell file-size commands.
-4. Paste the JSON copied to the clipboard and the exact file size in bytes into the app.
-5. Review the GDAL report and OAM checks: report-to-path match, affine georeferencing, dimensions, CRS, bands/types, per-band NoData, extent, compression, overviews, product type, decoded-size estimate, and the upstream default 100 GiB upload ceiling.
-6. If the input is not a GeoTIFF or has no declared CRS, the app can generate a separate COG GeoTIFF command. It never guesses a CRS; -a_srs is included only after the user supplies a verified EPSG code. The command refuses to overwrite an existing output.
-7. Paste the converted output path into the path field and repeat the report step before continuing.
-8. Confirm the actual dataset title, imagery producer, platform, acquisition date, and accepted CC license. Open the official OAM uploader, select the local file yourself, review the prefilled values, sign in if prompted, and submit manually.
+3. Run the generated GDAL version and COG-driver checks.
+4. Run the generated report-save command. It writes the complete raw JSON to `%USERPROFILE%\gdal-report.json`. Then run the clipboard command to copy that file's contents.
+5. Return to Streamlit and paste directly into the report box. Do not paste through Word, ChatGPT, or another editor. If the clipboard is empty, open the JSON file in Notepad, press Ctrl+A then Ctrl+C, and paste directly into Streamlit. Run the PowerShell file-size command and enter the exact number of bytes.
+6. Review the GDAL report and OAM checks: report-to-path match, affine georeferencing, dimensions, CRS, bands/types, per-band NoData, extent, compression, overviews, product type, decoded-size estimate, and the upstream default 100 GiB upload ceiling.
+7. If the input is not a GeoTIFF or has no declared CRS, the app can generate a separate COG GeoTIFF command. It never guesses a CRS; `-a_srs` is included only after the user supplies a verified EPSG code. The command refuses to overwrite an existing output. If you create a converted output, repeat steps 1–6 for that file.
+8. Open the official [OAM uploader](https://upload.imagery.hotosm.org/), choose **Upload a file**, select the same local GeoTIFF you inspected, review any fields the uploader requires, and submit manually. The workbench does not ask you to complete a separate metadata form or upload the file itself.
 
 ### What OAM actually requires
 

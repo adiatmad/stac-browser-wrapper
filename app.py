@@ -543,10 +543,13 @@ def build_osgeo4w_commands(path: str) -> dict[str, str]:
         raise ValueError("Use the full absolute Windows path copied from File Explorer.")
     quoted = '"' + source + '"'
     powershell_path = source.replace("'", "''")
+    report_path = r'"%USERPROFILE%\gdal-report.json"'
     return {
         "version": "gdalinfo --version",
         "cog_driver": "gdalinfo --format COG",
-        "report": f"gdalinfo -json {quoted} | clip",
+        "report_file": f"gdalinfo -json {quoted} > {report_path}",
+        "copy_report": f"clip < {report_path}",
+        "open_report": f"notepad {report_path}",
         "size": (
             'powershell -NoProfile -Command "(Get-Item -LiteralPath '
             + "'"
@@ -722,28 +725,6 @@ def validate_local_oam_raster(
     failures = [item for item in checks if item["status"] == "FAIL"]
     warnings = [item for item in checks if item["status"] == "WARN"]
     return {"status": "FAIL" if failures else ("WARN" if warnings else "PASS"), "checks": checks, "decodedBytes": decoded}
-
-
-def build_oam_local_prefill_url(metadata: dict[str, Any]) -> str:
-    """Build a documented OAM uploader handoff; never pass a local path or source_url."""
-    license_values = {
-        "CC-BY-4.0": "CC-BY 4.0",
-        "CC-BY-SA-4.0": "CC BY-SA 4.0",
-        "CC-BY-NC-4.0": "CC BY-NC 4.0",
-    }
-    fields = {
-        "title": metadata.get("title"),
-        "provider": metadata.get("producer"),
-        "platform": metadata.get("platform"),
-        "license": license_values.get(metadata.get("license"), metadata.get("license")),
-        "acquisition_start": metadata.get("acquisition_start"),
-        "acquisition_end": metadata.get("acquisition_end"),
-        "sensor": metadata.get("sensor"),
-        "contact": metadata.get("contact"),
-        "product_type": metadata.get("product_type"),
-    }
-    clean = {key: value for key, value in fields.items() if value not in (None, "")}
-    return OAM_UPLOAD_URL + "#" + urlencode(clean, quote_via=quote)
 
 
 # Try importing GDAL for server-side VRT generation; fallback gracefully if unavailable
@@ -1135,11 +1116,17 @@ if active_workflow == "Local preparation":
         )
         st.code(shell_commands["version"], language="shell")
         st.code(shell_commands["cog_driver"], language="shell")
-        st.code(shell_commands["report"], language="shell")
+        st.markdown("**Save the raw JSON report to a file:**")
+        st.code(shell_commands["report_file"], language="shell")
+        st.markdown("**Copy that file's contents to your clipboard:**")
+        st.code(shell_commands["copy_report"], language="shell")
         st.caption(
-            "The complete JSON report is copied to your clipboard by the final pipe to clip.exe. "
-            "If the clipboard stays empty, rerun the report command without | clip to see GDAL's error."
+            "Return to Streamlit and paste directly into the report box. Do not paste through Word, "
+            "ChatGPT, or another editor. If the clipboard is empty, open the saved JSON in Notepad, "
+            "press Ctrl+A then Ctrl+C, and paste directly into Streamlit."
         )
+        st.code(shell_commands["open_report"], language="shell")
+        st.markdown("**Check the actual file size (bytes):**")
         st.code(shell_commands["size"], language="shell")
         st.caption("Copy the number printed by the file-size command. It is needed to check the upstream default 100 GiB upload ceiling.")
 
@@ -1338,9 +1325,10 @@ if active_workflow == "Local preparation":
                     )
                     verify = build_osgeo4w_verify_commands(output_path)
                     with st.expander("Commands to verify the new output"):
-                        st.code(verify["report"], language="shell")
+                        st.code(verify["report_file"], language="shell")
+                        st.code(verify["copy_report"], language="shell")
                         st.code(verify["size"], language="shell")
-                        st.caption("After running these, paste the output path into step 1 and repeat the report analysis.")
+                        st.caption("Paste the output path into step 1, run both report commands, then analyse the fresh report.")
                 except ValueError as exc:
                     st.error(str(exc))
             elif not crs_ok:
@@ -1357,144 +1345,30 @@ if active_workflow == "Local preparation":
                     try:
                         optional_command = build_oam_cog_command(source_value, optional_output)
                         st.code(optional_command, language="shell")
-                        st.code(build_osgeo4w_verify_commands(optional_output)["report"], language="shell")
+                        optional_verify = build_osgeo4w_verify_commands(optional_output)
+                        st.code(optional_verify["report_file"], language="shell")
+                        st.code(optional_verify["copy_report"], language="shell")
                         st.caption("OAM already creates its own COG. Use this only if you also need a local COG copy for another workflow.")
                     except ValueError as exc:
                         st.error(str(exc))
 
-        st.markdown("### 7 · Confirm metadata for the OAM uploader")
+        st.markdown("### 7 · Open the OAM uploader")
         st.caption(
-            "OAM derives GSD and the image footprint from the raster during ingestion. "
-            "You only need to confirm the fields below; no local STAC item or GSD entry is required."
+            "No separate metadata form is needed in this workbench. Open the official uploader directly; "
+            "OAM will guide you through any information required for the upload."
         )
         if hard_fails or not size_verified:
-            st.info("Complete the failed or missing raster checks before generating the uploader handoff.")
+            st.info("Complete the failed or missing raster checks before opening the uploader.")
         else:
-            with st.form("local_oam_metadata_form", clear_on_submit=False):
-                metadata_title = st.text_input(
-                    "Dataset title",
-                    value=source_stem,
-                    key="osgeo4w_metadata_title",
-                )
-                metadata_producer = st.text_input(
-                    "Imagery producer",
-                    placeholder="Person or organisation that produced the imagery",
-                    key="osgeo4w_metadata_producer",
-                    help="The producer of the imagery, not necessarily the person uploading it.",
-                )
-                metadata_platform = st.selectbox(
-                    "Platform type",
-                    options=["Select platform type", *OAM_SUPPORTED_PLATFORMS],
-                    index=0,
-                    key="osgeo4w_metadata_platform",
-                )
-                metadata_date = st.text_input(
-                    "Acquisition date (YYYY-MM-DD)",
-                    placeholder="2026-11-03",
-                    key="osgeo4w_metadata_date",
-                    help="Use the actual capture date, not the processing or upload date.",
-                )
-                metadata_end_date = st.text_input(
-                    "Acquisition end date (optional, YYYY-MM-DD)",
-                    placeholder="2026-11-04",
-                    key="osgeo4w_metadata_end_date",
-                    help="Only enter this when the imagery covers a capture period.",
-                )
-                metadata_license = st.selectbox(
-                    "License",
-                    options=[
-                        "Select license",
-                        "CC-BY 4.0",
-                        "CC BY-SA 4.0",
-                        "CC BY-NC 4.0",
-                    ],
-                    index=0,
-                    key="osgeo4w_metadata_license",
-                )
-                metadata_sensor = st.text_input(
-                    "Sensor / camera (optional)",
-                    placeholder="Camera model",
-                    key="osgeo4w_metadata_sensor",
-                )
-                metadata_contact = st.text_input(
-                    "Contact (optional)",
-                    placeholder="Name or email for imagery enquiries",
-                    key="osgeo4w_metadata_contact",
-                )
-                metadata_submitted = st.form_submit_button("Prepare OAM uploader handoff", type="primary")
-            st.caption("The uploader link reflects the last successful form submission. Submit again after changing any metadata field.")
-
-            if metadata_submitted:
-                st.session_state.pop("osgeo4w_oam_prefill", None)
-                try:
-                    if not metadata_title.strip():
-                        raise ValueError("Dataset title is required.")
-                    if not metadata_producer.strip():
-                        raise ValueError("Imagery producer is required.")
-                    if metadata_platform not in OAM_SUPPORTED_PLATFORMS:
-                        raise ValueError("Select the actual platform type.")
-                    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", metadata_date.strip()):
-                        raise ValueError("Enter the actual acquisition date as YYYY-MM-DD.")
-                    datetime.fromisoformat(metadata_date.strip())
-                    end_date = metadata_end_date.strip()
-                    if end_date:
-                        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", end_date):
-                            raise ValueError("Enter the acquisition end date as YYYY-MM-DD.")
-                        if datetime.fromisoformat(end_date) < datetime.fromisoformat(metadata_date.strip()):
-                            raise ValueError("Acquisition end date cannot be earlier than the start date.")
-                    license_map = {
-                        "CC-BY 4.0": "CC-BY-4.0",
-                        "CC BY-SA 4.0": "CC-BY-SA-4.0",
-                        "CC BY-NC 4.0": "CC-BY-NC-4.0",
-                    }
-                    if metadata_license not in license_map:
-                        raise ValueError("Select one of OAM's accepted Creative Commons licenses.")
-                    product_override = "" if product_choice == "Auto-detect in OAM" else product_choice
-                    metadata = {
-                        "title": metadata_title.strip(),
-                        "producer": metadata_producer.strip(),
-                        "platform": metadata_platform,
-                        "license": license_map[metadata_license],
-                        "acquisition_start": metadata_date.strip(),
-                        "acquisition_end": end_date,
-                        "sensor": metadata_sensor.strip(),
-                        "contact": metadata_contact.strip(),
-                        "product_type": product_override,
-                    }
-                    prefill = build_oam_local_prefill_url(metadata)
-                    st.session_state["osgeo4w_oam_prefill"] = {
-                        "path": source_key,
-                        "url": prefill,
-                        "metadata": metadata,
-                    }
-                except Exception as exc:
-                    st.error(f"Could not prepare the OAM handoff: {exc}")
-
-            handoff = st.session_state.get("osgeo4w_oam_prefill")
-            if handoff and handoff.get("path") == source_key:
-                st.success("OAM uploader handoff is ready. The local path and raster bytes are not included.")
-                st.link_button("Open official OAM uploader with metadata", handoff["url"])
-                submitted_metadata = handoff["metadata"]
-                st.caption(
-                    "Prefilled: "
-                    + submitted_metadata["title"]
-                    + " · "
-                    + submitted_metadata["producer"]
-                    + " · "
-                    + submitted_metadata["platform"]
-                    + " · "
-                    + submitted_metadata["acquisition_start"]
-                )
-                st.warning(
-                    "In the uploader, choose **Upload a file**, select the GeoTIFF you inspected, "
-                    "review every prefilled field, sign in if prompted, and click Start upload yourself. "
-                    "No file is uploaded by this workbench."
-                )
-                st.caption(
-                    "Current OAM pipeline: fetch → validate → COG conversion → metadata → STAC registration. "
-                    "Visual RGB(A) may be converted to JPEG quality 90; other product types are converted losslessly. "
-                    "The original upload is retained."
-                )
+            st.success("The local raster preflight is complete. You can continue in the official OAM uploader.")
+            st.link_button("Open official OAM uploader", OAM_UPLOAD_URL)
+            st.warning(
+                "In OAM, choose **Upload a file**, select the same GeoTIFF you inspected, "
+                "review the uploader's required fields, and submit manually. This app does not upload the file."
+            )
+            st.caption(
+                "OAM handles validation, COG creation, metadata extraction, and STAC registration after submission."
+            )
 
 elif active_workflow == "Discover & map":
     st.header("Choose an imagery source")
