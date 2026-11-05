@@ -7,7 +7,7 @@ A Streamlit application for working with STAC imagery metadata and preparing inf
 The application includes functionality for:
 
 - resolving external STAC Browser URLs to their underlying STAC URLs;
-- discovering searchable public STAC catalogs from the OpenGeo geospatial-data-catalogs directory;
+- discovering public STAC catalogs and APIs from the OpenGeo geospatial-data-catalogs directory;
 - querying STAC APIs through advertised GET Item Search links with optional WGS84 bbox, datetime, collection, and page-limit filters;
 - showing thumbnail assets when a STAC Item explicitly advertises one;
 - reading STAC item metadata;

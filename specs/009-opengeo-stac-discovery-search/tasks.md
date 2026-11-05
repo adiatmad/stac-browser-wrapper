@@ -9,7 +9,7 @@
 - [x] Add explicit HTTPS thumbnail asset selection and display.
 - [x] Preserve default catalog crawling and all OAM/local-preparation safeguards.
 - [x] Add focused tests and README documentation.
-- [ ] Run focused and full unit tests; investigate failures.
-- [ ] Verify GitHub Actions unit, dependency compatibility, and browser smoke jobs.
-- [ ] Review complete diff for regressions, unsupported assumptions, and security/safety issues.
-- [ ] Confirm live catalog/API behavior separately from automated CI.
+- [x] Run focused and full unit tests; all 62 tests passed on the final code commit.
+- [x] Verify GitHub Actions unit, dependency compatibility, and desktop/mobile browser smoke jobs.
+- [x] Review complete diff for regressions, unsupported assumptions, and security/safety issues.
+- [ ] Confirm live catalog/API behavior separately from automated CI; provider-specific availability remains an external-service check.

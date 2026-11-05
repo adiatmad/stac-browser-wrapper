@@ -1,6 +1,6 @@
 # Feature Specification: Public STAC Discovery and API Search
 
-**Status:** Implemented on feature branch; CI verification pending
+**Status:** Implemented; GitHub Actions verification passed
 **Branch:** `feat/opengeo-stac-discovery-search`
 
 ## Problem
@@ -32,6 +32,10 @@ A mapper can find a public catalog, load its URL into the existing discovery wor
 8. Item thumbnails are displayed only when the STAC Item explicitly advertises a suitable HTTPS thumbnail image.
 9. No new dependency, external upload, credential handling, OAM publication action, or local raster access is introduced.
 10. Focused tests, full unit tests, dependency compatibility, and browser smoke CI pass. Live catalog availability and per-provider API behavior remain external-service checks.
+
+## Verification
+
+GitHub Actions run [#42049385288](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/42049385288) passed on commit `9fc981fa35350d35ee3c2c37e8f33fca007efa96`: all 62 unit tests, Streamlit/Shadcn dependency compatibility, and desktop/mobile browser smoke checks. The browser smoke evidence was uploaded as the `streamlit-ui-smoke-evidence` artifact. Live catalog and provider API behavior are not claimed as verified by this CI run.
 
 ## Non-goals
 
