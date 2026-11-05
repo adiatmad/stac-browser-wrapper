@@ -1768,7 +1768,6 @@ elif active_workflow == "Discover & map":
                                    f"{'STAC API' if selected_catalog['is_api'] else 'Static STAC catalog'}")
                     if st.button("Use selected catalog", key="use-selected-stac-catalog"):
                         st.session_state["stac_catalog_url"] = selected_catalog["url"]
-                        st.rerun()
                 else:
                     st.info("No public catalog matches that search.")
     
