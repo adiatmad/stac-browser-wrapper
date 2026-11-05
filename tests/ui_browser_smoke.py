@@ -118,6 +118,16 @@ def exercise_stac_discovery(page) -> None:
     server_log = (ROOT / "streamlit-ui-smoke.log").read_text(encoding="utf-8")
     assert "Failed to fetch https://earth-search.aws.element84.com/v1/search" not in server_log
 
+    page.get_by_role("radio", name="Public S3 bucket folder").click()
+    wait_for_streamlit_idle(page)
+    expect(page.get_by_role("textbox", name="S3 bucket-browser URL")).to_be_visible()
+    expect(page.get_by_role("textbox", name="Data Catalog URL:")).to_have_count(0)
+    expect(page.get_by_role("heading", name="Find event imagery")).to_have_count(0)
+
+    page.get_by_role("radio", name="STAC catalog / item").click()
+    wait_for_streamlit_idle(page)
+    expect(page.get_by_role("textbox", name="Data Catalog URL:")).to_be_visible()
+
 
 def assert_no_horizontal_overflow(page, label: str) -> None:
     dimensions = page.evaluate(
