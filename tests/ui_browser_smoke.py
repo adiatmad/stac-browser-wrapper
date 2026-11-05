@@ -118,6 +118,7 @@ def exercise_stac_discovery(page) -> None:
     server_log = (ROOT / "streamlit-ui-smoke.log").read_text(encoding="utf-8")
     assert "Failed to fetch https://earth-search.aws.element84.com/v1/search" not in server_log
 
+    # Click the visible option label; Streamlit hides the underlying radio input.
     page.get_by_text("Public S3 bucket folder", exact=True).click()
     wait_for_streamlit_idle(page)
     expect(page.get_by_role("textbox", name="S3 bucket-browser URL")).to_be_visible()
