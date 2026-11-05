@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,9 +58,10 @@ def exercise_stac_discovery(page) -> None:
     wait_for_streamlit_idle(page)
 
     catalog_url = page.get_by_role("textbox", name="Data Catalog URL:")
-    assert catalog_url.input_value() == (
-        "https://raw.githubusercontent.com/m-mohr/oam-example/main/catalog.json"
-    ), catalog_url.input_value()
+    expect(catalog_url).to_have_value(
+        "https://raw.githubusercontent.com/m-mohr/oam-example/main/catalog.json",
+        timeout=30_000,
+    )
 
     page.get_by_role("tab", name="OpenAerialMap").click()
     page.locator("summary").filter(has_text="Grytdalen Tjern").click()
