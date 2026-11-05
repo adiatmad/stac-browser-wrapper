@@ -9,14 +9,14 @@ The workbench currently requires users to know a STAC URL. It can recursively br
 
 ## User outcome
 
-A mapper can find a public catalog, load its URL into the existing discovery workflow, and—when the root advertises an HTTPS GET Item Search link—narrow results by WGS84 bounding box, date interval, collection IDs, and page limit. Results can show an explicitly advertised thumbnail when available.
+A mapper can find a public catalog, load its URL into the existing discovery workflow, and when the root advertises an HTTPS GET Item Search link—narrow results by WGS84 bounding box, date interval, collection IDs, and page limit. Results can show an explicitly advertised thumbnail when available.
 
 ## Evidence and design decisions
 
 - Catalog directory source: [OpenGeo geospatial-data-catalogs](https://github.com/opengeos/geospatial-data-catalogs), `stac_catalogs.json`. The app loads it on demand and caches it for one hour.
 - Public discovery is filtered to registry records with `access == "public"`, `isPrivate == false`, and HTTPS URLs. The registry's access classification does not guarantee that every linked asset is openly downloadable or has a permissive license.
 - API search endpoint is discovered only from a root link with `rel == "search"`, GET method (or no declared method), and HTTPS target. No guessed `/search` path, POST body, authentication bypass, or vendor-specific query extension is added.
-- Search uses STAC core GET parameters: `bbox`, `datetime`, `collections`, and `limit`. BBox is validated as four WGS84 coordinates. Provider-specific cloud-cover and sorting extensions are out of scope until a catalog advertises and supports them.
+- Search uses STAC core GET parameters: `bbox`, `datetime`, `collections`, and `limit`. BBox is validated as four WGS84 coordinates. API result crawling is capped at 1,000 items or 10 pages, whichever comes first. POST-only pagination is stopped and reported. Provider-specific cloud-cover and sorting extensions are out of scope until a catalog advertises and supports them.
 - Thumbnail display requires an explicit thumbnail role/key, image media type or supported image extension, and HTTPS URL. No thumbnail is invented from a data asset.
 - Existing catalog crawling, map filtering, OAM duplicate checks, handoffs, and local-only GDAL/OAM preparation remain intact. No new runtime dependency is introduced.
 
@@ -29,9 +29,10 @@ A mapper can find a public catalog, load its URL into the existing discovery wor
 5. Search supports optional WGS84 bbox, datetime, comma-separated collection IDs, and a 1–1000 result-page limit.
 6. Invalid bbox/limit input and unsupported POST-only search are reported clearly without silently falling back to a guessed endpoint.
 7. Existing browse-by-catalog behavior remains the default and unchanged when API search is off.
-8. Item thumbnails are displayed only when the STAC Item explicitly advertises a suitable HTTPS thumbnail image.
-9. No new dependency, external upload, credential handling, OAM publication action, or local raster access is introduced.
-10. Focused tests, full unit tests, dependency compatibility, and browser smoke CI pass. Live catalog availability and per-provider API behavior remain external-service checks.
+8. API result crawling stops at the explicit 1,000-item / 10-page safety cap and reports when the cap or POST-only pagination stops discovery.
+9. Item thumbnails are displayed only when the STAC Item explicitly advertises a suitable HTTPS thumbnail image.
+10. No new dependency, external upload, credential handling, OAM publication action, or local raster access is introduced.
+11. Focused tests, full unit tests, dependency compatibility, and browser smoke CI pass. Live catalog availability and per-provider API behavior remain external-service checks.
 
 ## Verification
 

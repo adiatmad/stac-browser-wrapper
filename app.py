@@ -746,6 +746,8 @@ STAC_CATALOG_REGISTRY_URL = (
     "https://raw.githubusercontent.com/opengeos/geospatial-data-catalogs/"
     "master/stac_catalogs.json"
 )
+STAC_SEARCH_MAX_ITEMS = 1000
+STAC_SEARCH_MAX_PAGES = 10
 
 OAM_FIELDNAMES = [
     "item_url", "title", "platform", "sensor", "date_start", "date_end",
@@ -1185,9 +1187,24 @@ def process_item_data(item_url: str, item_data: dict, tiff_links: list, oam_item
         })
     oam_items.append(meta)
 
-def crawl_stac(url: str, all_links: list, tiff_links: list, oam_items: list, visited=None, data=None):
+def crawl_stac(
+    url: str,
+    all_links: list,
+    tiff_links: list,
+    oam_items: list,
+    visited=None,
+    data=None,
+    max_items: int | None = None,
+    max_pages: int | None = None,
+    crawl_state: dict | None = None,
+):
     if visited is None:
         visited = set()
+    if crawl_state is None:
+        crawl_state = {"pages": 0, "capped": False, "post_next": False}
+    if max_items is not None and len(all_links) >= max_items:
+        crawl_state["capped"] = True
+        return
     if url in visited:
         return
     visited.add(url)
@@ -1195,20 +1212,27 @@ def crawl_stac(url: str, all_links: list, tiff_links: list, oam_items: list, vis
         data = fetch_json(url)
     if data is None:
         return
-    
-    # Handle FeatureCollections (paginated item lists)
+
+    # Handle FeatureCollections (paginated item lists).
     if data.get("type") == "FeatureCollection":
+        crawl_state["pages"] += 1
+        if max_pages is not None and crawl_state["pages"] > max_pages:
+            crawl_state["capped"] = True
+            return
         for feature in data.get("features", []):
+            if max_items is not None and len(all_links) >= max_items:
+                crawl_state["capped"] = True
+                break
             item_href = url
-            for l in feature.get("links", []):
-                if l.get("rel") == "self":
-                    item_href = urljoin(url, l.get("href"))
+            for link in feature.get("links", []):
+                if link.get("rel") == "self":
+                    item_href = urljoin(url, link.get("href"))
                     break
             if item_href not in all_links:
                 all_links.append(item_href)
                 process_item_data(item_href, feature, tiff_links, oam_items)
-    
-    # Follow relational links for pagination and children
+
+    # Follow relational links. Search pagination is GET-only and bounded when requested.
     links = data.get("links", [])
     for link in links:
         href = link.get("href")
@@ -1216,30 +1240,64 @@ def crawl_stac(url: str, all_links: list, tiff_links: list, oam_items: list, vis
         if not href:
             continue
         abs_href = urljoin(url, href)
-        
+
         if rel == "item" and data.get("type") != "FeatureCollection":
+            if max_items is not None and len(all_links) >= max_items:
+                crawl_state["capped"] = True
+                continue
             if abs_href not in all_links:
                 all_links.append(abs_href)
                 item_data = fetch_json(abs_href)
                 if item_data:
                     process_item_data(abs_href, item_data, tiff_links, oam_items)
         elif rel in ["collection", "child", "next"]:
-            crawl_stac(abs_href, all_links, tiff_links, oam_items, visited)
+            if rel == "next":
+                method = str(link.get("method") or "GET").upper()
+                if method != "GET":
+                    crawl_state["post_next"] = True
+                    continue
+                if max_pages is not None and crawl_state["pages"] >= max_pages:
+                    crawl_state["capped"] = True
+                    continue
+                if max_items is not None and len(all_links) >= max_items:
+                    crawl_state["capped"] = True
+                    continue
+            crawl_stac(
+                abs_href,
+                all_links,
+                tiff_links,
+                oam_items,
+                visited=visited,
+                max_items=max_items,
+                max_pages=max_pages,
+                crawl_state=crawl_state,
+            )
+
 
 @st.cache_data(show_spinner="Searching for imagery...", ttl=600)
-def run_crawl(real_url: str):
+def run_crawl(real_url: str, max_items: int | None = None, max_pages: int | None = None):
     all_links = []
     tiff_links = []
     oam_items = []
+    crawl_state = {"pages": 0, "capped": False, "post_next": False}
     root_data = fetch_json(real_url)
-    
+
     if root_data is not None and root_data.get("type") == "Feature":
         all_links.append(real_url)
         process_item_data(real_url, root_data, tiff_links, oam_items)
     elif root_data is not None:
-        crawl_stac(real_url, all_links, tiff_links, oam_items, data=root_data)
-        
-    return all_links, tiff_links, oam_items
+        crawl_stac(
+            real_url,
+            all_links,
+            tiff_links,
+            oam_items,
+            data=root_data,
+            max_items=max_items,
+            max_pages=max_pages,
+            crawl_state=crawl_state,
+        )
+
+    return all_links, tiff_links, oam_items, crawl_state
 
 # ---------- Streamlit Main Application UI ----------
 st.set_page_config(page_title="STAC Imagery Workbench", layout="wide", initial_sidebar_state="collapsed")
@@ -1583,7 +1641,7 @@ elif active_workflow == "Discover & map":
             for idx, obj in enumerate(s3_results["objects"], 1):
                 key = obj["key"]
                 object_url = public_s3_object_url(s3_results["bucket"], s3_results["region"], key)
-                with st.expander(f"{idx}. {key.rsplit('/', 1)[-1]} — {format_bytes(obj.get('size_bytes'))}"):
+                with st.expander(f"{idx}. {key.rsplit('/', 1)[-1]} · {format_bytes(obj.get('size_bytes'))}"):
                     st.code(object_url, language=None)
                     st.caption(f"S3 last modified: {obj.get('last_modified') or 'not reported'}")
                     st.markdown(f"**Provider:** {SPACE_EYE_PROVIDER}\n\n**Platform:** {SPACE_EYE_PLATFORM}\n\n**Sensor:** {SPACE_EYE_SENSOR}\n\n**License:** {SPACE_EYE_LICENSE}")
@@ -1681,7 +1739,8 @@ elif active_workflow == "Discover & map":
             )
             if st.button("Load public catalog directory", key="load-public-stac-catalogs"):
                 try:
-                    st.session_state["public_stac_catalogs"] = load_public_stac_catalogs()
+                    with st.spinner("Loading public STAC catalog directory..."):
+                        st.session_state["public_stac_catalogs"] = load_public_stac_catalogs()
                     st.session_state.pop("public_stac_catalogs_error", None)
                 except Exception as exc:
                     st.session_state["public_stac_catalogs_error"] = str(exc)
@@ -1737,9 +1796,14 @@ elif active_workflow == "Discover & map":
         )
         if use_api_search:
             try:
-                stac_root = fetch_stac_api_root(real_url)
+                with st.spinner("Checking STAC API search capabilities..."):
+                    stac_root = fetch_stac_api_root(real_url)
                 search_endpoint = find_stac_search_endpoint(real_url, stac_root)
                 st.caption(f"STAC Item Search endpoint: {search_endpoint}")
+                st.caption(
+                    f"To keep discovery responsive, this search stops after {STAC_SEARCH_MAX_ITEMS:,} items "
+                    f"or {STAC_SEARCH_MAX_PAGES} pages, whichever comes first."
+                )
                 with st.form("stac_api_search_form", clear_on_submit=False):
                     search_bbox = st.text_input(
                         "Area bbox (optional, WGS84)",
@@ -1789,9 +1853,26 @@ elif active_workflow == "Discover & map":
                 st.error(f"Could not prepare STAC API search: {exc}. You can turn this option off to browse the catalog links.")
 
         all_links, tiff_links, oam_items = [], [], []
+        crawl_state = {"pages": 0, "capped": False, "post_next": False}
         if crawl_url:
             with st.spinner("Discovering STAC items and imagery assets..."):
-                all_links, tiff_links, oam_items = run_crawl(crawl_url)
+                if use_api_search:
+                    all_links, tiff_links, oam_items, crawl_state = run_crawl(
+                        crawl_url,
+                        max_items=STAC_SEARCH_MAX_ITEMS,
+                        max_pages=STAC_SEARCH_MAX_PAGES,
+                    )
+                else:
+                    all_links, tiff_links, oam_items, crawl_state = run_crawl(crawl_url)
+            if crawl_state.get("capped"):
+                st.warning(
+                    f"Discovery reached its safety cap ({STAC_SEARCH_MAX_ITEMS:,} items or "
+                    f"{STAC_SEARCH_MAX_PAGES} pages). Narrow the bbox, date interval, or collections to inspect a smaller result set."
+                )
+            if crawl_state.get("post_next"):
+                st.warning(
+                    "This STAC API returned a POST-only pagination link. The current workbench follows GET pagination only, so discovery stopped before that page."
+                )
 
         if crawl_url and all_links:
             st.divider()

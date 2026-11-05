@@ -19,6 +19,7 @@ def load_helpers():
         "build_stac_search_url",
         "find_stac_thumbnail_url",
         "resolve_relative_url",
+        "crawl_stac",
     }
     body = [
         node for node in tree.body
@@ -33,6 +34,9 @@ def load_helpers():
         "urlencode": urlencode,
         "urljoin": urljoin,
         "re": re,
+        "fetch_json": lambda *_: None,
+        "process_item_data": lambda *_: None,
+        "st": type("FakeStreamlit", (), {"warning": staticmethod(lambda *_: None)}),
     }
     exec(compile(ast.Module(body=body, type_ignores=[]), "app.py", "exec"), namespace)
     return namespace
@@ -118,6 +122,79 @@ class STACDiscoveryTests(unittest.TestCase):
         for limit in (0, 1001, "not-a-number"):
             with self.subTest(limit=limit), self.assertRaises(ValueError):
                 build("https://data.example.org/search", limit=limit)
+
+
+    def test_crawler_stops_after_item_cap_without_fetching_next_page(self):
+        crawl = self.helpers["crawl_stac"]
+        processed = []
+
+        def process_item_data(item_url, feature, tiff_links, oam_items):
+            processed.append(feature["id"])
+
+        self.helpers["process_item_data"] = process_item_data
+        all_links, tiff_links, oam_items = [], [], []
+        state = {"pages": 0, "capped": False, "post_next": False}
+        crawl(
+            "https://data.example.org/search",
+            all_links,
+            tiff_links,
+            oam_items,
+            max_items=2,
+            max_pages=5,
+            crawl_state=state,
+            data={
+                "type": "FeatureCollection",
+                "features": [{"id": "one"}, {"id": "two"}, {"id": "three"}],
+                "links": [{"rel": "next", "href": "/search?page=2", "method": "GET"}],
+            },
+        )
+        self.assertEqual(processed, ["one", "two"])
+        self.assertEqual(len(all_links), 2)
+        self.assertTrue(state["capped"])
+
+    def test_crawler_stops_at_page_cap_and_rejects_post_pagination(self):
+        crawl = self.helpers["crawl_stac"]
+        processed = []
+
+        def process_item_data(item_url, feature, tiff_links, oam_items):
+            processed.append(feature["id"])
+
+        self.helpers["process_item_data"] = process_item_data
+        all_links, tiff_links, oam_items = [], [], []
+        page_state = {"pages": 0, "capped": False, "post_next": False}
+        crawl(
+            "https://data.example.org/search",
+            all_links,
+            tiff_links,
+            oam_items,
+            max_items=10,
+            max_pages=1,
+            crawl_state=page_state,
+            data={
+                "type": "FeatureCollection",
+                "features": [{"id": "one"}],
+                "links": [{"rel": "next", "href": "/search?page=2", "method": "GET"}],
+            },
+        )
+        self.assertEqual(processed, ["one"])
+        self.assertTrue(page_state["capped"])
+
+        post_state = {"pages": 0, "capped": False, "post_next": False}
+        crawl(
+            "https://data.example.org/post-search",
+            [],
+            [],
+            [],
+            max_items=10,
+            max_pages=5,
+            crawl_state=post_state,
+            data={
+                "type": "FeatureCollection",
+                "features": [{"id": "two"}],
+                "links": [{"rel": "next", "href": "/post-search?page=2", "method": "POST"}],
+            },
+        )
+        self.assertTrue(post_state["post_next"])
 
     def test_thumbnail_requires_explicit_thumbnail_role_and_https_image(self):
         helper = self.helpers["find_stac_thumbnail_url"]

@@ -6,10 +6,12 @@
 - [x] Add on-demand public catalog registry loading, validation, filtering, and URL selection.
 - [x] Add advertised HTTPS GET STAC Item Search endpoint discovery.
 - [x] Add validated core bbox, datetime, collection, and page-limit query construction.
+- [x] Bound API pagination to 1,000 items / 10 pages and stop on POST-only next links.
 - [x] Add explicit HTTPS thumbnail asset selection and display.
+- [x] Add visible loading states for catalog-registry and STAC API-root requests.
 - [x] Preserve default catalog crawling and all OAM/local-preparation safeguards.
 - [x] Add focused tests and README documentation.
 - [x] Run focused and full unit tests; all 62 tests passed on the final code commit.
 - [x] Verify GitHub Actions unit, dependency compatibility, and desktop/mobile browser smoke jobs.
-- [x] Review complete diff for regressions, unsupported assumptions, and security/safety issues.
+- [x] Review complete diff for regressions, unsupported assumptions, and security/safety issues, including bounded pagination and HTTPS URL handling.
 - [ ] Confirm live catalog/API behavior separately from automated CI; provider-specific availability remains an external-service check.
