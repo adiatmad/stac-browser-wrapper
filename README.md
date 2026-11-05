@@ -7,6 +7,9 @@ A Streamlit application for working with STAC imagery metadata and preparing inf
 The application includes functionality for:
 
 - resolving external STAC Browser URLs to their underlying STAC URLs;
+- discovering searchable public STAC catalogs from the OpenGeo geospatial-data-catalogs directory;
+- querying STAC APIs through advertised GET Item Search links with optional WGS84 bbox, datetime, collection, and page-limit filters;
+- showing thumbnail assets when a STAC Item explicitly advertises one;
 - reading STAC item metadata;
 - extracting imagery title, sensor, provider, dates, license, bounding box, and geometry information;
 - checking OpenAerialMap for possible existing imagery using provider item IDs and spatial overlap;
@@ -60,6 +63,8 @@ The decoded-size budget is deployment-configurable. Current upstream defaults ar
 **Privacy and publication safeguards:** the user sends the pasted path, GDAL JSON report, and file size to the Streamlit app; the report may contain local paths and embedded metadata, so review it before pasting. Raster bytes remain on the user's computer. The OAM prefill URL contains metadata only, never a local path or local source_url. The app does not store OAM credentials, upload files, or publish imagery automatically.
 
 ## Notes
+
+The public catalog directory is sourced from [OpenGeo's geospatial-data-catalogs](https://github.com/opengeos/geospatial-data-catalogs) project and is loaded only when requested. Its public-access flag describes catalog discovery, not the license or availability of every linked asset. The app does not infer licensing or bypass authentication. STAC API search uses only an advertised HTTPS GET search link and the core bbox, datetime, collections, and limit parameters; POST-only search and provider-specific extensions are not assumed.
 
 The application communicates with external STAC and OAM services. Network availability and changes to those services can affect results.
 

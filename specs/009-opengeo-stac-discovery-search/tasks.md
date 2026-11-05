@@ -1,0 +1,15 @@
+# Tasks: Public STAC Discovery and API Search
+
+- [x] Inspect current app, project constitution, AGENTS.md, STAC crawler, UI workflow, tests, and CI.
+- [x] Inspect OpenGeo's public STAC registry structure and Leafmap STAC search/preview patterns.
+- [x] Define scope, constraints, acceptance criteria, and non-goals.
+- [x] Add on-demand public catalog registry loading, validation, filtering, and URL selection.
+- [x] Add advertised HTTPS GET STAC Item Search endpoint discovery.
+- [x] Add validated core bbox, datetime, collection, and page-limit query construction.
+- [x] Add explicit HTTPS thumbnail asset selection and display.
+- [x] Preserve default catalog crawling and all OAM/local-preparation safeguards.
+- [x] Add focused tests and README documentation.
+- [ ] Run focused and full unit tests; investigate failures.
+- [ ] Verify GitHub Actions unit, dependency compatibility, and browser smoke jobs.
+- [ ] Review complete diff for regressions, unsupported assumptions, and security/safety issues.
+- [ ] Confirm live catalog/API behavior separately from automated CI.

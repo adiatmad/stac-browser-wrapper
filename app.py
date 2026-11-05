@@ -17,7 +17,7 @@ from folium.plugins import Draw
 from streamlit_folium import st_folium
 from shapely.geometry import box, shape
 from typing import Any
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit, parse_qsl
 import xml.etree.ElementTree as ET
 
 OAM_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
@@ -742,6 +742,10 @@ DEFAULT_SAMPLE_URL = (
     "https://browser.moregeo.it/external/vantor-opendata.s3.amazonaws.com/"
     "events/Indonesia-Earthquakes-Aug-2026/collection.json"
 )
+STAC_CATALOG_REGISTRY_URL = (
+    "https://raw.githubusercontent.com/opengeos/geospatial-data-catalogs/"
+    "master/stac_catalogs.json"
+)
 
 OAM_FIELDNAMES = [
     "item_url", "title", "platform", "sensor", "date_start", "date_end",
@@ -871,6 +875,158 @@ def check_oam_duplicate(meta: dict) -> dict:
 
     return {"exists": False, "oam_id": None, "status_str": "Not found in v2 database", "link": "", "error": None}
 
+
+
+# ---------- Public STAC discovery and API search ----------
+def parse_stac_catalog_registry(records: Any) -> list[dict[str, Any]]:
+    """Keep public, HTTPS STAC catalog records from the OpenGeo registry."""
+    if not isinstance(records, list):
+        raise ValueError("The STAC catalog registry must contain a JSON list.")
+    public_records = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record.get("access") != "public" or record.get("isPrivate") is not False:
+            continue
+        title = str(record.get("title") or "").strip()
+        url = str(record.get("url") or "").strip()
+        parsed = urlsplit(url)
+        if not title or parsed.scheme != "https" or not parsed.netloc:
+            continue
+        public_records.append({
+            "title": title,
+            "url": url,
+            "summary": str(record.get("summary") or "").strip(),
+            "updated": str(record.get("updated") or "").strip(),
+            "is_api": bool(record.get("isApi")),
+            "slug": str(record.get("slug") or "").strip(),
+        })
+    return sorted(public_records, key=lambda item: item["title"].casefold())
+
+
+def filter_public_stac_catalogs(
+    catalogs: list[dict[str, Any]], query: str = ""
+) -> list[dict[str, Any]]:
+    """Filter catalog titles and summaries without changing the source records."""
+    term = str(query or "").strip().casefold()
+    if not term:
+        return list(catalogs)
+    return [
+        catalog for catalog in catalogs
+        if term in catalog.get("title", "").casefold()
+        or term in catalog.get("summary", "").casefold()
+    ]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_public_stac_catalogs() -> list[dict[str, Any]]:
+    """Load the public catalog directory on demand; do not block normal browsing."""
+    response = requests.get(STAC_CATALOG_REGISTRY_URL, timeout=20)
+    response.raise_for_status()
+    return parse_stac_catalog_registry(response.json())
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_stac_api_root(root_url: str) -> dict[str, Any]:
+    """Fetch a STAC API root document for search-link discovery."""
+    response = requests.get(root_url, timeout=15)
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or not isinstance(payload.get("links"), list):
+        raise ValueError("The URL did not return a STAC root document with links.")
+    return payload
+
+
+def find_stac_search_endpoint(root_url: str, root_data: dict[str, Any]) -> str:
+    """Resolve an advertised GET /search link; never guess an endpoint path."""
+    for link in root_data.get("links", []):
+        if not isinstance(link, dict) or link.get("rel") != "search":
+            continue
+        if str(link.get("method") or "GET").upper() != "GET":
+            continue
+        href = str(link.get("href") or "").strip()
+        if not href:
+            continue
+        endpoint = urljoin(root_url, href)
+        parsed = urlsplit(endpoint)
+        if parsed.scheme == "https" and parsed.netloc:
+            return endpoint
+    raise ValueError(
+        "This STAC root does not advertise an HTTPS GET search link. "
+        "Use catalog browsing or another STAC API endpoint; POST-only search is not supported here."
+    )
+
+
+def build_stac_search_url(
+    search_url: str,
+    bbox: str = "",
+    datetime_range: str = "",
+    collections: str = "",
+    limit: int = 100,
+) -> str:
+    """Build a STAC Item Search GET URL from validated core search parameters."""
+    parsed = urlsplit(str(search_url or "").strip())
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("The STAC search endpoint must be an HTTPS URL.")
+    try:
+        result_limit = int(limit)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Search limit must be a whole number from 1 to 1000.") from exc
+    if not 1 <= result_limit <= 1000:
+        raise ValueError("Search limit must be a whole number from 1 to 1000.")
+
+    params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    bbox_value = str(bbox or "").strip()
+    if bbox_value:
+        try:
+            coordinates = [float(value.strip()) for value in bbox_value.split(",")]
+        except ValueError as exc:
+            raise ValueError("BBox must contain four comma-separated numbers: west,south,east,north.") from exc
+        if len(coordinates) != 4 or not all(math.isfinite(value) for value in coordinates):
+            raise ValueError("BBox must contain four finite numbers: west,south,east,north.")
+        west, south, east, north = coordinates
+        if not (-180 <= west <= 180 and -180 <= east <= 180 and -90 <= south <= 90 and -90 <= north <= 90):
+            raise ValueError("BBox coordinates must use WGS84 longitude/latitude ranges.")
+        if west >= east or south >= north:
+            raise ValueError("BBox west must be less than east and south must be less than north.")
+        params["bbox"] = ",".join(str(value) for value in coordinates)
+
+    datetime_value = str(datetime_range or "").strip()
+    if datetime_value:
+        params["datetime"] = datetime_value
+
+    collection_values = [value.strip() for value in str(collections or "").split(",") if value.strip()]
+    if collection_values:
+        params["collections"] = ",".join(collection_values)
+
+    params["limit"] = str(result_limit)
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(params), ""))
+
+
+def find_stac_thumbnail_url(item_data: dict[str, Any], item_url: str) -> str | None:
+    """Return an advertised HTTPS raster-independent thumbnail image, if present."""
+    assets = item_data.get("assets") or {}
+    if not isinstance(assets, dict):
+        return None
+    for key, asset in assets.items():
+        if not isinstance(asset, dict):
+            continue
+        roles = [str(role).casefold() for role in (asset.get("roles") or [])]
+        asset_key = str(key).casefold()
+        media_type = str(asset.get("type") or "").split(";", 1)[0].casefold()
+        href = str(asset.get("href") or "").strip()
+        is_thumbnail = "thumbnail" in roles or "thumbnail" in asset_key
+        is_image = media_type.startswith("image/") or urlsplit(href).path.casefold().endswith(
+            (".jpg", ".jpeg", ".png", ".webp")
+        )
+        if not is_thumbnail or not is_image or not href:
+            continue
+        absolute_url = resolve_relative_url(item_url, href)
+        parsed = urlsplit(absolute_url)
+        if parsed.scheme == "https" and parsed.netloc:
+            return absolute_url
+    return None
+
 # ---------- STAC Crawling & Metadata Parsing ----------
 def extract_real_stac_url(browser_url: str) -> str:
     if "#/external/" in browser_url:
@@ -953,6 +1109,7 @@ def extract_oam_metadata(item_url: str, item_data: dict, tiff_url: str) -> dict:
         "license_oam_default": stac_license,
         "stac_license_reference": stac_license,
         "image_source_url": tiff_url or "",
+        "thumbnail_url": find_stac_thumbnail_url(item_data, item_url),
         "longitude_risk": False,
         "reprojection_command": "",
         "bbox": item_data.get("bbox"),
@@ -1502,7 +1659,49 @@ elif active_workflow == "Discover & map":
     st.header("Find event imagery")
     st.info("Enter a STAC catalog or item URL to discover imagery that can be filtered and handed off to mapping tools.")
 
-    root_url_input = st.text_input("Data Catalog URL:", value=DEFAULT_SAMPLE_URL, disabled=source_mode != "STAC catalog / item")
+    with st.expander("Find a public STAC catalog", expanded=False):
+        st.caption(
+            "Search the public catalog directory maintained by OpenGeo. "
+            "Catalog metadata is discoverable here; individual assets may still have separate access or license terms."
+        )
+        if st.button("Load public catalog directory", key="load-public-stac-catalogs"):
+            try:
+                st.session_state["public_stac_catalogs"] = load_public_stac_catalogs()
+                st.session_state.pop("public_stac_catalogs_error", None)
+            except Exception as exc:
+                st.session_state["public_stac_catalogs_error"] = str(exc)
+        catalog_error = st.session_state.get("public_stac_catalogs_error")
+        if catalog_error:
+            st.warning(f"Could not load the OpenGeo catalog directory: {catalog_error}. You can still paste a STAC URL below.")
+        catalogs = st.session_state.get("public_stac_catalogs", [])
+        if catalogs:
+            catalog_query = st.text_input("Search catalog name or description", key="stac_catalog_query")
+            matching_catalogs = filter_public_stac_catalogs(catalogs, catalog_query)
+            if matching_catalogs:
+                selected_index = st.selectbox(
+                    "Public catalogs",
+                    options=list(range(len(matching_catalogs))),
+                    format_func=lambda index: matching_catalogs[index]["title"],
+                    key="stac_catalog_selection",
+                )
+                selected_catalog = matching_catalogs[selected_index]
+                st.caption(selected_catalog["summary"] or "No summary is provided in the registry.")
+                registry_updated = selected_catalog.get("updated")
+                if registry_updated:
+                    st.caption(f"Registry record updated: {registry_updated[:10]} · "
+                               f"{'STAC API' if selected_catalog['is_api'] else 'Static STAC catalog'}")
+                if st.button("Use selected catalog", key="use-selected-stac-catalog"):
+                    st.session_state["stac_catalog_url"] = selected_catalog["url"]
+                    st.rerun()
+            else:
+                st.info("No public catalog matches that search.")
+
+    root_url_input = st.text_input(
+        "Data Catalog URL:",
+        value=DEFAULT_SAMPLE_URL,
+        disabled=source_mode != "STAC catalog / item",
+        key="stac_catalog_url",
+    )
 
     if source_mode == "STAC catalog / item" and root_url_input:
         real_url = extract_real_stac_url(root_url_input)
@@ -1512,12 +1711,74 @@ elif active_workflow == "Discover & map":
             st.session_state["oam_duplicates"] = {}
             st.session_state["location_filter_bbox"] = None
             st.session_state["pending_drawing"] = None
+            st.session_state.pop("active_stac_search", None)
             st.session_state["last_processed_url"] = real_url
 
-        with st.spinner("Discovering STAC items and imagery assets..."):
-            all_links, tiff_links, oam_items = run_crawl(real_url)
+        crawl_url = real_url
+        use_api_search = st.checkbox(
+            "Search this STAC API with filters instead of browsing catalog links",
+            key="use_stac_api_search",
+            help="Requires the STAC root to advertise an HTTPS GET search link. Uses core bbox, datetime, collections and limit parameters.",
+        )
+        if use_api_search:
+            try:
+                stac_root = fetch_stac_api_root(real_url)
+                search_endpoint = find_stac_search_endpoint(real_url, stac_root)
+                st.caption(f"STAC Item Search endpoint: {search_endpoint}")
+                with st.form("stac_api_search_form", clear_on_submit=False):
+                    search_bbox = st.text_input(
+                        "Area bbox (optional, WGS84)",
+                        placeholder="west,south,east,north · e.g. 106.6,-6.5,107.1,-6.0",
+                    )
+                    search_datetime = st.text_input(
+                        "Date or date interval (optional)",
+                        placeholder="2026-01-01/2026-03-31",
+                        help="Use an RFC 3339 timestamp or interval supported by the STAC API.",
+                    )
+                    search_collections = st.text_input(
+                        "Collection IDs (optional, comma-separated)",
+                        placeholder="sentinel-2-l2a,landsat-c2-l2",
+                    )
+                    search_limit = st.number_input(
+                        "Maximum items per page",
+                        min_value=1,
+                        max_value=1000,
+                        value=100,
+                        step=25,
+                    )
+                    submit_search = st.form_submit_button("Search STAC API", type="primary")
+                if submit_search:
+                    try:
+                        requested_url = build_stac_search_url(
+                            search_endpoint,
+                            bbox=search_bbox,
+                            datetime_range=search_datetime,
+                            collections=search_collections,
+                            limit=search_limit,
+                        )
+                        st.session_state["active_stac_search"] = {
+                            "root": real_url,
+                            "url": requested_url,
+                        }
+                    except ValueError as exc:
+                        st.error(str(exc))
+                active_search = st.session_state.get("active_stac_search") or {}
+                if active_search.get("root") == real_url and active_search.get("url"):
+                    crawl_url = active_search["url"]
+                    st.caption("Search URL: " + crawl_url)
+                else:
+                    crawl_url = None
+                    st.info("Set any filters you need, then submit the STAC API search form.")
+            except Exception as exc:
+                crawl_url = None
+                st.error(f"Could not prepare STAC API search: {exc}. You can turn this option off to browse the catalog links.")
 
-        if all_links:
+        all_links, tiff_links, oam_items = [], [], []
+        if crawl_url:
+            with st.spinner("Discovering STAC items and imagery assets..."):
+                all_links, tiff_links, oam_items = run_crawl(crawl_url)
+
+        if crawl_url and all_links:
             st.divider()
             st.header("Filter by area (optional)")
             
@@ -1693,6 +1954,8 @@ elif active_workflow == "Discover & map":
                     for idx, meta in enumerate(display_oam_items, 1):
                         status_label = meta["oam_duplicate_status"]
                         with st.expander(f"{idx}. {meta['title']} | Status: [{status_label}]"):
+                            if meta.get("thumbnail_url"):
+                                st.image(meta["thumbnail_url"], caption="STAC thumbnail asset")
                             if "Already exists" in status_label:
                                 st.warning(status_label)
                                 if meta.get("oam_existing_link"):
@@ -1761,5 +2024,5 @@ elif active_workflow == "Discover & map":
                 for idx, link in enumerate(all_links, 1):
                     st.markdown(f"{idx}. [{link}]({link})")
 
-        else:
+        elif crawl_url:
             st.info("No STAC imagery links were found. Check the catalog URL or try another STAC item.")
