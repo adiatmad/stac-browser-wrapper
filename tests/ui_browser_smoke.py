@@ -87,7 +87,7 @@ def exercise_stac_discovery(page) -> None:
     limit = page.get_by_role("spinbutton", name="Maximum items per page")
 
     bbox.fill("not-a-bbox")
-    date_range.fill("2025-01-01/2025-01-03")
+    date_range.fill("2099-01-01/2099-01-02")
     collections.fill("sentinel-2-l2a")
     limit.fill("1")
     page.get_by_role("button", name="Search STAC API").click()
@@ -99,6 +99,11 @@ def exercise_stac_discovery(page) -> None:
     page.get_by_role("button", name="Search STAC API").click()
     wait_for_streamlit_idle(page)
     page.get_by_text("Search URL:", exact=False).wait_for(timeout=30_000)
+    page.get_by_text("No STAC imagery links were found", exact=False).wait_for(
+        timeout=15_000
+    )
+    server_log = (ROOT / "streamlit-ui-smoke.log").read_text(encoding="utf-8")
+    assert "Failed to fetch https://earth-search.aws.element84.com/v1/search" not in server_log
 
 
 def assert_no_horizontal_overflow(page, label: str) -> None:
