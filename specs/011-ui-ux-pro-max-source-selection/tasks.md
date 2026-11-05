@@ -9,6 +9,6 @@
 - [x] Render only the selected source's controls; remove inactive STAC controls from S3 mode.
 - [x] Add source-selection contract coverage.
 - [x] Extend Playwright smoke coverage for S3/STAC switching, inactive-control visibility, and 375px source-panel overflow.
-- [ ] Run full unit tests and all GitHub Actions checks.
-- [ ] Inspect desktop/mobile screenshots and browser logs; record any blocked visual checks.
-- [ ] Review the full diff for changed widget keys, data requests, source behavior, and OAM/local-raster safeguards.
+- [x] Run full unit tests and all GitHub Actions checks (65 unit tests, dependency compatibility, and browser smoke passed).
+- [x] Inspect desktop/mobile screenshots and browser logs; source switching and 375px/390px overflow checks passed.
+- [x] Review the full diff; widget keys, data requests, source behavior, and OAM/local-raster safeguards remain unchanged.

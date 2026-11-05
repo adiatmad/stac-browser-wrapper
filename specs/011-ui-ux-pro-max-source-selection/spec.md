@@ -1,6 +1,6 @@
 # Feature Specification: UI/UX Pro Max Source Selection
 
-**Status:** Implemented; awaiting CI verification  
+**Status:** Implemented; CI verified  
 **Branch:** `feature/ui-ux-pro-max-source-selection`  
 **Parent:** `feat/opengeo-stac-discovery-search`
 
@@ -37,3 +37,13 @@ The project already uses Streamlit and shadcn Components V2. Reuse native Stream
 - Rewriting Streamlit in React or introducing a second component library.
 - Changing STAC/OAM requests, metadata interpretation, raster validation, or publication behavior.
 - Changing the separate Local preparation workflow.
+
+
+## Verification results
+
+- Unit suite: **65 tests passed**.
+- Streamlit/shadcn dependency compatibility: passed.
+- Playwright desktop/mobile browser smoke: passed, including S3 ↔ STAC source switching and inactive-control assertions.
+- Responsive checks: no horizontal page overflow at 390px and 375px for the STAC and S3 source panels.
+- Desktop and mobile screenshots were generated and inspected from the CI artifact.
+- No live external STAC/OAM behavior was changed or newly claimed.
