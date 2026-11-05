@@ -73,8 +73,11 @@ def exercise_stac_discovery(page) -> None:
         "checkbox",
         name="Search this STAC API with filters instead of browsing catalog links",
     )
-    api_search_toggle.locator("xpath=..").scroll_into_view_if_needed()
-    api_search_toggle.locator("xpath=..").click()
+    api_search_label = page.locator("label").filter(
+        has_text="Search this STAC API with filters instead of browsing catalog links"
+    )
+    api_search_label.scroll_into_view_if_needed()
+    api_search_label.click()
     expect(api_search_toggle).to_be_checked(timeout=10_000)
     page.get_by_text("does not advertise an HTTPS GET search link", exact=False).wait_for(
         timeout=30_000
