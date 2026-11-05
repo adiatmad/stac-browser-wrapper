@@ -890,7 +890,10 @@ def parse_stac_catalog_registry(records: Any) -> list[dict[str, Any]]:
             continue
         title = str(record.get("title") or "").strip()
         url = str(record.get("url") or "").strip()
-        parsed = urlsplit(url)
+        try:
+            parsed = urlsplit(url)
+        except ValueError:
+            continue
         if not title or parsed.scheme != "https" or not parsed.netloc:
             continue
         public_records.append({
@@ -947,8 +950,11 @@ def find_stac_search_endpoint(root_url: str, root_data: dict[str, Any]) -> str:
         href = str(link.get("href") or "").strip()
         if not href:
             continue
-        endpoint = urljoin(root_url, href)
-        parsed = urlsplit(endpoint)
+        try:
+            endpoint = urljoin(root_url, href)
+            parsed = urlsplit(endpoint)
+        except ValueError:
+            continue
         if parsed.scheme == "https" and parsed.netloc:
             return endpoint
     raise ValueError(
@@ -965,7 +971,10 @@ def build_stac_search_url(
     limit: int = 100,
 ) -> str:
     """Build a STAC Item Search GET URL from validated core search parameters."""
-    parsed = urlsplit(str(search_url or "").strip())
+    try:
+        parsed = urlsplit(str(search_url or "").strip())
+    except ValueError as exc:
+        raise ValueError("The STAC search endpoint must be a valid HTTPS URL.") from exc
     if parsed.scheme != "https" or not parsed.netloc:
         raise ValueError("The STAC search endpoint must be an HTTPS URL.")
     try:
@@ -1016,13 +1025,18 @@ def find_stac_thumbnail_url(item_data: dict[str, Any], item_url: str) -> str | N
         media_type = str(asset.get("type") or "").split(";", 1)[0].casefold()
         href = str(asset.get("href") or "").strip()
         is_thumbnail = "thumbnail" in roles or "thumbnail" in asset_key
-        is_image = media_type.startswith("image/") or urlsplit(href).path.casefold().endswith(
-            (".jpg", ".jpeg", ".png", ".webp")
-        )
-        if not is_thumbnail or not is_image or not href:
+        if not is_thumbnail or not href:
             continue
-        absolute_url = resolve_relative_url(item_url, href)
-        parsed = urlsplit(absolute_url)
+        try:
+            is_image = media_type.startswith("image/") or urlsplit(href).path.casefold().endswith(
+                (".jpg", ".jpeg", ".png", ".webp")
+            )
+            if not is_image:
+                continue
+            absolute_url = resolve_relative_url(item_url, href)
+            parsed = urlsplit(absolute_url)
+        except ValueError:
+            continue
         if parsed.scheme == "https" and parsed.netloc:
             return absolute_url
     return None
@@ -1697,7 +1711,7 @@ elif active_workflow == "Discover & map":
                 else:
                     st.info("No public catalog matches that search.")
     
-        root_url_input = st.text_input(
+    root_url_input = st.text_input(
         "Data Catalog URL:",
         value=DEFAULT_SAMPLE_URL,
         disabled=source_mode != "STAC catalog / item",

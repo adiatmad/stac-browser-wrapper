@@ -58,6 +58,8 @@ class STACDiscoveryTests(unittest.TestCase):
     def test_registry_rejects_non_list_payload(self):
         with self.assertRaisesRegex(ValueError, "JSON list"):
             self.helpers["parse_stac_catalog_registry"]({"catalogs": []})
+        malformed_url = [{"title": "Bad", "url": "https://[invalid", "access": "public", "isPrivate": False}]
+        self.assertEqual(self.helpers["parse_stac_catalog_registry"](malformed_url), [])
 
     def test_catalog_filter_searches_title_and_summary_case_insensitively(self):
         records = [
@@ -84,6 +86,9 @@ class STACDiscoveryTests(unittest.TestCase):
             self.helpers["find_stac_search_endpoint"]("https://data.example.org/", root)
         with self.assertRaises(ValueError):
             self.helpers["find_stac_search_endpoint"]("https://data.example.org/", {"links": []})
+        malformed = {"links": [{"rel": "search", "href": "https://[invalid", "method": "GET"}]}
+        with self.assertRaises(ValueError):
+            self.helpers["find_stac_search_endpoint"]("https://data.example.org/", malformed)
 
     def test_search_url_encodes_core_filters_and_preserves_existing_query(self):
         result = self.helpers["build_stac_search_url"](
@@ -126,6 +131,8 @@ class STACDiscoveryTests(unittest.TestCase):
         self.assertEqual(helper(item, item_url), "https://data.example.org/preview.jpg")
         self.assertIsNone(helper({"assets": {"preview": {"href": "http://bad.example.org/a.jpg", "roles": ["thumbnail"]}}}, item_url))
         self.assertIsNone(helper({"assets": {"visual": {"href": "https://data.example.org/a.jpg", "roles": ["data"]}}}, item_url))
+        malformed = {"assets": {"thumbnail": {"href": "https://[invalid", "roles": ["thumbnail"], "type": "image/jpeg"}}}
+        self.assertIsNone(helper(malformed, item_url))
 
 
 if __name__ == "__main__":
