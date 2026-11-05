@@ -8,6 +8,10 @@
 6. Add focused AST-extracted unit tests and update the README/specification.
 7. Run the full unit suite and CI, then inspect the complete diff and browser smoke evidence.
 
+## Design read
+
+Reading this as: a geospatial imagery workbench for humanitarian mappers, retaining the established Streamlit/Shadcn workbench language, dial ENERGY 1 / RHYTHM 1 / MOTION 1. Keep the existing teal/slate design direction, navigation, map, and responsive behavior. The catalog finder stays in a collapsed expander because manual URL entry remains the primary path; API filters are grouped in a form because they must be submitted as one coherent search. No new icons, palette, motion system, branding asset, or mapping framework is introduced.
+
 ## Bounded execution contract
 
 - **Goal/input:** deliver catalog discovery, bounded GET Item Search, and explicit thumbnail previews on a feature branch from the inspected `main` revision.

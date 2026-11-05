@@ -9,7 +9,7 @@ The workbench currently requires users to know a STAC URL. It can recursively br
 
 ## User outcome
 
-A mapper can find a public catalog, load its URL into the existing discovery workflow, and when the root advertises an HTTPS GET Item Search link—narrow results by WGS84 bounding box, date interval, collection IDs, and page limit. Results can show an explicitly advertised thumbnail when available.
+A mapper can find a public catalog, load its URL into the existing discovery workflow, and when the root advertises an HTTPS GET Item Search link, narrow results by WGS84 bounding box, date interval, collection IDs, and page limit. Results can show an explicitly advertised thumbnail when available.
 
 ## Evidence and design decisions
 

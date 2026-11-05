@@ -11,7 +11,8 @@
 - [x] Add visible loading states for catalog-registry and STAC API-root requests.
 - [x] Preserve default catalog crawling and all OAM/local-preparation safeguards.
 - [x] Add focused tests and README documentation.
-- [x] Run focused and full unit tests; all 62 tests passed on the final code commit.
-- [x] Verify GitHub Actions unit, dependency compatibility, and desktop/mobile browser smoke jobs.
+- [ ] Run focused and full unit tests for bounded pagination changes.
+- [ ] Verify GitHub Actions unit, dependency compatibility, and desktop/mobile browser smoke jobs for the final code commit.
 - [x] Review complete diff for regressions, unsupported assumptions, and security/safety issues, including bounded pagination and HTTPS URL handling.
+- [x] Apply the Anti-Slop purpose and responsiveness review while preserving the existing design direction.
 - [ ] Confirm live catalog/API behavior separately from automated CI; provider-specific availability remains an external-service check.
