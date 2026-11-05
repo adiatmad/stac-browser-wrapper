@@ -1,6 +1,6 @@
 # Feature Specification: Public STAC Discovery and API Search
 
-**Status:** Implemented; GitHub Actions verification passed
+**Status:** Implemented; final GitHub Actions verification passed
 **Branch:** `feat/opengeo-stac-discovery-search`
 
 ## Problem
@@ -36,7 +36,7 @@ A mapper can find a public catalog, load its URL into the existing discovery wor
 
 ## Verification
 
-GitHub Actions run [#42049385288](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/42049385288) passed on commit `9fc981fa35350d35ee3c2c37e8f33fca007efa96`: all 62 unit tests, Streamlit/Shadcn dependency compatibility, and desktop/mobile browser smoke checks. The browser smoke evidence was uploaded as the `streamlit-ui-smoke-evidence` artifact. Live catalog and provider API behavior are not claimed as verified by this CI run.
+GitHub Actions run [#42050966496](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/42050966496) passed on commit `d9dcb18a30202ee898b1048ab25784dc49dbca02`: all 64 unit tests, Streamlit/Shadcn dependency compatibility, and desktop/mobile browser smoke checks. The browser smoke evidence was uploaded as the `streamlit-ui-smoke-evidence` artifact. Live catalog and provider API behavior are not claimed as verified by this CI run.
 
 ## Non-goals
 
