@@ -83,7 +83,12 @@ def exercise_stac_discovery(page) -> None:
         timeout=30_000
     )
 
-    catalog_url.fill("https://earth-search.aws.element84.com/v1/")
+    earth_search_url = "https://earth-search.aws.element84.com/v1/"
+    catalog_url.fill(earth_search_url)
+    expect(catalog_url).to_have_value(earth_search_url, timeout=30_000)
+    wait_for_streamlit_idle(page)
+    page_text = page.locator("body").inner_text()
+    print("STAC API root browser state:", page_text[-1800:])
     page.get_by_text("STAC Item Search endpoint:", exact=False).wait_for(timeout=30_000)
 
     bbox = page.get_by_role("textbox", name="Area bbox (optional, WGS84)")
