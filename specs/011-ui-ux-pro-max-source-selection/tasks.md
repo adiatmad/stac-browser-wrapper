@@ -8,7 +8,7 @@
 - [x] Group STAC catalog and URL controls in a bordered, labeled panel.
 - [x] Render only the selected source's controls; remove inactive STAC controls from S3 mode.
 - [x] Add source-selection contract coverage.
-- [x] Extend Playwright smoke coverage for S3/STAC switching and inactive-control visibility.
+- [x] Extend Playwright smoke coverage for S3/STAC switching, inactive-control visibility, and 375px source-panel overflow.
 - [ ] Run full unit tests and all GitHub Actions checks.
 - [ ] Inspect desktop/mobile screenshots and browser logs; record any blocked visual checks.
 - [ ] Review the full diff for changed widget keys, data requests, source behavior, and OAM/local-raster safeguards.

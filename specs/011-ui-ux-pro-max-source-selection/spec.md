@@ -28,7 +28,7 @@ The project already uses Streamlit and shadcn Components V2. Reuse native Stream
 6. Existing local-first imagery handling and explicit user-controlled OAM publication remain unchanged.
 7. No new runtime dependency, global stylesheet, or frontend framework is introduced.
 8. Contract tests cover the mutually exclusive source-control branches.
-9. Playwright browser smoke verifies source switching and confirms inactive controls are absent.
+9. Playwright browser smoke verifies source switching, confirms inactive controls are absent, and checks the selected source panels at 375px and 390px.
 10. Existing unit, dependency-compatibility, and desktop/mobile browser-smoke CI jobs pass.
 
 ## Non-goals

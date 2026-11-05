@@ -207,6 +207,21 @@ def main() -> None:
                     full_page=True,
                 )
 
+                page.set_viewport_size({"width": 375, "height": 812})
+                assert_no_horizontal_overflow(page, "Discover & map STAC at 375px")
+                page.get_by_role("radio", name="Public S3 bucket folder").click()
+                wait_for_streamlit_idle(page)
+                expect(page.get_by_role("textbox", name="S3 bucket-browser URL")).to_be_visible()
+                expect(page.get_by_role("textbox", name="Data Catalog URL:")).to_have_count(0)
+                assert_no_horizontal_overflow(page, "Discover & map S3 at 375px")
+                page.screenshot(
+                    path=str(ARTIFACTS / "workbench-s3-mobile.png"),
+                    full_page=True,
+                )
+                page.get_by_role("radio", name="STAC catalog / item").click()
+                wait_for_streamlit_idle(page)
+                expect(page.get_by_role("textbox", name="Data Catalog URL:")).to_be_visible()
+
                 page.get_by_role("tab", name="Local preparation").click()
                 page.get_by_role("heading", name="Local geospatial imagery preparation").wait_for()
                 page.wait_for_timeout(300)
