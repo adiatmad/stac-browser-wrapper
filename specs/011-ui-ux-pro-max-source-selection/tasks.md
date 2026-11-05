@@ -12,3 +12,5 @@
 - [x] Run full unit tests and all GitHub Actions checks (65 unit tests, dependency compatibility, and browser smoke passed).
 - [x] Inspect desktop/mobile screenshots and browser logs; source switching and 375px/390px overflow checks passed.
 - [x] Review the full diff; widget keys, data requests, source behavior, and OAM/local-raster safeguards remain unchanged.
+
+CI evidence: GitHub Actions run [42126662788](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/42126662788) on code commit `a1b387a2aebbab4d792483270c63584d9b6545d7` passed all three jobs.
