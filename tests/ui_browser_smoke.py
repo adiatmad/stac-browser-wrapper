@@ -45,7 +45,7 @@ def wait_for_streamlit_idle(page) -> None:
 
 
 def exercise_stac_discovery(page) -> None:
-    page.get_by_role("button", name="Find a public STAC catalog").click()
+    page.locator("summary").filter(has_text="Find a public STAC catalog").click()
     page.get_by_role("button", name="Load public catalog directory").click()
     catalog_search = page.get_by_role("textbox", name="Search catalog name or description")
     catalog_search.wait_for(timeout=60_000)
@@ -62,7 +62,8 @@ def exercise_stac_discovery(page) -> None:
         "https://raw.githubusercontent.com/m-mohr/oam-example/main/catalog.json"
     ), catalog_url.input_value()
 
-    page.get_by_role("button", name=re.compile("Grytdalen Tjern")).click()
+    page.get_by_role("tab", name="OpenAerialMap").click()
+    page.locator("summary").filter(has_text="Grytdalen Tjern").click()
     page.get_by_text("STAC thumbnail asset", exact=True).wait_for(timeout=30_000)
 
     api_search_toggle = page.get_by_role(
