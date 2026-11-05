@@ -105,9 +105,11 @@ class STACDiscoveryTests(unittest.TestCase):
 
     def test_search_url_rejects_invalid_bbox_and_limit(self):
         build = self.helpers["build_stac_search_url"]
-        for bbox in ("1,2,3", "1,2,3,4,5", "181,-1,182,1", "10,5,1,8", "nan,0,1,1"):
+        for bbox in ("1,2,3", "1,2,3,4,5", "181,-1,182,1", "10,5,10,8", "10,8,20,5", "nan,0,1,1"):
             with self.subTest(bbox=bbox), self.assertRaises(ValueError):
                 build("https://data.example.org/search", bbox=bbox)
+        dateline = build("https://data.example.org/search", bbox="170,-10,-170,10")
+        self.assertIn("bbox=170%2C-10%2C-170%2C10", dateline)
         for limit in (0, 1001, "not-a-number"):
             with self.subTest(limit=limit), self.assertRaises(ValueError):
                 build("https://data.example.org/search", limit=limit)

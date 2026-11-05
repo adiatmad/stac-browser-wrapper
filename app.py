@@ -987,8 +987,8 @@ def build_stac_search_url(
         west, south, east, north = coordinates
         if not (-180 <= west <= 180 and -180 <= east <= 180 and -90 <= south <= 90 and -90 <= north <= 90):
             raise ValueError("BBox coordinates must use WGS84 longitude/latitude ranges.")
-        if west >= east or south >= north:
-            raise ValueError("BBox west must be less than east and south must be less than north.")
+        if west == east or south >= north:
+            raise ValueError("BBox must have non-zero width and height; south must be less than north.")
         params["bbox"] = ",".join(str(value) for value in coordinates)
 
     datetime_value = str(datetime_range or "").strip()
@@ -1659,44 +1659,45 @@ elif active_workflow == "Discover & map":
     st.header("Find event imagery")
     st.info("Enter a STAC catalog or item URL to discover imagery that can be filtered and handed off to mapping tools.")
 
+    if source_mode == "STAC catalog / item":
     with st.expander("Find a public STAC catalog", expanded=False):
-        st.caption(
-            "Search the public catalog directory maintained by OpenGeo. "
-            "Catalog metadata is discoverable here; individual assets may still have separate access or license terms."
-        )
-        if st.button("Load public catalog directory", key="load-public-stac-catalogs"):
-            try:
-                st.session_state["public_stac_catalogs"] = load_public_stac_catalogs()
-                st.session_state.pop("public_stac_catalogs_error", None)
-            except Exception as exc:
-                st.session_state["public_stac_catalogs_error"] = str(exc)
-        catalog_error = st.session_state.get("public_stac_catalogs_error")
-        if catalog_error:
-            st.warning(f"Could not load the OpenGeo catalog directory: {catalog_error}. You can still paste a STAC URL below.")
-        catalogs = st.session_state.get("public_stac_catalogs", [])
-        if catalogs:
-            catalog_query = st.text_input("Search catalog name or description", key="stac_catalog_query")
-            matching_catalogs = filter_public_stac_catalogs(catalogs, catalog_query)
-            if matching_catalogs:
-                selected_index = st.selectbox(
-                    "Public catalogs",
-                    options=list(range(len(matching_catalogs))),
-                    format_func=lambda index: matching_catalogs[index]["title"],
-                    key="stac_catalog_selection",
-                )
-                selected_catalog = matching_catalogs[selected_index]
-                st.caption(selected_catalog["summary"] or "No summary is provided in the registry.")
-                registry_updated = selected_catalog.get("updated")
-                if registry_updated:
-                    st.caption(f"Registry record updated: {registry_updated[:10]} · "
-                               f"{'STAC API' if selected_catalog['is_api'] else 'Static STAC catalog'}")
-                if st.button("Use selected catalog", key="use-selected-stac-catalog"):
-                    st.session_state["stac_catalog_url"] = selected_catalog["url"]
-                    st.rerun()
-            else:
-                st.info("No public catalog matches that search.")
-
-    root_url_input = st.text_input(
+            st.caption(
+                "Search the public catalog directory maintained by OpenGeo. "
+                "Catalog metadata is discoverable here; individual assets may still have separate access or license terms."
+            )
+            if st.button("Load public catalog directory", key="load-public-stac-catalogs"):
+                try:
+                    st.session_state["public_stac_catalogs"] = load_public_stac_catalogs()
+                    st.session_state.pop("public_stac_catalogs_error", None)
+                except Exception as exc:
+                    st.session_state["public_stac_catalogs_error"] = str(exc)
+            catalog_error = st.session_state.get("public_stac_catalogs_error")
+            if catalog_error:
+                st.warning(f"Could not load the OpenGeo catalog directory: {catalog_error}. You can still paste a STAC URL below.")
+            catalogs = st.session_state.get("public_stac_catalogs", [])
+            if catalogs:
+                catalog_query = st.text_input("Search catalog name or description", key="stac_catalog_query")
+                matching_catalogs = filter_public_stac_catalogs(catalogs, catalog_query)
+                if matching_catalogs:
+                    selected_index = st.selectbox(
+                        "Public catalogs",
+                        options=list(range(len(matching_catalogs))),
+                        format_func=lambda index: matching_catalogs[index]["title"],
+                        key="stac_catalog_selection",
+                    )
+                    selected_catalog = matching_catalogs[selected_index]
+                    st.caption(selected_catalog["summary"] or "No summary is provided in the registry.")
+                    registry_updated = selected_catalog.get("updated")
+                    if registry_updated:
+                        st.caption(f"Registry record updated: {registry_updated[:10]} · "
+                                   f"{'STAC API' if selected_catalog['is_api'] else 'Static STAC catalog'}")
+                    if st.button("Use selected catalog", key="use-selected-stac-catalog"):
+                        st.session_state["stac_catalog_url"] = selected_catalog["url"]
+                        st.rerun()
+                else:
+                    st.info("No public catalog matches that search.")
+    
+        root_url_input = st.text_input(
         "Data Catalog URL:",
         value=DEFAULT_SAMPLE_URL,
         disabled=source_mode != "STAC catalog / item",
