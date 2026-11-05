@@ -1732,6 +1732,8 @@ elif active_workflow == "Discover & map":
     st.info("Enter a STAC catalog or item URL to discover imagery that can be filtered and handed off to mapping tools.")
 
     if source_mode == "STAC catalog / item":
+        if "stac_catalog_url" not in st.session_state:
+            st.session_state["stac_catalog_url"] = DEFAULT_SAMPLE_URL
         with st.expander("Find a public STAC catalog", expanded=False):
             st.caption(
                 "Search the public catalog directory maintained by OpenGeo. "
@@ -1772,7 +1774,6 @@ elif active_workflow == "Discover & map":
     
     root_url_input = st.text_input(
         "Data Catalog URL:",
-        value=DEFAULT_SAMPLE_URL,
         disabled=source_mode != "STAC catalog / item",
         key="stac_catalog_url",
     )
