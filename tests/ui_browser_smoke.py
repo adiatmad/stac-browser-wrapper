@@ -65,7 +65,9 @@ def exercise_stac_discovery(page) -> None:
 
     page.get_by_role("tab", name="OpenAerialMap").click()
     page.locator("summary").filter(has_text="Grytdalen Tjern").click()
-    page.get_by_text("STAC thumbnail asset", exact=True).wait_for(timeout=30_000)
+    expect(page.get_by_text("STAC thumbnail asset", exact=True)).to_have_count(
+        2, timeout=30_000
+    )
 
     api_search_toggle = page.get_by_role(
         "checkbox",
