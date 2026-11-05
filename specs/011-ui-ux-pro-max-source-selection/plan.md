@@ -13,7 +13,7 @@ Keep the existing top-level workflow tabs, source-type radio, Streamlit runtime,
 ## Implementation
 
 1. Add a bordered, labeled S3 source-entry panel around its existing URL, artifact filter, validation, and list action.
-2. Move the STAC catalog directory and URL field into the mutually exclusive `else` branch and group them in a matching bordered panel.
+2. Keep the STAC catalog directory and URL field inside the existing STAC-only branch and group them in a matching bordered panel.
 3. Remove the disabled STAC field from S3 mode and remove the STAC-only heading/copy from that mode.
 4. Add a contract test for the source-mode branch structure.
 5. Extend the existing Playwright smoke test to switch S3 → STAC and verify inactive controls are absent.

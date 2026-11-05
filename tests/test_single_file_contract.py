@@ -200,19 +200,22 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
     def test_source_selector_only_renders_the_active_source_controls(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         tree = ast.parse(source, filename="app.py")
-        source_branch = next(
-            node for node in ast.walk(tree)
+        branches = {
+            ast.unparse(node.test): node
+            for node in ast.walk(tree)
             if isinstance(node, ast.If)
-            and ast.unparse(node.test) == "source_mode == 'Public S3 bucket folder'"
-        )
-        self.assertTrue(source_branch.orelse)
-        s3_branch = ast.unparse(source_branch.body)
-        stac_branch = ast.unparse(source_branch.orelse)
+            and isinstance(node.test, ast.Compare)
+            and "source_mode" in ast.unparse(node.test)
+        }
+        s3_branch = ast.unparse(branches["source_mode == 'Public S3 bucket folder'"].body)
+        stac_branch = ast.unparse(branches["source_mode == 'STAC catalog / item'"].body)
 
         self.assertIn("st.container(border=True)", s3_branch)
         self.assertIn("Public S3 bucket folder", s3_branch)
+        self.assertNotIn("Data Catalog URL", s3_branch)
         self.assertIn("st.container(border=True)", stac_branch)
         self.assertIn("STAC catalog or item", stac_branch)
-        self.assertIn("if root_url_input", stac_branch)
+        self.assertIn("Data Catalog URL", stac_branch)
+        self.assertNotIn("S3 bucket-browser URL", stac_branch)
         self.assertNotIn("disabled=source_mode", source)
         self.assertNotIn('st.header("Find event imagery")', source)

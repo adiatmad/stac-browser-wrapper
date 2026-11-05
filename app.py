@@ -1731,12 +1731,12 @@ elif active_workflow == "Discover & map":
             else:
                 st.info("No GeoTIFFs matched this prefix and filter.")
 
-    else:
-        if "stac_catalog_url" not in st.session_state:
-            st.session_state["stac_catalog_url"] = DEFAULT_SAMPLE_URL
+    if source_mode == "STAC catalog / item":
         with st.container(border=True):
             st.subheader("STAC catalog or item")
             st.caption("Choose a public catalog from the directory, or paste a STAC catalog or item URL.")
+            if "stac_catalog_url" not in st.session_state:
+                st.session_state["stac_catalog_url"] = DEFAULT_SAMPLE_URL
             with st.expander("Find a public STAC catalog", expanded=False):
                 st.caption(
                     "Search the public catalog directory maintained by OpenGeo. "
@@ -1779,348 +1779,348 @@ elif active_workflow == "Discover & map":
                 key="stac_catalog_url",
             )
 
-        if root_url_input:
-            real_url = extract_real_stac_url(root_url_input)
-            event_prefix = extract_event_name_from_url(real_url)
+    if source_mode == "STAC catalog / item" and root_url_input:
+        real_url = extract_real_stac_url(root_url_input)
+        event_prefix = extract_event_name_from_url(real_url)
 
-            if real_url != st.session_state["last_processed_url"]:
-                st.session_state["oam_duplicates"] = {}
-                st.session_state["location_filter_bbox"] = None
-                st.session_state["pending_drawing"] = None
-                st.session_state.pop("active_stac_search", None)
-                st.session_state["last_processed_url"] = real_url
+        if real_url != st.session_state["last_processed_url"]:
+            st.session_state["oam_duplicates"] = {}
+            st.session_state["location_filter_bbox"] = None
+            st.session_state["pending_drawing"] = None
+            st.session_state.pop("active_stac_search", None)
+            st.session_state["last_processed_url"] = real_url
 
-            crawl_url = real_url
-            use_api_search = st.checkbox(
-                "Search this STAC API with filters instead of browsing catalog links",
-                key="use_stac_api_search",
-                help="Requires the STAC root to advertise an HTTPS GET search link. Uses core bbox, datetime, collections and limit parameters.",
-            )
-            if use_api_search:
-                try:
-                    with st.spinner("Checking STAC API search capabilities..."):
-                        stac_root = fetch_stac_api_root(real_url)
-                    search_endpoint = find_stac_search_endpoint(real_url, stac_root)
-                    st.caption(f"STAC Item Search endpoint: {search_endpoint}")
-                    st.caption(
-                        f"To keep discovery responsive, this search stops after {STAC_SEARCH_MAX_ITEMS:,} items "
-                        f"or {STAC_SEARCH_MAX_PAGES} pages, whichever comes first."
+        crawl_url = real_url
+        use_api_search = st.checkbox(
+            "Search this STAC API with filters instead of browsing catalog links",
+            key="use_stac_api_search",
+            help="Requires the STAC root to advertise an HTTPS GET search link. Uses core bbox, datetime, collections and limit parameters.",
+        )
+        if use_api_search:
+            try:
+                with st.spinner("Checking STAC API search capabilities..."):
+                    stac_root = fetch_stac_api_root(real_url)
+                search_endpoint = find_stac_search_endpoint(real_url, stac_root)
+                st.caption(f"STAC Item Search endpoint: {search_endpoint}")
+                st.caption(
+                    f"To keep discovery responsive, this search stops after {STAC_SEARCH_MAX_ITEMS:,} items "
+                    f"or {STAC_SEARCH_MAX_PAGES} pages, whichever comes first."
+                )
+                with st.form("stac_api_search_form", clear_on_submit=False):
+                    search_bbox = st.text_input(
+                        "Area bbox (optional, WGS84)",
+                        placeholder="west,south,east,north · e.g. 106.6,-6.5,107.1,-6.0",
                     )
-                    with st.form("stac_api_search_form", clear_on_submit=False):
-                        search_bbox = st.text_input(
-                            "Area bbox (optional, WGS84)",
-                            placeholder="west,south,east,north · e.g. 106.6,-6.5,107.1,-6.0",
+                    search_datetime = st.text_input(
+                        "Date or date interval (optional)",
+                        placeholder="2026-01-01/2026-03-31",
+                        help="Use an RFC 3339 timestamp or interval supported by the STAC API.",
+                    )
+                    search_collections = st.text_input(
+                        "Collection IDs (optional, comma-separated)",
+                        placeholder="sentinel-2-l2a,landsat-c2-l2",
+                    )
+                    search_limit = st.number_input(
+                        "Maximum items per page",
+                        min_value=1,
+                        max_value=1000,
+                        value=100,
+                        step=25,
+                    )
+                    submit_search = st.form_submit_button("Search STAC API", type="primary")
+                if submit_search:
+                    try:
+                        requested_url = build_stac_search_url(
+                            search_endpoint,
+                            bbox=search_bbox,
+                            datetime_range=search_datetime,
+                            collections=search_collections,
+                            limit=search_limit,
                         )
-                        search_datetime = st.text_input(
-                            "Date or date interval (optional)",
-                            placeholder="2026-01-01/2026-03-31",
-                            help="Use an RFC 3339 timestamp or interval supported by the STAC API.",
-                        )
-                        search_collections = st.text_input(
-                            "Collection IDs (optional, comma-separated)",
-                            placeholder="sentinel-2-l2a,landsat-c2-l2",
-                        )
-                        search_limit = st.number_input(
-                            "Maximum items per page",
-                            min_value=1,
-                            max_value=1000,
-                            value=100,
-                            step=25,
-                        )
-                        submit_search = st.form_submit_button("Search STAC API", type="primary")
-                    if submit_search:
-                        try:
-                            requested_url = build_stac_search_url(
-                                search_endpoint,
-                                bbox=search_bbox,
-                                datetime_range=search_datetime,
-                                collections=search_collections,
-                                limit=search_limit,
-                            )
-                            st.session_state["active_stac_search"] = {
-                                "root": real_url,
-                                "url": requested_url,
-                            }
-                        except ValueError as exc:
-                            st.error(str(exc))
-                    active_search = st.session_state.get("active_stac_search") or {}
-                    if active_search.get("root") == real_url and active_search.get("url"):
-                        crawl_url = active_search["url"]
-                        st.caption("Search URL: " + crawl_url)
-                    else:
-                        crawl_url = None
-                        st.info("Set any filters you need, then submit the STAC API search form.")
-                except Exception as exc:
+                        st.session_state["active_stac_search"] = {
+                            "root": real_url,
+                            "url": requested_url,
+                        }
+                    except ValueError as exc:
+                        st.error(str(exc))
+                active_search = st.session_state.get("active_stac_search") or {}
+                if active_search.get("root") == real_url and active_search.get("url"):
+                    crawl_url = active_search["url"]
+                    st.caption("Search URL: " + crawl_url)
+                else:
                     crawl_url = None
-                    st.error(f"Could not prepare STAC API search: {exc}. You can turn this option off to browse the catalog links.")
+                    st.info("Set any filters you need, then submit the STAC API search form.")
+            except Exception as exc:
+                crawl_url = None
+                st.error(f"Could not prepare STAC API search: {exc}. You can turn this option off to browse the catalog links.")
 
-            all_links, tiff_links, oam_items = [], [], []
-            crawl_state = {"pages": 0, "capped": False, "post_next": False}
-            if crawl_url:
-                with st.spinner("Discovering STAC items and imagery assets..."):
-                    if use_api_search:
-                        all_links, tiff_links, oam_items, crawl_state = run_crawl(
-                            crawl_url,
-                            max_items=STAC_SEARCH_MAX_ITEMS,
-                            max_pages=STAC_SEARCH_MAX_PAGES,
-                        )
-                    else:
-                        all_links, tiff_links, oam_items, crawl_state = run_crawl(crawl_url)
-                if crawl_state.get("capped"):
-                    st.warning(
-                        f"Discovery reached its safety cap ({STAC_SEARCH_MAX_ITEMS:,} items or "
-                        f"{STAC_SEARCH_MAX_PAGES} pages). Narrow the bbox, date interval, or collections to inspect a smaller result set."
+        all_links, tiff_links, oam_items = [], [], []
+        crawl_state = {"pages": 0, "capped": False, "post_next": False}
+        if crawl_url:
+            with st.spinner("Discovering STAC items and imagery assets..."):
+                if use_api_search:
+                    all_links, tiff_links, oam_items, crawl_state = run_crawl(
+                        crawl_url,
+                        max_items=STAC_SEARCH_MAX_ITEMS,
+                        max_pages=STAC_SEARCH_MAX_PAGES,
                     )
-                if crawl_state.get("post_next"):
-                    st.warning(
-                        "This STAC API returned a POST-only pagination link. The current workbench follows GET pagination only, so discovery stopped before that page."
-                    )
+                else:
+                    all_links, tiff_links, oam_items, crawl_state = run_crawl(crawl_url)
+            if crawl_state.get("capped"):
+                st.warning(
+                    f"Discovery reached its safety cap ({STAC_SEARCH_MAX_ITEMS:,} items or "
+                    f"{STAC_SEARCH_MAX_PAGES} pages). Narrow the bbox, date interval, or collections to inspect a smaller result set."
+                )
+            if crawl_state.get("post_next"):
+                st.warning(
+                    "This STAC API returned a POST-only pagination link. The current workbench follows GET pagination only, so discovery stopped before that page."
+                )
 
-            if crawl_url and all_links:
-                st.divider()
-                st.header("Filter by area (optional)")
-                
-                group_by_location = st.toggle("Draw a box on the map to filter images")
-                
-                if group_by_location:
-                    st.info("Draw an area around the activation you need. Filtering reduces the number of scenes sent to mapping software.")
-                    items_with_bbox = [m for m in oam_items if parse_bbox_2d(m.get("bbox"))]
-                    if items_with_bbox:
-                        parsed_bboxes = [parse_bbox_2d(m["bbox"]) for m in items_with_bbox]
-                        all_lons = [b[0] for b in parsed_bboxes] + [b[2] for b in parsed_bboxes]
-                        all_lats = [b[1] for b in parsed_bboxes] + [b[3] for b in parsed_bboxes]
-                        center_lat = sum(all_lats) / len(all_lats)
-                        center_lon = sum(all_lons) / len(all_lons)
+        if crawl_url and all_links:
+            st.divider()
+            st.header("Filter by area (optional)")
+            
+            group_by_location = st.toggle("Draw a box on the map to filter images")
+            
+            if group_by_location:
+                st.info("Draw an area around the activation you need. Filtering reduces the number of scenes sent to mapping software.")
+                items_with_bbox = [m for m in oam_items if parse_bbox_2d(m.get("bbox"))]
+                if items_with_bbox:
+                    parsed_bboxes = [parse_bbox_2d(m["bbox"]) for m in items_with_bbox]
+                    all_lons = [b[0] for b in parsed_bboxes] + [b[2] for b in parsed_bboxes]
+                    all_lats = [b[1] for b in parsed_bboxes] + [b[3] for b in parsed_bboxes]
+                    center_lat = sum(all_lats) / len(all_lats)
+                    center_lon = sum(all_lons) / len(all_lons)
 
-                        fmap = folium.Map(location=[center_lat, center_lon], zoom_start=6)
-                        for m in items_with_bbox:
-                            b = parse_bbox_2d(m["bbox"])
-                            folium.Rectangle(
-                                bounds=[[b[1], b[0]], [b[3], b[2]]],
-                                color="blue", weight=1, fill=True, fill_opacity=0.1,
-                                tooltip=m["title"],
-                            ).add_to(fmap)
-
-                        Draw(
-                            export=False,
-                            draw_options={"rectangle": True, "polygon": False, "circle": False, "marker": False},
-                            edit_options={"edit": False},
+                    fmap = folium.Map(location=[center_lat, center_lon], zoom_start=6)
+                    for m in items_with_bbox:
+                        b = parse_bbox_2d(m["bbox"])
+                        folium.Rectangle(
+                            bounds=[[b[1], b[0]], [b[3], b[2]]],
+                            color="blue", weight=1, fill=True, fill_opacity=0.1,
+                            tooltip=m["title"],
                         ).add_to(fmap)
 
-                        map_data = st_folium(fmap, height=380, width=700, key="location_filter_map")
-                        
-                        if map_data and map_data.get("last_active_drawing"):
-                            st.session_state["pending_drawing"] = map_data["last_active_drawing"]
+                    Draw(
+                        export=False,
+                        draw_options={"rectangle": True, "polygon": False, "circle": False, "marker": False},
+                        edit_options={"edit": False},
+                    ).add_to(fmap)
 
-                        col_apply, col_clear = st.columns([1, 1])
-                        with col_apply:
-                            if st.button("Apply filter"):
-                                drawn = st.session_state.get("pending_drawing")
-                                if drawn and drawn.get("geometry", {}).get("type") == "Polygon":
-                                    coords = drawn["geometry"]["coordinates"][0]
-                                    lons = [c[0] for c in coords]
-                                    lats = [c[1] for c in coords]
-                                    st.session_state["location_filter_bbox"] = (min(lons), min(lats), max(lons), max(lats))
-                        with col_clear:
-                            if st.button("Clear filter"):
-                                st.session_state["location_filter_bbox"] = None
-                                st.session_state["pending_drawing"] = None
+                    map_data = st_folium(fmap, height=380, width=700, key="location_filter_map")
+                    
+                    if map_data and map_data.get("last_active_drawing"):
+                        st.session_state["pending_drawing"] = map_data["last_active_drawing"]
 
-                active_filter = st.session_state["location_filter_bbox"] if group_by_location else None
-                if active_filter:
-                    filtered_item_urls = {
-                        m["item_url"] for m in oam_items if bbox_intersects(m.get("bbox"), active_filter)
-                    }
-                    display_tiff_links = [e for e in tiff_links if e["item_url"] in filtered_item_urls]
-                    display_oam_items = [m for m in oam_items if m["item_url"] in filtered_item_urls]
-                else:
-                    display_tiff_links = tiff_links
-                    display_oam_items = oam_items
+                    col_apply, col_clear = st.columns([1, 1])
+                    with col_apply:
+                        if st.button("Apply filter"):
+                            drawn = st.session_state.get("pending_drawing")
+                            if drawn and drawn.get("geometry", {}).get("type") == "Polygon":
+                                coords = drawn["geometry"]["coordinates"][0]
+                                lons = [c[0] for c in coords]
+                                lats = [c[1] for c in coords]
+                                st.session_state["location_filter_bbox"] = (min(lons), min(lats), max(lons), max(lats))
+                    with col_clear:
+                        if st.button("Clear filter"):
+                            st.session_state["location_filter_bbox"] = None
+                            st.session_state["pending_drawing"] = None
 
-                # Dashboard Metrics
-                pre_items = [e for e in display_tiff_links if get_item_phase(e) == "PRE"]
-                post_items = [e for e in display_tiff_links if get_item_phase(e) == "POST"]
-                all_items = [e for e in display_tiff_links]
+            active_filter = st.session_state["location_filter_bbox"] if group_by_location else None
+            if active_filter:
+                filtered_item_urls = {
+                    m["item_url"] for m in oam_items if bbox_intersects(m.get("bbox"), active_filter)
+                }
+                display_tiff_links = [e for e in tiff_links if e["item_url"] in filtered_item_urls]
+                display_oam_items = [m for m in oam_items if m["item_url"] in filtered_item_urls]
+            else:
+                display_tiff_links = tiff_links
+                display_oam_items = oam_items
+
+            # Dashboard Metrics
+            pre_items = [e for e in display_tiff_links if get_item_phase(e) == "PRE"]
+            post_items = [e for e in display_tiff_links if get_item_phase(e) == "POST"]
+            all_items = [e for e in display_tiff_links]
+            
+            st.subheader("Imagery found")
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                ui.metric_card(
+                    "Total usable images",
+                    len(display_tiff_links),
+                    description="GeoTIFF scenes available for the selected area",
+                    variant="dashboard",
+                    key="metric-total-usable-images",
+                )
+            with m2:
+                ui.metric_card(
+                    "PRE-event",
+                    len(pre_items),
+                    description="Before-disaster baseline scenes",
+                    variant="dashboard",
+                    key="metric-pre-event",
+                )
+            with m3:
+                ui.metric_card(
+                    "POST-event",
+                    len(post_items),
+                    description="After-disaster scenes",
+                    variant="dashboard",
+                    key="metric-post-event",
+                )
+
+            st.divider()
+            st.header("Prepare a handoff")
+
+            tab_tm, tab_oam, tab_adv = st.tabs([
+                "Tasking Manager / JOSM", 
+                "OpenAerialMap", 
+                "Advanced data"
+            ])
+
+            with tab_tm:
+                st.info("These links let HOT Tasking Manager, iD Editor, and JOSM stream selected imagery as a tracing background.")
                 
-                st.subheader("Imagery found")
-                m1, m2, m3 = st.columns(3)
-                with m1:
-                    ui.metric_card(
-                        "Total usable images",
-                        len(display_tiff_links),
-                        description="GeoTIFF scenes available for the selected area",
-                        variant="dashboard",
-                        key="metric-total-usable-images",
-                    )
-                with m2:
-                    ui.metric_card(
-                        "PRE-event",
-                        len(pre_items),
-                        description="Before-disaster baseline scenes",
-                        variant="dashboard",
-                        key="metric-pre-event",
-                    )
-                with m3:
-                    ui.metric_card(
-                        "POST-event",
-                        len(post_items),
-                        description="After-disaster scenes",
-                        variant="dashboard",
-                        key="metric-post-event",
-                    )
-
-                st.divider()
-                st.header("Prepare a handoff")
-
-                tab_tm, tab_oam, tab_adv = st.tabs([
-                    "Tasking Manager / JOSM", 
-                    "OpenAerialMap", 
-                    "Advanced data"
+                mosaic_tab_pre, mosaic_tab_post, mosaic_tab_all = st.tabs([
+                    f"PRE-Event Baseline ({len(pre_items)} scenes)", 
+                    f"POST-Event Damage ({len(post_items)} scenes)", 
+                    f"ALL Scenes ({len(all_items)} scenes)"
                 ])
 
-                with tab_tm:
-                    st.info("These links let HOT Tasking Manager, iD Editor, and JOSM stream selected imagery as a tracing background.")
+                def render_instant_tms_workflow(items: list[dict], category_name: str):
+                    if not items:
+                        st.info(f"No {category_name} images found in this selection.")
+                        return
                     
-                    mosaic_tab_pre, mosaic_tab_post, mosaic_tab_all = st.tabs([
-                        f"PRE-Event Baseline ({len(pre_items)} scenes)", 
-                        f"POST-Event Damage ({len(post_items)} scenes)", 
-                        f"ALL Scenes ({len(all_items)} scenes)"
-                    ])
-
-                    def render_instant_tms_workflow(items: list[dict], category_name: str):
-                        if not items:
-                            st.info(f"No {category_name} images found in this selection.")
-                            return
+                    ids = [item["provider_item_id"] for item in items if item.get("provider_item_id")]
+                    if not ids:
+                        st.warning("Could not extract STAC Item IDs for the selected scenes.")
+                        return
                         
-                        ids = [item["provider_item_id"] for item in items if item.get("provider_item_id")]
-                        if not ids:
-                            st.warning("Could not extract STAC Item IDs for the selected scenes.")
-                            return
+                    ids_str = ",".join(ids)
+
+                    tm_url = f"https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
+                    st.markdown("**1. For Tasking Manager & iD Editor:**")
+                    st.caption("Copy this URL and paste it directly into the 'Custom Imagery' field.")
+                    st.code(tm_url, language="text")
+
+                    josm_url = f"tms:https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{zoom}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
+                    st.markdown("**2. For JOSM Desktop Software:**")
+                    st.caption("Go to Imagery > Imagery Preferences > + TMS, and paste this URL.")
+                    st.code(josm_url, language="text")
+                    
+                    with st.expander("Advanced: View the exact image IDs in this layer"):
+                        st.markdown("The images will render in this exact order (top ID renders in front).")
+                        for idx, img_id in enumerate(ids, 1):
+                            st.markdown(f"`{idx}. {img_id}`")
+
+                with mosaic_tab_pre:
+                    render_instant_tms_workflow(pre_items, "PRE")
+                with mosaic_tab_post:
+                    render_instant_tms_workflow(post_items, "POST")
+                with mosaic_tab_all:
+                    render_instant_tms_workflow(all_items, "ALL")
+
+            with tab_oam:
+                st.info("Check for an existing image before preparing a handoff. Duplicate footprints make the imagery catalog harder to use.")
+                st.markdown("**Ready to upload?** Use the prefilled OAM v2 handoff for each selected scene. The source GeoTIFF stays at its public URL; OAM fetches it server-side.")
+
+                if display_oam_items:
+                    if st.button("Check OAM v2 for Duplicates"):
+                        st.session_state["oam_duplicates"] = {}
+                        progress_bar = st.progress(0, text="Checking v2 STAC database...")
+                        total = len(display_oam_items)
+                        for i, meta in enumerate(display_oam_items):
+                            result = check_oam_duplicate(meta)
+                            st.session_state["oam_duplicates"][meta["item_url"]] = result
+                            if result.get("exists") and result.get("link"):
+                                meta["oam_existing_link"] = result["link"]
+                            progress_bar.progress((i + 1) / total)
+                            time.sleep(0.10)
+                        progress_bar.empty()
+                        st.success("Verification complete! Check the results below.")
+
+                    for meta in display_oam_items:
+                        dup_info = st.session_state.get("oam_duplicates", {}).get(meta["item_url"])
+                        if dup_info:
+                            meta["oam_duplicate_status"] = dup_info.get("status_str", "Not checked")
+                            if dup_info.get("link"):
+                                meta["oam_existing_link"] = dup_info["link"]
+                        else:
+                            meta["oam_duplicate_status"] = "Not checked"
+
+                    for idx, meta in enumerate(display_oam_items, 1):
+                        status_label = meta["oam_duplicate_status"]
+                        with st.expander(f"{idx}. {meta['title']} | Status: [{status_label}]"):
+                            if meta.get("thumbnail_url"):
+                                st.image(meta["thumbnail_url"], caption="STAC thumbnail asset")
+                            if "Already exists" in status_label:
+                                st.warning(status_label)
+                                if meta.get("oam_existing_link"):
+                                    if "Exact ID" in status_label:
+                                        st.link_button("View exact image (HOTOSM Viewer)", meta["oam_existing_link"])
+                                    else:
+                                        st.link_button("View overlapping image (HOTOSM Viewer)", meta["oam_existing_link"])
+                            elif "Not found" in status_label:
+                                st.success(f"{status_label} – Ready for submission.")
                             
-                        ids_str = ",".join(ids)
+                            if meta.get("image_source_url"):
+                                prefill = build_oam_prefill_url(
+                                    title=meta["title"],
+                                    source_url=meta["image_source_url"],
+                                    provider=meta.get("provider") or None,
+                                    platform=meta.get("platform") or None,
+                                    sensor=meta.get("sensor") or None,
+                                    license=meta.get("stac_license_reference") or None,
+                                    acquisition_start=meta.get("raw_datetime") or None,
+                                    acquisition_end=meta.get("raw_datetime") or None,
+                                    external_id=meta.get("provider_item_id") or None,
+                                    external_url=meta.get("item_url") or None,
+                                )
+                                st.link_button("Prepare OAM v2 upload", prefill)
+                                st.caption("Review the prefilled metadata in OAM before submitting. The source URL is passed to OAM; this app does not download the imagery.")
 
-                        tm_url = f"https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
-                        st.markdown("**1. For Tasking Manager & iD Editor:**")
-                        st.caption("Copy this URL and paste it directly into the 'Custom Imagery' field.")
-                        st.code(tm_url, language="text")
+                            fields = [
+                                ("Title", meta["title"]),
+                                ("Platform", meta["platform"]),
+                                ("Sensor", meta["sensor"]),
+                                ("Date start", meta["date_start"]),
+                                ("Image source (Url)", meta["image_source_url"]),
+                                ("Provider", meta["provider"]),
+                                ("Duplicate Status", meta["oam_duplicate_status"]),
+                            ]
+                            for label, value in fields:
+                                col_lbl, col_val = st.columns([1, 3])
+                                with col_lbl:
+                                    st.markdown(f"**{label}**")
+                                with col_val:
+                                    st.code(value, language=None)
 
-                        josm_url = f"tms:https://api.imagery.hotosm.org/raster/collections/vantor-opendata/tiles/WebMercatorQuad/{{zoom}}/{{x}}/{{y}}?ids={ids_str}&assets=visual&nodata=0"
-                        st.markdown("**2. For JOSM Desktop Software:**")
-                        st.caption("Go to Imagery > Imagery Preferences > + TMS, and paste this URL.")
-                        st.code(josm_url, language="text")
-                        
-                        with st.expander("Advanced: View the exact image IDs in this layer"):
-                            st.markdown("The images will render in this exact order (top ID renders in front).")
-                            for idx, img_id in enumerate(ids, 1):
-                                st.markdown(f"`{idx}. {img_id}`")
+                    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    export_csv_filename = f"{event_prefix}_audit_log_{timestamp_str}.csv"
 
-                    with mosaic_tab_pre:
-                        render_instant_tms_workflow(pre_items, "PRE")
-                    with mosaic_tab_post:
-                        render_instant_tms_workflow(post_items, "POST")
-                    with mosaic_tab_all:
-                        render_instant_tms_workflow(all_items, "ALL")
+                    csv_buffer = io.StringIO()
+                    writer = csv.DictWriter(csv_buffer, fieldnames=OAM_FIELDNAMES, extrasaction="ignore")
+                    writer.writeheader()
+                    for meta in display_oam_items:
+                        writer.writerow(meta)
 
-                with tab_oam:
-                    st.info("Check for an existing image before preparing a handoff. Duplicate footprints make the imagery catalog harder to use.")
-                    st.markdown("**Ready to upload?** Use the prefilled OAM v2 handoff for each selected scene. The source GeoTIFF stays at its public URL; OAM fetches it server-side.")
+                    st.markdown("---")
+                    st.download_button(
+                        label="Download audit log / checklist (CSV)",
+                        data=csv_buffer.getvalue(),
+                        file_name=export_csv_filename,
+                        mime="text/csv",
+                        help="Use this CSV as a checklist to keep track of which URLs you have manually uploaded to OAM v2."
+                    )
 
-                    if display_oam_items:
-                        if st.button("Check OAM v2 for Duplicates"):
-                            st.session_state["oam_duplicates"] = {}
-                            progress_bar = st.progress(0, text="Checking v2 STAC database...")
-                            total = len(display_oam_items)
-                            for i, meta in enumerate(display_oam_items):
-                                result = check_oam_duplicate(meta)
-                                st.session_state["oam_duplicates"][meta["item_url"]] = result
-                                if result.get("exists") and result.get("link"):
-                                    meta["oam_existing_link"] = result["link"]
-                                progress_bar.progress((i + 1) / total)
-                                time.sleep(0.10)
-                            progress_bar.empty()
-                            st.success("Verification complete! Check the results below.")
+                else:
+                    st.info("No OAM-compatible STAC items are available for the current selection.")
 
-                        for meta in display_oam_items:
-                            dup_info = st.session_state.get("oam_duplicates", {}).get(meta["item_url"])
-                            if dup_info:
-                                meta["oam_duplicate_status"] = dup_info.get("status_str", "Not checked")
-                                if dup_info.get("link"):
-                                    meta["oam_existing_link"] = dup_info["link"]
-                            else:
-                                meta["oam_duplicate_status"] = "Not checked"
+            with tab_adv:
+                st.caption("Raw Data Endpoints for Developers")
+                for idx, link in enumerate(all_links, 1):
+                    st.markdown(f"{idx}. [{link}]({link})")
 
-                        for idx, meta in enumerate(display_oam_items, 1):
-                            status_label = meta["oam_duplicate_status"]
-                            with st.expander(f"{idx}. {meta['title']} | Status: [{status_label}]"):
-                                if meta.get("thumbnail_url"):
-                                    st.image(meta["thumbnail_url"], caption="STAC thumbnail asset")
-                                if "Already exists" in status_label:
-                                    st.warning(status_label)
-                                    if meta.get("oam_existing_link"):
-                                        if "Exact ID" in status_label:
-                                            st.link_button("View exact image (HOTOSM Viewer)", meta["oam_existing_link"])
-                                        else:
-                                            st.link_button("View overlapping image (HOTOSM Viewer)", meta["oam_existing_link"])
-                                elif "Not found" in status_label:
-                                    st.success(f"{status_label} – Ready for submission.")
-                                
-                                if meta.get("image_source_url"):
-                                    prefill = build_oam_prefill_url(
-                                        title=meta["title"],
-                                        source_url=meta["image_source_url"],
-                                        provider=meta.get("provider") or None,
-                                        platform=meta.get("platform") or None,
-                                        sensor=meta.get("sensor") or None,
-                                        license=meta.get("stac_license_reference") or None,
-                                        acquisition_start=meta.get("raw_datetime") or None,
-                                        acquisition_end=meta.get("raw_datetime") or None,
-                                        external_id=meta.get("provider_item_id") or None,
-                                        external_url=meta.get("item_url") or None,
-                                    )
-                                    st.link_button("Prepare OAM v2 upload", prefill)
-                                    st.caption("Review the prefilled metadata in OAM before submitting. The source URL is passed to OAM; this app does not download the imagery.")
-
-                                fields = [
-                                    ("Title", meta["title"]),
-                                    ("Platform", meta["platform"]),
-                                    ("Sensor", meta["sensor"]),
-                                    ("Date start", meta["date_start"]),
-                                    ("Image source (Url)", meta["image_source_url"]),
-                                    ("Provider", meta["provider"]),
-                                    ("Duplicate Status", meta["oam_duplicate_status"]),
-                                ]
-                                for label, value in fields:
-                                    col_lbl, col_val = st.columns([1, 3])
-                                    with col_lbl:
-                                        st.markdown(f"**{label}**")
-                                    with col_val:
-                                        st.code(value, language=None)
-
-                        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        export_csv_filename = f"{event_prefix}_audit_log_{timestamp_str}.csv"
-
-                        csv_buffer = io.StringIO()
-                        writer = csv.DictWriter(csv_buffer, fieldnames=OAM_FIELDNAMES, extrasaction="ignore")
-                        writer.writeheader()
-                        for meta in display_oam_items:
-                            writer.writerow(meta)
-
-                        st.markdown("---")
-                        st.download_button(
-                            label="Download audit log / checklist (CSV)",
-                            data=csv_buffer.getvalue(),
-                            file_name=export_csv_filename,
-                            mime="text/csv",
-                            help="Use this CSV as a checklist to keep track of which URLs you have manually uploaded to OAM v2."
-                        )
-
-                    else:
-                        st.info("No OAM-compatible STAC items are available for the current selection.")
-
-                with tab_adv:
-                    st.caption("Raw Data Endpoints for Developers")
-                    for idx, link in enumerate(all_links, 1):
-                        st.markdown(f"{idx}. [{link}]({link})")
-
-            elif crawl_url:
-                st.info("No STAC imagery links were found. Check the catalog URL or try another STAC item.")
+        elif crawl_url:
+            st.info("No STAC imagery links were found. Check the catalog URL or try another STAC item.")
