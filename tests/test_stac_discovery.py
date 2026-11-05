@@ -144,7 +144,11 @@ class STACDiscoveryTests(unittest.TestCase):
             crawl_state=state,
             data={
                 "type": "FeatureCollection",
-                "features": [{"id": "one"}, {"id": "two"}, {"id": "three"}],
+                "features": [
+                    {"id": "one", "links": [{"rel": "self", "href": "/items/one"}]},
+                    {"id": "two", "links": [{"rel": "self", "href": "/items/two"}]},
+                    {"id": "three", "links": [{"rel": "self", "href": "/items/three"}]},
+                ],
                 "links": [{"rel": "next", "href": "/search?page=2", "method": "GET"}],
             },
         )
