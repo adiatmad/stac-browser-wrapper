@@ -85,6 +85,9 @@ def exercise_stac_discovery(page) -> None:
 
     earth_search_url = "https://earth-search.aws.element84.com/v1/"
     catalog_url.fill(earth_search_url)
+    # Streamlit's text_input commits edits on Enter; fill() alone leaves the
+    # previous catalog active, so the API capability check still sees OAM.
+    catalog_url.press("Enter")
     expect(catalog_url).to_have_value(earth_search_url, timeout=30_000)
     wait_for_streamlit_idle(page)
     page_text = page.locator("body").inner_text()
