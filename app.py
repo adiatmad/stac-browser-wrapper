@@ -989,7 +989,7 @@ def build_stac_search_url(
             raise ValueError("BBox coordinates must use WGS84 longitude/latitude ranges.")
         if west == east or south >= north:
             raise ValueError("BBox must have non-zero width and height; south must be less than north.")
-        params["bbox"] = ",".join(str(value) for value in coordinates)
+        params["bbox"] = ",".join(value.strip() for value in bbox_value.split(","))
 
     datetime_value = str(datetime_range or "").strip()
     if datetime_value:
