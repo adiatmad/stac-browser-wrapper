@@ -1660,7 +1660,7 @@ elif active_workflow == "Discover & map":
     st.info("Enter a STAC catalog or item URL to discover imagery that can be filtered and handed off to mapping tools.")
 
     if source_mode == "STAC catalog / item":
-    with st.expander("Find a public STAC catalog", expanded=False):
+        with st.expander("Find a public STAC catalog", expanded=False):
             st.caption(
                 "Search the public catalog directory maintained by OpenGeo. "
                 "Catalog metadata is discoverable here; individual assets may still have separate access or license terms."
