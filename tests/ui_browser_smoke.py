@@ -74,7 +74,7 @@ def exercise_stac_discovery(page) -> None:
         name="Search this STAC API with filters instead of browsing catalog links",
     )
     api_search_toggle.scroll_into_view_if_needed()
-    page.mouse.wheel(0, 350)
+    page.mouse.wheel(0, -350)
     api_search_toggle.check()
     page.get_by_text("does not advertise an HTTPS GET search link", exact=False).wait_for(
         timeout=30_000
