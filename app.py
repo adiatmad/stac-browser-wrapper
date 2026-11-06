@@ -834,48 +834,173 @@ def generate_oam_map_link(oam_id: str) -> str:
         return ""
     return f"https://api.imagery.hotosm.org/map/?href=https://api.imagery.hotosm.org/stac/collections/openaerialmap/items/{oam_id}"
 
+def _fetch_oam_duplicate_features(
+    params: dict, headers: dict, max_pages: int = 10
+) -> tuple[list[dict], int, bool]:
+    """Fetch OAM search pages, following only same-endpoint HTTPS GET links.
+
+    Returns (features, pages_checked, incomplete). The ten-page cap bounds
+    external requests while making an incomplete search explicit to callers.
+    """
+    api_parts = urlsplit(HOTOSM_STAC_ITEMS_API)
+    current_url = HOTOSM_STAC_ITEMS_API
+    current_params = params
+    visited: set[str] = set()
+    features: list[dict] = []
+    page_limit = max(1, min(int(max_pages), 10))
+
+    for page_number in range(1, page_limit + 1):
+        parsed_url = urlsplit(current_url)
+        if (
+            parsed_url.scheme != "https"
+            or parsed_url.netloc.lower() != api_parts.netloc.lower()
+            or parsed_url.path.rstrip("/") != api_parts.path.rstrip("/")
+        ):
+            raise ValueError("OAM pagination link left the trusted items endpoint.")
+        if current_url in visited:
+            raise ValueError("OAM pagination returned a repeated next link.")
+        visited.add(current_url)
+
+        response = requests.get(
+            current_url,
+            params=current_params,
+            headers=headers,
+            timeout=10,
+            allow_redirects=False,
+        )
+        if response.status_code != 200:
+            raise ValueError(f"OAM API returned HTTP {response.status_code}.")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("OAM API returned an invalid page.")
+        page_features = payload.get("features", [])
+        if not isinstance(page_features, list):
+            raise ValueError("OAM API returned an invalid features list.")
+        remaining_items = 1000 - len(features)
+        features.extend(
+            item for item in page_features[:remaining_items] if isinstance(item, dict)
+        )
+        if len(page_features) > remaining_items:
+            return features, page_number, True
+
+        links = payload.get("links") or []
+        if not isinstance(links, list):
+            raise ValueError("OAM API returned invalid pagination links.")
+        next_link = next(
+            (
+                link for link in links
+                if isinstance(link, dict) and link.get("rel") == "next"
+            ),
+            None,
+        )
+        if not next_link:
+            return features, page_number, False
+        if len(features) >= 1000:
+            return features, page_number, True
+
+        method = str(next_link.get("method") or "GET").upper()
+        if method != "GET":
+            raise ValueError("OAM pagination advertised an unsupported non-GET link.")
+        href = next_link.get("href")
+        if not isinstance(href, str) or not href.strip():
+            raise ValueError("OAM pagination advertised an empty next link.")
+        next_url = urljoin(current_url, href.strip())
+        next_parts = urlsplit(next_url)
+        if (
+            next_parts.scheme != "https"
+            or next_parts.netloc.lower() != api_parts.netloc.lower()
+            or next_parts.path.rstrip("/") != api_parts.path.rstrip("/")
+        ):
+            raise ValueError("OAM pagination link left the trusted items endpoint.")
+
+        if page_number == page_limit:
+            return features, page_number, True
+        current_url = next_url
+        current_params = None
+
+    return features, page_limit, False
+
+
 def check_oam_duplicate(meta: dict) -> dict:
-    provider_item_id = meta.get("provider_item_id", "").strip()
+    provider_item_id = str(meta.get("provider_item_id") or "").strip()
     stac_bbox = parse_bbox_2d(meta.get("bbox"))
     stac_geom = meta.get("geometry")
     headers = {"User-Agent": "STAC-to-OAM-Tool/8.1"}
 
-    if stac_bbox:
-        bbox_str = ",".join(str(v) for v in stac_bbox)
-        params = {"bbox": bbox_str, "limit": 100}
-        try:
-            resp = requests.get(HOTOSM_STAC_ITEMS_API, params=params, headers=headers, timeout=10)
-            if resp.status_code == 200:
-                features = resp.json().get("features", [])
-                
-                for item in features:
-                    stac_id = item.get("id", "")
-                    title = item.get("properties", {}).get("title", "")
-                    
-                    if provider_item_id and (provider_item_id.lower() in title.lower() or provider_item_id.lower() == stac_id.lower()):
-                        return {
-                            "exists": True,
-                            "oam_id": stac_id,
-                            "status_str": "Already exists (Exact ID match)",
-                            "link": generate_oam_map_link(stac_id),
-                            "error": None
-                        }
-                    
-                    oam_bbox = item.get("bbox")
-                    if oam_bbox:
-                        iou = calculate_exact_iou(stac_geom, oam_bbox)
-                        if iou > 0.70:
-                            return {
-                                "exists": True,
-                                "oam_id": stac_id,
-                                "status_str": f"Already exists (Spatial Overlap {int(iou * 100)}%)",
-                                "link": generate_oam_map_link(stac_id),
-                                "error": None
-                            }
-        except Exception as e:
-            return {"exists": False, "oam_id": None, "status_str": f"Check Failed: {e}", "link": "", "error": str(e)}
+    if not stac_bbox:
+        return {
+            "exists": False,
+            "oam_id": None,
+            "status_str": "Unable to check: missing or invalid imagery bounding box",
+            "link": "",
+            "error": "Missing or invalid imagery bounding box",
+            "pages_checked": 0,
+        }
 
-    return {"exists": False, "oam_id": None, "status_str": "Not found in v2 database", "link": "", "error": None}
+    bbox_str = ",".join(str(v) for v in stac_bbox)
+    params = {"bbox": bbox_str, "limit": 100}
+    try:
+        features, pages_checked, incomplete = _fetch_oam_duplicate_features(
+            params, headers
+        )
+        for item in features:
+            stac_id = str(item.get("id") or "")
+
+            # STAC IDs are identifiers, not title fragments. Exact equality
+            # avoids matching unrelated items whose titles merely contain an ID.
+            if provider_item_id and stac_id == provider_item_id:
+                return {
+                    "exists": True,
+                    "oam_id": stac_id,
+                    "status_str": "Already exists (Exact ID match)",
+                    "link": generate_oam_map_link(stac_id),
+                    "error": None,
+                    "pages_checked": pages_checked,
+                }
+
+            oam_bbox = item.get("bbox")
+            if oam_bbox:
+                iou = calculate_exact_iou(stac_geom, oam_bbox)
+                if iou > 0.70:
+                    return {
+                        "exists": True,
+                        "oam_id": stac_id,
+                        "status_str": f"Already exists (Spatial Overlap {int(iou * 100)}%)",
+                        "link": generate_oam_map_link(stac_id),
+                        "error": None,
+                        "pages_checked": pages_checked,
+                    }
+
+        if incomplete:
+            return {
+                "exists": False,
+                "oam_id": None,
+                "status_str": (
+                    f"Inconclusive: OAM search reached the {pages_checked}-page "
+                    "safety limit; additional results may exist"
+                ),
+                "link": "",
+                "error": None,
+                "pages_checked": pages_checked,
+            }
+
+        return {
+            "exists": False,
+            "oam_id": None,
+            "status_str": "Not found in v2 database (all returned pages checked)",
+            "link": "",
+            "error": None,
+            "pages_checked": pages_checked,
+        }
+    except Exception as e:
+        return {
+            "exists": False,
+            "oam_id": None,
+            "status_str": f"Check Failed: {e}",
+            "link": "",
+            "error": str(e),
+            "pages_checked": 0,
+        }
 
 
 
@@ -2063,6 +2188,10 @@ elif active_workflow == "Discover & map":
                                         st.link_button("View overlapping image (HOTOSM Viewer)", meta["oam_existing_link"])
                             elif "Not found" in status_label:
                                 st.success(f"{status_label} – Ready for submission.")
+                            elif "Inconclusive" in status_label or "Unable to check" in status_label:
+                                st.warning(status_label)
+                            elif "Check Failed" in status_label:
+                                st.error(status_label)
                             
                             if meta.get("image_source_url"):
                                 prefill = build_oam_prefill_url(
