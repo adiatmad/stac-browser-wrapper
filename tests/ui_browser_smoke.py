@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import time
@@ -7,7 +8,7 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +41,82 @@ def wait_for_streamlit_idle(page) -> None:
     stop_button = page.get_by_role("button", name="Stop")
     if stop_button.count():
         stop_button.wait_for(state="detached", timeout=60_000)
+
+
+
+def exercise_stac_discovery(page) -> None:
+    page.locator("summary").filter(has_text="Find a public STAC catalog").click()
+    page.get_by_role("button", name="Load public catalog directory").click()
+    catalog_search = page.get_by_role("textbox", name="Search catalog name or description")
+    catalog_search.wait_for(timeout=60_000)
+    catalog_search.fill("OpenAerialMap Example")
+
+    catalog_select = page.get_by_role("combobox", name="Public catalogs")
+    catalog_select.click()
+    page.get_by_role("option", name="OpenAerialMap Example").click()
+    page.get_by_role("button", name="Use selected catalog").click()
+    wait_for_streamlit_idle(page)
+
+    catalog_url = page.get_by_role("textbox", name="Data Catalog URL:")
+    expect(catalog_url).to_have_value(
+        "https://raw.githubusercontent.com/m-mohr/oam-example/main/catalog.json",
+        timeout=30_000,
+    )
+
+    page.get_by_role("tab", name="OpenAerialMap").click()
+    page.locator("summary").filter(has_text="Grytdalen Tjern").click()
+    expect(page.get_by_text("STAC thumbnail asset", exact=True)).to_have_count(
+        2, timeout=30_000
+    )
+
+    api_search_toggle = page.get_by_role(
+        "checkbox",
+        name="Search this STAC API with filters instead of browsing catalog links",
+    )
+    api_search_label = page.locator("label").filter(
+        has_text="Search this STAC API with filters instead of browsing catalog links"
+    )
+    api_search_label.scroll_into_view_if_needed()
+    api_search_label.click()
+    expect(api_search_toggle).to_be_checked(timeout=10_000)
+    page.get_by_text("does not advertise an HTTPS GET search link", exact=False).wait_for(
+        timeout=30_000
+    )
+
+    earth_search_url = "https://earth-search.aws.element84.com/v1/"
+    catalog_url.fill(earth_search_url)
+    # Streamlit's text_input commits edits on Enter; fill() alone leaves the
+    # previous catalog active, so the API capability check still sees OAM.
+    catalog_url.press("Enter")
+    expect(catalog_url).to_have_value(earth_search_url, timeout=30_000)
+    wait_for_streamlit_idle(page)
+    page_text = page.locator("body").inner_text()
+    print("STAC API root browser state:", page_text[-1800:])
+    page.get_by_text("STAC Item Search endpoint:", exact=False).wait_for(timeout=30_000)
+
+    bbox = page.get_by_role("textbox", name="Area bbox (optional, WGS84)")
+    date_range = page.get_by_role("textbox", name="Date or date interval (optional)")
+    collections = page.get_by_role("textbox", name="Collection IDs (optional, comma-separated)")
+    limit = page.get_by_role("spinbutton", name="Maximum items per page")
+
+    bbox.fill("not-a-bbox")
+    date_range.fill("2099-01-01/2099-01-02")
+    collections.fill("sentinel-2-l2a")
+    limit.fill("1")
+    page.get_by_role("button", name="Search STAC API").click()
+    page.get_by_text("BBox must contain four comma-separated numbers", exact=False).wait_for(
+        timeout=15_000
+    )
+
+    bbox.fill("106.6,-6.5,107.1,-6.0")
+    page.get_by_role("button", name="Search STAC API").click()
+    wait_for_streamlit_idle(page)
+    page.get_by_text("Search URL:", exact=False).wait_for(timeout=30_000)
+    page.get_by_text("No STAC imagery links were found", exact=False).wait_for(
+        timeout=15_000
+    )
+    server_log = (ROOT / "streamlit-ui-smoke.log").read_text(encoding="utf-8")
+    assert "Failed to fetch https://earth-search.aws.element84.com/v1/search" not in server_log
 
 
 def assert_no_horizontal_overflow(page, label: str) -> None:
@@ -92,6 +169,7 @@ def main() -> None:
                     path=str(ARTIFACTS / "workbench-discover-desktop.png"),
                     full_page=True,
                 )
+                exercise_stac_discovery(page)
 
                 local_tab = page.get_by_role("tab", name="Local preparation")
                 local_tab.click()
