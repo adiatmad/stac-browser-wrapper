@@ -138,3 +138,27 @@ Use the upstream Agency Agents catalog as an optional set of task-specific persp
 - Security reviews must be proportional to the change and evidence-based. QA screenshots may prove appearance, but behavior needs assertions, recorded outcomes, or reproducible steps too.
 - Keep the single-file hosted app contract, local-first imagery processing, preservation of local data, and explicit user-controlled OAM publication unchanged.
 - Treat automated CI, live Streamlit startup, browser acceptance, external-service behavior, and real-imagery results as distinct evidence categories. Never infer one from another.
+
+
+## Repository Agent Skills
+
+Repository-scoped Agent Skills live in `.agents/skills/<skill-name>/SKILL.md`. Use the relevant skill when its task trigger matches; do not load or run the entire collection for every change.
+
+- **TDD** — `.agents/skills/tdd/SKILL.md` for test-first feature work and regression fixes.
+- **Bug diagnosis** — `.agents/skills/diagnosing-bugs/SKILL.md` for reproducible failures, incorrect results, and performance regressions.
+- **Domain modelling** — `.agents/skills/domain-modeling/SKILL.md` when clarifying product terminology or recording a durable domain decision; use `GLOSSARY.md`.
+- **Codebase design** — `.agents/skills/codebase-design/SKILL.md` when changing module interfaces, seams, or architecture.
+- **Code review** — `.agents/skills/code-review/SKILL.md` for branch/PR review and pre-delivery checks.
+- **Technical research** — `.agents/skills/research/SKILL.md` when implementation depends on current STAC, HOTOSM/OAM, GDAL, Streamlit, or provider contracts.
+- **PR writing** — `.agents/skills/pr/SKILL.md` when preparing a pull request for review.
+- **Agent documentation** — `.agents/skills/writing-for-agents/SKILL.md` when editing this file or repository skills.
+
+These skills are adapted from [Matt Pocock's Skills for Real Engineers](https://github.com/mattpocock/skills). They are task-specific aids, not a replacement for this file.
+
+### Precedence and execution
+
+- This `AGENTS.md`, the relevant Spec Kit feature spec, and verified project behavior remain authoritative when a skill conflicts with them.
+- Keep Spec Kit as the source of requirements/tasks; do not create a parallel ticket/spec process from these skills.
+- Use the existing Python unittest command and CI workflow. Skills do not imply that subagents, background agents, browser tooling, or any particular installer are available.
+- Preserve the single-file hosted Streamlit app contract, local-first raster processing, verified-CRS requirement, and explicit user-controlled OAM upload/publication.
+- Load only the relevant skill and any supporting material it explicitly references. Do not add runtime dependencies merely to install or invoke a skill.
