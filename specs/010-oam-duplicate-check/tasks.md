@@ -7,7 +7,7 @@
 - [x] Keep spatial-overlap checks active across all fetched pages.
 - [x] Distinguish complete no-match, inconclusive page-cap, missing bbox, and request failure states in the UI.
 - [x] Add focused regression tests for later-page ID/spatial matches, false-positive title matches, pagination limits, unsafe links, and missing bbox.
-- [ ] Run focused and full unit tests; inspect failures.
-- [ ] Verify GitHub Actions unit, dependency compatibility, and browser smoke jobs.
-- [ ] Inspect the complete diff and confirm OAM/local-raster safeguards are unchanged.
+- [x] Run focused and full unit tests; all tests passed in CI.
+- [x] Verify GitHub Actions unit, dependency compatibility, and browser smoke jobs; all three passed in run 42134690444.
+- [x] Inspect the complete diff and confirm OAM/local-raster safeguards are unchanged.
 - [ ] Verify the live HOTOSM API pagination shape separately; do not infer live-service behavior from mocks.

@@ -1,6 +1,6 @@
 # Feature Specification: Complete and Safe OAM Duplicate Checks
 
-**Status:** Implemented; awaiting CI verification
+**Status:** Implemented; CI verified (live HOTOSM pagination remains unverified)
 **Branch:** `feature/oam-duplicate-pagination`
 
 ## Problem
@@ -37,3 +37,10 @@ Before preparing an OAM handoff, a mapper receives a reliable duplicate-check re
 
 - Unit tests: pending CI.
 - Live HOTOSM pagination behavior: not claimed until checked against the live API.
+
+
+## Verification
+
+- GitHub Actions run [42134690444](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/42134690444) passed the unit, dependency-compatibility, and desktop/mobile browser-smoke jobs on commit `5930154006500d5ee4bebe3211ca63d8749fa533`.
+- The regression suite covers exact ID matching, false-positive title matching, later-page exact/spatial matches, pagination caps, unsafe links, and missing bbox.
+- Live HOTOSM pagination behavior remains unverified; mocked tests do not establish the live service's pagination contract.
