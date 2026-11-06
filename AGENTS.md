@@ -138,3 +138,11 @@ Use the upstream Agency Agents catalog as an optional set of task-specific persp
 - Security reviews must be proportional to the change and evidence-based. QA screenshots may prove appearance, but behavior needs assertions, recorded outcomes, or reproducible steps too.
 - Keep the single-file hosted app contract, local-first imagery processing, preservation of local data, and explicit user-controlled OAM publication unchanged.
 - Treat automated CI, live Streamlit startup, browser acceptance, external-service behavior, and real-imagery results as distinct evidence categories. Never infer one from another.
+
+
+## Additional installed engineering references
+
+- **Matt Pocock Skills**: use the composable engineering skills for TDD, diagnosis, codebase design, and two-axis code review when the task warrants them. Source and setup: https://github.com/mattpocock/skills
+- **UI/UX Pro Max**: this is a Streamlit UI repository, so install and use its complete generated skill/data when making meaningful interface changes: `npx ui-ux-pro-max-cli init --ai codex`. Source: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+- **Anti-Slop core**: the full rulebook is vendored at `/antislop.md`; use it alongside the concise delivery gate above. Keep project-specific design direction in project documentation rather than treating Anti-Slop as a visual style guide.
+- Keep this repository's existing Spec Kit workflow and constitution authoritative; do not create a second spec process or overwrite existing project decisions.
