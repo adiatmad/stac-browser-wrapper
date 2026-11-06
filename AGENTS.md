@@ -152,3 +152,10 @@ Apply Ponytail's smallest-complete-change rule alongside this repository's exist
 - Mark deliberate shortcuts as `shortcut: <the limit>, <when to upgrade>`.
 
 Use the full Ponytail Skill at `.agents/skills/ponytail/SKILL.md` when the active agent supports project Skills. Existing Spec Kit, Anti-Slop, Superpowers/Loop & Graph, and repository-specific rules remain in force.
+
+
+## Additional installed engineering Skills
+
+Selected Matt Pocock engineering Skills live under `.agents/skills/`. Load the relevant Skill when its task matches: `grill-with-docs` / `grilling` for design clarification; `to-spec` and `to-tickets` for substantial work; `implement` and `tdd` for test-first implementation; `code-review` for review; `domain-modeling` and `codebase-design` for domain language and module design; `retro` for post-work environment improvements.
+
+These Skills complement, not replace, this repository's instructions, accepted specifications, and safety constraints. Preserve Spec Kit, Anti-Slop, Loop & Graph Engineering, and Ponytail. Where guidance overlaps, follow explicit repository constraints and the accepted spec. Ponytail's smallest-complete-change principle must never weaken tests, security, validation, or required verification. Invoke user-directed workflows only when requested; apply model-invoked guidance when relevant. If the active coding agent cannot load a Skill, follow its installed instructions where available and state the limitation rather than claiming it was invoked.
