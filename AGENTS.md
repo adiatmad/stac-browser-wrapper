@@ -138,3 +138,17 @@ Use the upstream Agency Agents catalog as an optional set of task-specific persp
 - Security reviews must be proportional to the change and evidence-based. QA screenshots may prove appearance, but behavior needs assertions, recorded outcomes, or reproducible steps too.
 - Keep the single-file hosted app contract, local-first imagery processing, preservation of local data, and explicit user-controlled OAM publication unchanged.
 - Treat automated CI, live Streamlit startup, browser acceptance, external-service behavior, and real-imagery results as distinct evidence categories. Never infer one from another.
+
+
+## Ponytail minimal-change discipline
+
+Apply Ponytail's smallest-complete-change rule alongside this repository's existing workflow; it does not replace or weaken the repository-specific requirements above.
+
+- Read the affected code and trace callers, tests, fixtures, configuration, and exports before editing.
+- Prefer existing project helpers and patterns, then standard-library or native platform features, then already-installed dependencies. Add no abstraction, dependency, option, or configuration without a demonstrated need.
+- Make the smallest complete change, not merely the smallest diff: preserve required validation, security, accessibility, error handling, and data-loss protections.
+- Add a focused test or assert-based self-check for new non-trivial logic and bug fixes. Never weaken a valid test to make a change pass.
+- Review the complete diff and verify the relevant behavior. Report what was not checked and any remaining risk.
+- Mark deliberate shortcuts as `shortcut: <the limit>, <when to upgrade>`.
+
+Use the full Ponytail Skill at `.agents/skills/ponytail/SKILL.md` when the active agent supports project Skills. Existing Spec Kit, Anti-Slop, Superpowers/Loop & Graph, and repository-specific rules remain in force.
