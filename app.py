@@ -1609,30 +1609,33 @@ elif active_workflow == "Discover & map":
     )
 
     if source_mode == "Public S3 bucket folder":
-        st.caption("For public S3 Open Data buckets. The bucket-browser #prefix is read in your browser; imagery is never downloaded by this app.")
-        s3_browser_url = st.text_input(
-            "S3 bucket-browser URL",
-            value="http://st-vvhr-opendata.s3-website.us-west-2.amazonaws.com/#prefix=disasters%2FFlood%20in%20Nepal%20(Disasters%20Charter%20Activation%201052)%2C%202026%2F",
-            key="s3_browser_url",
-        )
-        exclude_masks = st.checkbox("Exclude MASKS/LINEAGE folders", value=True, key="exclude_s3_artifacts")
+        with st.container(border=True):
+            st.subheader("Public S3 bucket folder")
+            st.caption("For public S3 Open Data buckets. The bucket-browser #prefix is read in your browser; imagery is never downloaded by this app.")
+            s3_browser_url = st.text_input(
+                "S3 bucket-browser URL",
+                value="http://st-vvhr-opendata.s3-website.us-west-2.amazonaws.com/#prefix=disasters%2FFlood%20in%20Nepal%20(Disasters%20Charter%20Activation%201052)%2C%202026%2F",
+                key="s3_browser_url",
+            )
+            exclude_masks = st.checkbox("Exclude MASKS/LINEAGE folders", value=True, key="exclude_s3_artifacts")
 
-        bucket, region, prefix = parse_s3_browser_url(s3_browser_url)
-        if not bucket:
-            st.error("Use an AWS S3 website browser URL with a #prefix= fragment.")
-        elif st.button("List public imagery objects", type="primary"):
-            try:
-                with st.spinner(f"Listing s3://{bucket}/{prefix} ..."):
-                    objects = list_public_s3_objects(bucket, region, prefix)
-                source_kind = classify_s3_source_objects(objects, exclude_masks_lineage=exclude_masks)
-                tiffs = filter_tiff_objects(objects, exclude_masks_lineage=exclude_masks)
-                st.session_state["remote_s3_results"] = {
-                    "bucket": bucket, "region": region, "prefix": prefix, "objects": tiffs,
-                    "all_objects": objects, "source_kind": source_kind,
-                    "browser_url": s3_browser_url,
-                }
-            except Exception as exc:
-                st.error(f"Could not list the public S3 prefix: {exc}")
+            bucket, region, prefix = parse_s3_browser_url(s3_browser_url)
+            if not bucket:
+                st.error("Use an AWS S3 website browser URL with a #prefix= fragment.")
+            elif st.button("List public imagery objects", type="primary"):
+                try:
+                    with st.spinner(f"Listing s3://{bucket}/{prefix} ..."):
+                        objects = list_public_s3_objects(bucket, region, prefix)
+                    source_kind = classify_s3_source_objects(objects, exclude_masks_lineage=exclude_masks)
+                    tiffs = filter_tiff_objects(objects, exclude_masks_lineage=exclude_masks)
+                    st.session_state["remote_s3_results"] = {
+                        "bucket": bucket, "region": region, "prefix": prefix, "objects": tiffs,
+                        "all_objects": objects, "source_kind": source_kind,
+                        "browser_url": s3_browser_url,
+                    }
+                except Exception as exc:
+                    st.error(f"Could not list the public S3 prefix: {exc}")
+
 
         s3_results = st.session_state.get("remote_s3_results")
         if s3_results and s3_results.get("objects"):
@@ -1728,54 +1731,53 @@ elif active_workflow == "Discover & map":
             else:
                 st.info("No GeoTIFFs matched this prefix and filter.")
 
-    st.header("Find event imagery")
-    st.info("Enter a STAC catalog or item URL to discover imagery that can be filtered and handed off to mapping tools.")
-
     if source_mode == "STAC catalog / item":
-        if "stac_catalog_url" not in st.session_state:
-            st.session_state["stac_catalog_url"] = DEFAULT_SAMPLE_URL
-        with st.expander("Find a public STAC catalog", expanded=False):
-            st.caption(
-                "Search the public catalog directory maintained by OpenGeo. "
-                "Catalog metadata is discoverable here; individual assets may still have separate access or license terms."
+        with st.container(border=True):
+            st.subheader("STAC catalog or item")
+            st.caption("Choose a public catalog from the directory, or paste a STAC catalog or item URL.")
+            if "stac_catalog_url" not in st.session_state:
+                st.session_state["stac_catalog_url"] = DEFAULT_SAMPLE_URL
+            with st.expander("Find a public STAC catalog", expanded=False):
+                st.caption(
+                    "Search the public catalog directory maintained by OpenGeo. "
+                    "Catalog metadata is discoverable here; individual assets may still have separate access or license terms."
+                )
+                if st.button("Load public catalog directory", key="load-public-stac-catalogs"):
+                    try:
+                        with st.spinner("Loading public STAC catalog directory..."):
+                            st.session_state["public_stac_catalogs"] = load_public_stac_catalogs()
+                        st.session_state.pop("public_stac_catalogs_error", None)
+                    except Exception as exc:
+                        st.session_state["public_stac_catalogs_error"] = str(exc)
+                catalog_error = st.session_state.get("public_stac_catalogs_error")
+                if catalog_error:
+                    st.warning(f"Could not load the OpenGeo catalog directory: {catalog_error}. You can still paste a STAC URL below.")
+                catalogs = st.session_state.get("public_stac_catalogs", [])
+                if catalogs:
+                    catalog_query = st.text_input("Search catalog name or description", key="stac_catalog_query")
+                    matching_catalogs = filter_public_stac_catalogs(catalogs, catalog_query)
+                    if matching_catalogs:
+                        selected_index = st.selectbox(
+                            "Public catalogs",
+                            options=list(range(len(matching_catalogs))),
+                            format_func=lambda index: matching_catalogs[index]["title"],
+                            key="stac_catalog_selection",
+                        )
+                        selected_catalog = matching_catalogs[selected_index]
+                        st.caption(selected_catalog["summary"] or "No summary is provided in the registry.")
+                        registry_updated = selected_catalog.get("updated")
+                        if registry_updated:
+                            st.caption(f"Registry record updated: {registry_updated[:10]} · "
+                                       f"{'STAC API' if selected_catalog['is_api'] else 'Static STAC catalog'}")
+                        if st.button("Use selected catalog", key="use-selected-stac-catalog"):
+                            st.session_state["stac_catalog_url"] = selected_catalog["url"]
+                    else:
+                        st.info("No public catalog matches that search.")
+        
+            root_url_input = st.text_input(
+                "Data Catalog URL:",
+                key="stac_catalog_url",
             )
-            if st.button("Load public catalog directory", key="load-public-stac-catalogs"):
-                try:
-                    with st.spinner("Loading public STAC catalog directory..."):
-                        st.session_state["public_stac_catalogs"] = load_public_stac_catalogs()
-                    st.session_state.pop("public_stac_catalogs_error", None)
-                except Exception as exc:
-                    st.session_state["public_stac_catalogs_error"] = str(exc)
-            catalog_error = st.session_state.get("public_stac_catalogs_error")
-            if catalog_error:
-                st.warning(f"Could not load the OpenGeo catalog directory: {catalog_error}. You can still paste a STAC URL below.")
-            catalogs = st.session_state.get("public_stac_catalogs", [])
-            if catalogs:
-                catalog_query = st.text_input("Search catalog name or description", key="stac_catalog_query")
-                matching_catalogs = filter_public_stac_catalogs(catalogs, catalog_query)
-                if matching_catalogs:
-                    selected_index = st.selectbox(
-                        "Public catalogs",
-                        options=list(range(len(matching_catalogs))),
-                        format_func=lambda index: matching_catalogs[index]["title"],
-                        key="stac_catalog_selection",
-                    )
-                    selected_catalog = matching_catalogs[selected_index]
-                    st.caption(selected_catalog["summary"] or "No summary is provided in the registry.")
-                    registry_updated = selected_catalog.get("updated")
-                    if registry_updated:
-                        st.caption(f"Registry record updated: {registry_updated[:10]} · "
-                                   f"{'STAC API' if selected_catalog['is_api'] else 'Static STAC catalog'}")
-                    if st.button("Use selected catalog", key="use-selected-stac-catalog"):
-                        st.session_state["stac_catalog_url"] = selected_catalog["url"]
-                else:
-                    st.info("No public catalog matches that search.")
-    
-    root_url_input = st.text_input(
-        "Data Catalog URL:",
-        disabled=source_mode != "STAC catalog / item",
-        key="stac_catalog_url",
-    )
 
     if source_mode == "STAC catalog / item" and root_url_input:
         real_url = extract_real_stac_url(root_url_input)
