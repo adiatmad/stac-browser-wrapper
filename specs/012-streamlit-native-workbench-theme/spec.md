@@ -1,6 +1,6 @@
 # Feature Specification: Native Streamlit Workbench Theme
 
-**Status:** Implemented; automated verification pending  
+**Status:** Implemented; CI and desktop/mobile smoke verified  
 **Branch:** `feature/streamlit-workbench-design`
 
 ## Problem
