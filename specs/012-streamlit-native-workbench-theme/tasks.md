@@ -6,7 +6,7 @@
 - [x] Add a native high-contrast light theme using Streamlit configuration only.
 - [x] Add and run a focused automated test for theme configuration and contrast (included in the passing unit job).
 - [x] Run the full unit suite (GitHub Actions unit job passed).
-- [ ] Complete desktop/mobile Playwright smoke checks (still running at the time of this update).
-- [ ] Inspect desktop/mobile screenshots and verify text, controls, focus, and layout remain readable.
-- [ ] Review the complete diff and update verification evidence.
-- [ ] Keep the change unmerged pending user review.
+- [x] Complete desktop/mobile Playwright smoke checks (GitHub Actions run 44471158793 passed all three jobs).
+- [x] Inspect desktop/mobile screenshots from artifact `streamlit-ui-smoke-evidence`: text and controls remain readable, tab keyboard focus is visible, and layouts reflow at 390px/375px without horizontal page overflow.
+- [x] Review the complete diff; only native theme config, contract test, and decision/checklist documentation changed. `app.py`, dependencies, workflow logic, and widget keys are untouched.
+- [x] Keep the change in a draft PR, unmerged pending user review.
