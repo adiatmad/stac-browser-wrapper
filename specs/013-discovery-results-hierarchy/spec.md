@@ -1,6 +1,6 @@
 # Feature Specification: Discovery Results Hierarchy
 
-**Status:** Planned  
+**Status:** Implemented; CI and desktop/mobile smoke verification pending  
 **Branch:** `feature/streamlit-workbench-design`
 
 ## Problem
