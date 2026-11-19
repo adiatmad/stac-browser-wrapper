@@ -1,5 +1,7 @@
 # Frontend Migration Plan
 
+> **Paused (2026-11-19):** The current direction is to improve the existing Streamlit application only. Do not start the Vite/GitHub Pages workstream unless the user explicitly reopens that decision. See `specs/012-streamlit-native-workbench-theme/spec.md`.
+
 ## Strategy
 Migrate by user workflow, not by line-by-line Python translation. Keep the current Streamlit app, Python utilities, and optional archive proxy operational during frontend migration. The frontend is additive until the MVP is verified.
 
