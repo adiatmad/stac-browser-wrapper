@@ -219,3 +219,55 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertNotIn("S3 bucket-browser URL", stac_branch)
         self.assertNotIn("disabled=source_mode", source)
         self.assertNotIn('st.header("Find event imagery")', source)
+
+
+    def test_native_streamlit_theme_has_accessible_contrast_without_css(self):
+        import tomllib
+
+        config = tomllib.loads(
+            (ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8")
+        )
+        theme = config["theme"]
+
+        def relative_luminance(hex_color):
+            channels = [
+                int(hex_color[index:index + 2], 16) / 255
+                for index in (1, 3, 5)
+            ]
+            linear = [
+                value / 12.92 if value <= 0.04045
+                else ((value + 0.055) / 1.055) ** 2.4
+                for value in channels
+            ]
+            return (
+                0.2126 * linear[0]
+                + 0.7152 * linear[1]
+                + 0.0722 * linear[2]
+            )
+
+        def contrast_ratio(first, second):
+            lighter, darker = sorted(
+                (relative_luminance(first), relative_luminance(second)),
+                reverse=True,
+            )
+            return (lighter + 0.05) / (darker + 0.05)
+
+        self.assertEqual(theme["base"], "light")
+        self.assertEqual(theme["backgroundColor"], "#FFFFFF")
+        self.assertEqual(theme["secondaryBackgroundColor"], "#F1F5F9")
+        self.assertGreaterEqual(
+            contrast_ratio(theme["textColor"], theme["backgroundColor"]),
+            4.5,
+        )
+        self.assertGreaterEqual(
+            contrast_ratio(theme["textColor"], theme["secondaryBackgroundColor"]),
+            4.5,
+        )
+        self.assertGreaterEqual(
+            contrast_ratio(theme["primaryColor"], theme["backgroundColor"]),
+            4.5,
+        )
+
+        app_source = (ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertNotIn("<style>", app_source)
+        self.assertNotIn("@import url(", app_source)
