@@ -2066,36 +2066,53 @@ elif active_workflow == "Discover & map":
             pre_items = [e for e in display_tiff_links if get_item_phase(e) == "PRE"]
             post_items = [e for e in display_tiff_links if get_item_phase(e) == "POST"]
             all_items = [e for e in display_tiff_links]
-            
-            st.subheader("Imagery found")
-            m1, m2, m3 = st.columns(3)
-            with m1:
-                ui.metric_card(
-                    "Total usable images",
-                    len(display_tiff_links),
-                    description="GeoTIFF scenes available for the selected area",
-                    variant="dashboard",
-                    key="metric-total-usable-images",
+
+            with st.container(border=True):
+                st.subheader("Discovery results")
+                st.caption(
+                    "The first count is every STAC item inspected; usable GeoTIFFs are the subset "
+                    "that can be sent to the mapping or OAM workflows. Counts reflect the current area filter."
                 )
-            with m2:
-                ui.metric_card(
-                    "PRE-event",
-                    len(pre_items),
-                    description="Before-disaster baseline scenes",
-                    variant="dashboard",
-                    key="metric-pre-event",
-                )
-            with m3:
-                ui.metric_card(
-                    "POST-event",
-                    len(post_items),
-                    description="After-disaster scenes",
-                    variant="dashboard",
-                    key="metric-post-event",
-                )
+                m1, m2, m3, m4 = st.columns(4)
+                with m1:
+                    ui.metric_card(
+                        "STAC items inspected",
+                        len(display_oam_items),
+                        description="Items discovered in the selected area",
+                        variant="dashboard",
+                        key="metric-stac-items-inspected",
+                    )
+                with m2:
+                    ui.metric_card(
+                        "Usable GeoTIFFs",
+                        len(display_tiff_links),
+                        description="Scenes with a usable GeoTIFF asset",
+                        variant="dashboard",
+                        key="metric-total-usable-images",
+                    )
+                with m3:
+                    ui.metric_card(
+                        "PRE-event",
+                        len(pre_items),
+                        description="Before-disaster baseline scenes",
+                        variant="dashboard",
+                        key="metric-pre-event",
+                    )
+                with m4:
+                    ui.metric_card(
+                        "POST-event",
+                        len(post_items),
+                        description="After-disaster scenes",
+                        variant="dashboard",
+                        key="metric-post-event",
+                    )
 
             st.divider()
-            st.header("Prepare a handoff")
+            st.header("Choose the next workflow")
+            st.caption(
+                "Use the mapping layer for tracing, the OAM workflow to check for duplicates and prepare uploads, "
+                "or advanced data to inspect source endpoints."
+            )
 
             tab_tm, tab_oam, tab_adv = st.tabs([
                 "Tasking Manager / JOSM", 
