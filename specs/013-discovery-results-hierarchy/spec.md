@@ -1,6 +1,6 @@
 # Feature Specification: Discovery Results Hierarchy
 
-**Status:** Implemented; CI and desktop/mobile smoke verification pending  
+**Status:** Implemented; CI and screenshot review verified  
 **Branch:** `feature/streamlit-workbench-design`
 
 ## Problem
@@ -17,7 +17,7 @@ After discovery and optional area filtering, users can quickly understand:
 
 ## Acceptance criteria
 
-1. The result summary distinguishes total discovered STAC items from usable GeoTIFF scenes.
+1. The result summary distinguishes total discovered STAC item count from usable GeoTIFF scenes.
 2. PRE-event and POST-event counts remain visible and retain their existing classification logic.
 3. All four metrics use the same filtered selection when an area filter is active.
 4. Existing handoff tabs, widget keys, session-state contracts, discovery limits, network behavior, and OAM publication safeguards remain unchanged.
@@ -31,3 +31,9 @@ After discovery and optional area filtering, users can quickly understand:
 - Changing map drawing or spatial-filter behavior.
 - Reworking Tasking Manager/JOSM, OAM, or advanced-data handoffs.
 - Adding features or changing publication behavior.
+
+## Verification evidence
+
+- CI run [44481082311](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/44481082311): unit, desktop/mobile browser smoke, and dependency compatibility all passed.
+- Desktop and mobile screenshots inspected from artifact [14508557450](https://github.com/adiatmad/stac-browser-wrapper/actions/runs/44481082311/artifacts/14508557450).
+- Screenshot inspection confirmed existing Streamlit styling remains in place; no app-wide theme inversion was introduced.
