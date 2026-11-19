@@ -2067,13 +2067,9 @@ elif active_workflow == "Discover & map":
             post_items = [e for e in display_tiff_links if get_item_phase(e) == "POST"]
             all_items = [e for e in display_tiff_links]
 
-            with st.container(border=True):
-                st.subheader("Discovery results")
-                st.caption(
-                    "The first count is every STAC item inspected; usable GeoTIFFs are the subset "
-                    "that can be sent to the mapping or OAM workflows. Counts reflect the current area filter."
-                )
-                m1, m2, m3, m4 = st.columns(4)
+            st.subheader("Discovery results")
+            st.caption("STAC items found vs. usable GeoTIFF scenes (current area filter).")
+            m1, m2, m3, m4 = st.columns(4)
                 with m1:
                     ui.metric_card(
                         "STAC items inspected",
@@ -2108,11 +2104,7 @@ elif active_workflow == "Discover & map":
                     )
 
             st.divider()
-            st.header("Choose the next workflow")
-            st.caption(
-                "Use the mapping layer for tracing, the OAM workflow to check for duplicates and prepare uploads, "
-                "or advanced data to inspect source endpoints."
-            )
+            st.header("Prepare a handoff")
 
             tab_tm, tab_oam, tab_adv = st.tabs([
                 "Tasking Manager / JOSM", 
