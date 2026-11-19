@@ -2070,7 +2070,7 @@ elif active_workflow == "Discover & map":
             st.subheader("Discovery results")
             st.caption("STAC items found vs. usable GeoTIFF scenes (current area filter).")
             m1, m2, m3, m4 = st.columns(4)
-                with m1:
+            with m1:
                     ui.metric_card(
                         "STAC items inspected",
                         len(display_oam_items),
@@ -2078,7 +2078,7 @@ elif active_workflow == "Discover & map":
                         variant="dashboard",
                         key="metric-stac-items-inspected",
                     )
-                with m2:
+            with m2:
                     ui.metric_card(
                         "Usable GeoTIFFs",
                         len(display_tiff_links),
@@ -2086,7 +2086,7 @@ elif active_workflow == "Discover & map":
                         variant="dashboard",
                         key="metric-total-usable-images",
                     )
-                with m3:
+            with m3:
                     ui.metric_card(
                         "PRE-event",
                         len(pre_items),
@@ -2094,7 +2094,7 @@ elif active_workflow == "Discover & map":
                         variant="dashboard",
                         key="metric-pre-event",
                     )
-                with m4:
+            with m4:
                     ui.metric_card(
                         "POST-event",
                         len(post_items),
