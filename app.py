@@ -2066,18 +2066,27 @@ elif active_workflow == "Discover & map":
             pre_items = [e for e in display_tiff_links if get_item_phase(e) == "PRE"]
             post_items = [e for e in display_tiff_links if get_item_phase(e) == "POST"]
             all_items = [e for e in display_tiff_links]
-            
-            st.subheader("Imagery found")
-            m1, m2, m3 = st.columns(3)
+
+            st.subheader("Discovery results")
+            st.caption("STAC items found vs. usable GeoTIFF scenes (current area filter).")
+            m1, m2, m3, m4 = st.columns(4)
             with m1:
                 ui.metric_card(
-                    "Total usable images",
+                    "STAC items inspected",
+                    len(display_oam_items),
+                    description="Items discovered in the selected area",
+                    variant="dashboard",
+                    key="metric-stac-items-inspected",
+                )
+            with m2:
+                ui.metric_card(
+                    "Usable GeoTIFFs",
                     len(display_tiff_links),
-                    description="GeoTIFF scenes available for the selected area",
+                    description="Scenes with a usable GeoTIFF asset",
                     variant="dashboard",
                     key="metric-total-usable-images",
                 )
-            with m2:
+            with m3:
                 ui.metric_card(
                     "PRE-event",
                     len(pre_items),
@@ -2085,7 +2094,7 @@ elif active_workflow == "Discover & map":
                     variant="dashboard",
                     key="metric-pre-event",
                 )
-            with m3:
+            with m4:
                 ui.metric_card(
                     "POST-event",
                     len(post_items),

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>STAC Browser CORS Feasibility Probe</title>
+<style>
+:root{font:15px/1.5 system-ui,sans-serif;color:#17212b;background:#f4f6f8}body{max-width:1000px;margin:32px auto;padding:0 18px}h1{font-size:1.6rem}.note{background:#fff;border:1px solid #d8e0e7;border-radius:10px;padding:14px;margin:16px 0}.probe{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:10px 0}input{min-width:0;padding:10px;border:1px solid #b9c5d0;border-radius:6px}button{padding:10px 14px;border:0;border-radius:6px;background:#155eef;color:white;cursor:pointer}button:disabled{opacity:.5}table{width:100%;border-collapse:collapse;background:white}td,th{padding:10px;border-bottom:1px solid #e5eaf0;text-align:left;vertical-align:top;overflow-wrap:anywhere}.status{font-weight:650}.ok{color:#087443}.bad{color:#b42318}.muted{color:#596775;font-size:.9rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101828;color:#e6edf5;padding:12px;border-radius:8px;max-height:280px;overflow:auto}#images img{max-width:120px;max-height:80px;object-fit:contain;margin:4px}
+</style>
+</head>
+<body>
+<h1>STAC Browser CORS Feasibility Probe</h1>
+<p>Run this page from an HTTP(S) origin, ideally the eventual GitHub Pages origin. It tests browser access, not merely whether a URL responds from a server.</p>
+<div class="note"><strong>Important:</strong> A failed browser fetch may be CORS, network, DNS, or TLS. The browser intentionally hides some details. A successful JSON fetch proves only that endpoint and operation work from this origin. Image display is tested separately because <code>&lt;img&gt;</code> can load cross-origin images without granting JavaScript access to their bytes.</div>
+<h2>Built-in repository sources</h2>
+<div id="probes"></div>
+<h2>Additional endpoint</h2>
+<div class="probe"><input id="custom" type="url" placeholder="https://example.org/stac/..." aria-label="Additional endpoint URL"><button id="add">Add endpoint</button></div>
+<p><button id="run">Run all tests</button> <button id="export" disabled>Download results JSON</button></p>
+<table><thead><tr><th>Source / operation</th><th>Result</th><th>Details</th></tr></thead><tbody id="results"><tr><td colspan="3" class="muted">No tests run yet.</td></tr></tbody></table>
+<h2>Image loading checks</h2><div id="images" class="note muted">Images will appear here if the tested STAC Item exposes thumbnail assets.</div>
+<h2>Raw result</h2><pre id="raw">Waiting for tests.</pre>
+<script>
+const defaults=[
+ {name:"OpenGeo catalog registry",url:"https://raw.githubusercontent.com/opengeos/geospatial-data-catalogs/master/stac_catalogs.json",kind:"json"},
+ {name:"Sample STAC collection (Vantor)",url:"https://browser.moregeo.it/external/vantor-opendata.s3.amazonaws.com/events/Indonesia-Earthquakes-Aug-2026/collection.json",kind:"json"},
+ {name:"HOT OAM STAC Items (limit=1)",url:"https://api.imagery.hotosm.org/stac/collections/openaerialmap/items?limit=1",kind:"json"}
+];
+let tests=[...defaults],records=[];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function renderInputs(){document.querySelector("#probes").innerHTML=tests.map((t,i)=>'<div class="probe"><input data-url="'+i+'" value="'+esc(t.url)+'" aria-label="Endpoint '+(i+1)+'"><span class="muted">'+esc(t.name)+'</span></div>').join("")}
+function row(name,status,detail){records.push({name,status,detail,checked_at:new Date().toISOString()});}
+async function check(t){
+ const started=performance.now();
+ try{
+  const r=await fetch(t.url,{method:"GET",headers:{Accept:"application/json"},mode:"cors",credentials:"omit",cache:"no-store"});
+  const type=r.headers.get("content-type")||"";
+  const text=await r.text();
+  let parsed=null,parseError=null;
+  if(type.includes("json")||/^\s*[\[{]/.test(text)){try{parsed=JSON.parse(text)}catch(e){parseError=e.message}}
+  const detail="HTTP "+r.status+" "+r.statusText+"; content-type="+type+"; "+Math.round(performance.now()-started)+" ms"+(parseError?"; JSON parse error: "+parseError:"");
+  row(t.name,r.ok&&!parseError?"PASS":"HTTP_OR_PARSE_FAILURE",detail);
+  if(parsed&&Array.isArray(parsed.features)&&parsed.features[0]){
+   const item=parsed.features[0],assets=item.assets||{};
+   for(const [key,a] of Object.entries(assets)){
+    if(a&&a.href&&/(thumbnail|overview|visual)/i.test(key+" "+(a.roles||[]).join(" "))){
+     testImage(t.name+" / "+key,a.href);
+    }
+   }
+  }
+ }catch(e){row(t.name,"BROWSER_FETCH_FAILED",e.name+": "+e.message+" (CORS is one possible cause; inspect DevTools Console and Network tab).")}
+}
+function testImage(name,url){
+ const img=new Image();img.alt=name;
+ const p=new Promise(resolve=>{const timer=setTimeout(()=>resolve({name,url,status:"IMAGE_TIMEOUT"}),10000);img.onload=()=>{clearTimeout(timer);resolve({name,url,status:"IMAGE_LOAD_PASS",width:img.naturalWidth,height:img.naturalHeight})};img.onerror=()=>{clearTimeout(timer);resolve({name,url,status:"IMAGE_LOAD_FAILED"})}});
+ document.querySelector("#images").appendChild(img);img.src=url;
+ p.then(x=>{records.push(x);});
+}
+document.querySelector("#add").onclick=()=>{const v=document.querySelector("#custom").value.trim();if(!v)return;try{new URL(v);tests.push({name:"Custom endpoint "+(tests.length-defaults.length+1),url:v,kind:"json"});renderInputs();document.querySelector("#custom").value=""}catch{alert("Enter a valid absolute URL.")}};
+document.querySelector("#run").onclick=async()=>{
+ tests=tests.map((t,i)=>({...t,url:document.querySelector('[data-url="'+i+'"]').value.trim()}));
+ records=[];document.querySelector("#results").innerHTML="";document.querySelector("#images").innerHTML="";
+ document.querySelector("#raw").textContent="Running…";document.querySelector("#run").disabled=true;document.querySelector("#export").disabled=true;
+ for(const t of tests){await check(t)}
+ document.querySelector("#results").innerHTML=records.map(x=>'<tr><td>'+esc(x.name)+'</td><td class="status '+(x.status==="PASS"||x.status==="IMAGE_LOAD_PASS"?"ok":"bad")+'">'+esc(x.status)+'</td><td>'+esc(x.detail||x.url||"")+'</td></tr>').join("");
+ document.querySelector("#raw").textContent=JSON.stringify({origin:location.origin,user_agent:navigator.userAgent,results:records},null,2);
+ document.querySelector("#run").disabled=false;document.querySelector("#export").disabled=false;
+};
+document.querySelector("#export").onclick=()=>{const b=new Blob([JSON.stringify({origin:location.origin,results:records},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="stac-cors-probe-results.json";a.click();URL.revokeObjectURL(a.href)};
+renderInputs();
+</script>
+</body></html>
