@@ -2071,37 +2071,37 @@ elif active_workflow == "Discover & map":
             st.caption("STAC items found vs. usable GeoTIFF scenes (current area filter).")
             m1, m2, m3, m4 = st.columns(4)
             with m1:
-                    ui.metric_card(
-                        "STAC items inspected",
-                        len(display_oam_items),
-                        description="Items discovered in the selected area",
-                        variant="dashboard",
-                        key="metric-stac-items-inspected",
-                    )
+                ui.metric_card(
+                    "STAC items inspected",
+                    len(display_oam_items),
+                    description="Items discovered in the selected area",
+                    variant="dashboard",
+                    key="metric-stac-items-inspected",
+                )
             with m2:
-                    ui.metric_card(
-                        "Usable GeoTIFFs",
-                        len(display_tiff_links),
-                        description="Scenes with a usable GeoTIFF asset",
-                        variant="dashboard",
-                        key="metric-total-usable-images",
-                    )
+                ui.metric_card(
+                    "Usable GeoTIFFs",
+                    len(display_tiff_links),
+                    description="Scenes with a usable GeoTIFF asset",
+                    variant="dashboard",
+                    key="metric-total-usable-images",
+                )
             with m3:
-                    ui.metric_card(
-                        "PRE-event",
-                        len(pre_items),
-                        description="Before-disaster baseline scenes",
-                        variant="dashboard",
-                        key="metric-pre-event",
-                    )
+                ui.metric_card(
+                    "PRE-event",
+                    len(pre_items),
+                    description="Before-disaster baseline scenes",
+                    variant="dashboard",
+                    key="metric-pre-event",
+                )
             with m4:
-                    ui.metric_card(
-                        "POST-event",
-                        len(post_items),
-                        description="After-disaster scenes",
-                        variant="dashboard",
-                        key="metric-post-event",
-                    )
+                ui.metric_card(
+                    "POST-event",
+                    len(post_items),
+                    description="After-disaster scenes",
+                    variant="dashboard",
+                    key="metric-post-event",
+                )
 
             st.divider()
             st.header("Prepare a handoff")
