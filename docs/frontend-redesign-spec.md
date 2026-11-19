@@ -1,7 +1,9 @@
 # Frontend Redesign Specification
 
 ## Status
-Draft specification for review. No existing Python workflow is removed or replaced by this document.
+Superseded on 2026-11-19. The project will retain Streamlit and improve its existing interface; see `specs/012-streamlit-native-workbench-theme/spec.md`.
+
+The static GitHub Pages frontend proposal is paused. Its CORS findings remain useful evidence, not a requirement to continue the migration.
 
 ## Goal
 Redesign STAC Browser Wrapper into a polished static, browser-based imagery discovery and inspection workbench, deployable at GitHub Pages, while preserving the value and safeguards of the current Streamlit tool.
