@@ -1428,7 +1428,10 @@ def run_crawl(real_url: str, max_items: int | None = None, max_pages: int | None
 st.set_page_config(page_title="STAC Imagery Workbench", layout="wide", initial_sidebar_state="collapsed")
 
 st.title("STAC Imagery Workbench")
-st.markdown("Find imagery, inspect coverage, and prepare mapping or OpenAerialMap handoffs.")
+st.caption(
+    "Find public STAC or S3 imagery, inspect coverage, and prepare Tasking Manager, "
+    "JOSM, or OpenAerialMap handoffs."
+)
 
 active_workflow = ui.tabs(
     options=["Discover & map", "Local preparation"],
@@ -1450,12 +1453,18 @@ if active_workflow == "Local preparation":
         "that contains the imagery, in the QGIS / OSGeo4W Shell."
     )
 
-    source_path = st.text_input(
-        "1 · Local raster path",
-        placeholder=r"D:\orthobekasigeotiff.tif",
-        key="preflight_path",
-        help="Paste the full path. Quotes copied from File Explorer are accepted.",
-    )
+    with st.container(border=True):
+        st.subheader("1 · Local raster path")
+        source_path = st.text_input(
+            "Local raster path",
+            value=st.session_state.get("preflight_path_value", ""),
+            placeholder=r"D:\orthobekasigeotiff.tif",
+            key="preflight_path",
+            help="Paste the full path. Quotes copied from File Explorer are accepted.",
+        )
+        # Keep the path when the user switches workflows: widgets that are not
+        # rendered on the other tab lose their widget state on rerun.
+        st.session_state["preflight_path_value"] = source_path
     source_value = source_path.strip().strip('"')
     source_key = ntpath.normcase(ntpath.normpath(source_value)) if source_value else ""
 
@@ -1463,40 +1472,44 @@ if active_workflow == "Local preparation":
         st.error("Use the full absolute Windows path copied from File Explorer, for example D:\\orthomosaic.tif.")
     elif source_value:
         shell_commands = build_osgeo4w_commands(source_value)
-        st.markdown("**2 · Open OSGeo4W Shell and run these commands**")
-        st.caption(
-            "Open OSGeo4W Shell from the Windows Start menu. You do not need to start Streamlit locally; "
-            "the shell commands run directly against your local raster."
-        )
-        st.code(shell_commands["version"], language="shell")
-        st.code(shell_commands["cog_driver"], language="shell")
-        st.markdown("**Save the raw JSON report to a file:**")
-        st.code(shell_commands["report_file"], language="shell")
-        st.markdown("**Copy that file's contents to your clipboard:**")
-        st.code(shell_commands["copy_report"], language="shell")
-        st.caption(
-            "Return to Streamlit and paste directly into the report box. Do not paste through Word, "
-            "ChatGPT, or another editor. If the clipboard is empty, open the saved JSON in Notepad, "
-            "press Ctrl+A then Ctrl+C, and paste directly into Streamlit."
-        )
-        st.code(shell_commands["open_report"], language="shell")
-        st.markdown("**Check the actual file size (bytes):**")
-        st.code(shell_commands["size"], language="shell")
-        st.caption("Copy the number printed by the file-size command. It is needed to check the upstream default 100 GiB upload ceiling.")
+        with st.container(border=True):
+            st.subheader("2 · Run the GDAL report commands")
+            st.caption(
+                "Open OSGeo4W Shell from the Windows Start menu. You do not need to start Streamlit locally; "
+                "the shell commands run directly against your local raster."
+            )
+            st.markdown("**Check the GDAL version and COG driver**")
+            st.code(shell_commands["version"], language="shell")
+            st.code(shell_commands["cog_driver"], language="shell")
+            st.markdown("**Save the raw JSON report to a file**")
+            st.code(shell_commands["report_file"], language="shell")
+            st.markdown("**Copy that file's contents to your clipboard**")
+            st.code(shell_commands["copy_report"], language="shell")
+            st.caption(
+                "Return to Streamlit and paste directly into the report box. Do not paste through Word, "
+                "ChatGPT, or another editor. If the clipboard is empty, open the saved JSON in Notepad, "
+                "press Ctrl+A then Ctrl+C, and paste directly into Streamlit."
+            )
+            st.code(shell_commands["open_report"], language="shell")
+            st.markdown("**Check the actual file size (bytes)**")
+            st.code(shell_commands["size"], language="shell")
+            st.caption("Copy the number printed by the file-size command. It is needed to check the upstream default 100 GiB upload ceiling.")
 
-    with st.form("oam_gdal_report_form", clear_on_submit=False):
-        report_text = st.text_area(
-            "3 · Paste the complete gdalinfo -json report",
-            height=260,
-            placeholder="Paste the JSON copied by the OSGeo4W command, starting with { and ending with }.",
-            key="osgeo4w_gdalinfo_report",
-        )
-        file_size_text = st.text_input(
-            "File size in bytes",
-            placeholder="Paste the number printed by the PowerShell command",
-            key="osgeo4w_file_size_bytes",
-        )
-        analyse_report = st.form_submit_button("Analyse GDAL report", type="primary")
+    with st.container(border=True):
+        st.subheader("3 · Paste the GDAL report")
+        with st.form("oam_gdal_report_form", clear_on_submit=False):
+            report_text = st.text_area(
+                "Complete gdalinfo -json report",
+                height=260,
+                placeholder="Paste the JSON copied by the OSGeo4W command, starting with { and ending with }.",
+                key="osgeo4w_gdalinfo_report",
+            )
+            file_size_text = st.text_input(
+                "File size in bytes",
+                placeholder="Paste the number printed by the PowerShell command",
+                key="osgeo4w_file_size_bytes",
+            )
+            analyse_report = st.form_submit_button("Analyse GDAL report", type="primary")
 
     if analyse_report:
         st.session_state.pop("osgeo4w_oam_prefill", None)
@@ -1547,12 +1560,13 @@ if active_workflow == "Local preparation":
         decoded = _local_decoded_bytes(info)
         suggested_product = suggest_oam_product_type(info)
 
-        st.markdown("### 4 · What GDAL reports")
-        metric_cols = st.columns(4)
-        metric_cols[0].metric("Raster dimensions", f"{width:,} × {height:,}" if width and height else "Unknown")
-        metric_cols[1].metric("Bands", str(len(bands)))
-        metric_cols[2].metric("CRS", f"EPSG:{epsg}" if epsg else ("Declared" if crs.get("wkt") or crs.get("projjson") else "Missing"))
-        metric_cols[3].metric("File size", format_bytes(file_size_bytes) if file_size_bytes is not None else "Not supplied")
+        st.subheader("4 · What GDAL reports")
+        with st.container(border=True):
+            metric_cols = st.columns(4)
+            metric_cols[0].metric("Raster dimensions", f"{width:,} × {height:,}" if width and height else "Unknown")
+            metric_cols[1].metric("Bands", str(len(bands)))
+            metric_cols[2].metric("CRS", f"EPSG:{epsg}" if epsg else ("Declared" if crs.get("wkt") or crs.get("projjson") else "Missing"))
+            metric_cols[3].metric("File size", format_bytes(file_size_bytes) if file_size_bytes is not None else "Not supplied")
         if decoded is not None:
             st.caption(
                 f"Estimated decoded size: {decoded / 1_000_000_000:.2f} GB · "
@@ -1585,7 +1599,7 @@ if active_workflow == "Local preparation":
                 "imageStructure": image_structure,
             })
 
-        st.markdown("### 5 · Check against current OAM ingestion")
+        st.subheader("5 · Check against current OAM ingestion")
         st.caption(
             "The checks mirror the current HOTOSM uploader pipeline: GeoTIFF input, declared CRS, "
             "the default 100 GiB upload ceiling, and product-aware raster handling. The server still performs final validation."
@@ -1620,8 +1634,11 @@ if active_workflow == "Local preparation":
             checks_for_ui.append(check)
         for check_index, check in enumerate(checks_for_ui):
             variant = {"PASS": "default", "WARN": "secondary", "FAIL": "destructive", "INFO": "secondary"}[check["status"]]
-            ui.badge(check["status"], variant=variant, key=f"osgeo4w-oam-check-{check_index}")
-            st.markdown(f"**{check['name']}**  \n{check['detail']}")
+            badge_col, detail_col = st.columns([1, 5], vertical_alignment="center")
+            with badge_col:
+                ui.badge(check["status"], variant=variant, key=f"osgeo4w-oam-check-{check_index}")
+            with detail_col:
+                st.markdown(f"**{check['name']}**  \n{check['detail']}")
         hard_fails = [item for item in checks_for_ui if item["status"] == "FAIL"]
         size_verified = file_size_bytes is not None and (
             file_size_bytes <= OAM_MAX_UPLOAD_BYTES or size_override_confirmed
@@ -1643,7 +1660,7 @@ if active_workflow == "Local preparation":
         default_output = ntpath.join(ntpath.dirname(source_value), source_stem + "_oam_ready.tif")
         needs_conversion = driver != "GTIFF" or not crs_ok
         geotransform_ok = has_usable_geotransform(info)
-        st.markdown("### 6 · Local correction / preparation commands")
+        st.subheader("6 · Local correction / preparation commands")
         if not geotransform_ok:
             st.error(
                 "GDAL did not report a usable affine geotransform. Do not try to fix this by assigning an EPSG code: "
@@ -1706,7 +1723,7 @@ if active_workflow == "Local preparation":
                     except ValueError as exc:
                         st.error(str(exc))
 
-        st.markdown("### 7 · Open the OAM uploader")
+        st.subheader("7 · Open the OAM uploader")
         st.caption(
             "No separate metadata form is needed in this workbench. Open the official uploader directly; "
             "OAM will guide you through any information required for the upload."
@@ -2002,13 +2019,11 @@ elif active_workflow == "Discover & map":
                 )
 
         if crawl_url and all_links:
-            st.divider()
-            st.header("Filter by area (optional)")
-            
-            group_by_location = st.toggle("Draw a box on the map to filter images")
-            
-            if group_by_location:
-                st.info("Draw an area around the activation you need. Filtering reduces the number of scenes sent to mapping software.")
+            with st.expander(
+                "Filter by area (optional)",
+                expanded=st.session_state.get("location_filter_bbox") is not None,
+            ):
+                st.caption("Draw an area around the activation you need. Filtering reduces the number of scenes sent to mapping software.")
                 items_with_bbox = [m for m in oam_items if parse_bbox_2d(m.get("bbox"))]
                 if items_with_bbox:
                     parsed_bboxes = [parse_bbox_2d(m["bbox"]) for m in items_with_bbox]
@@ -2032,14 +2047,14 @@ elif active_workflow == "Discover & map":
                         edit_options={"edit": False},
                     ).add_to(fmap)
 
-                    map_data = st_folium(fmap, height=380, width=700, key="location_filter_map")
-                    
+                    map_data = st_folium(fmap, height=380, key="location_filter_map")
+
                     if map_data and map_data.get("last_active_drawing"):
                         st.session_state["pending_drawing"] = map_data["last_active_drawing"]
 
                     col_apply, col_clear = st.columns([1, 1])
                     with col_apply:
-                        if st.button("Apply filter"):
+                        if st.button("Apply filter", type="primary"):
                             drawn = st.session_state.get("pending_drawing")
                             if drawn and drawn.get("geometry", {}).get("type") == "Polygon":
                                 coords = drawn["geometry"]["coordinates"][0]
@@ -2050,8 +2065,10 @@ elif active_workflow == "Discover & map":
                         if st.button("Clear filter"):
                             st.session_state["location_filter_bbox"] = None
                             st.session_state["pending_drawing"] = None
+                else:
+                    st.info("No scenes in this result set report a bounding box, so the map filter is unavailable.")
 
-            active_filter = st.session_state["location_filter_bbox"] if group_by_location else None
+            active_filter = st.session_state.get("location_filter_bbox")
             if active_filter:
                 filtered_item_urls = {
                     m["item_url"] for m in oam_items if bbox_intersects(m.get("bbox"), active_filter)
@@ -2067,7 +2084,8 @@ elif active_workflow == "Discover & map":
             post_items = [e for e in display_tiff_links if get_item_phase(e) == "POST"]
             all_items = [e for e in display_tiff_links]
             
-            st.subheader("Imagery found")
+            st.divider()
+            st.header("Imagery found")
             m1, m2, m3 = st.columns(3)
             with m1:
                 ui.metric_card(
@@ -2151,7 +2169,7 @@ elif active_workflow == "Discover & map":
                 st.markdown("**Ready to upload?** Use the prefilled OAM v2 handoff for each selected scene. The source GeoTIFF stays at its public URL; OAM fetches it server-side.")
 
                 if display_oam_items:
-                    if st.button("Check OAM v2 for Duplicates"):
+                    if st.button("Check OAM v2 for Duplicates", type="primary"):
                         st.session_state["oam_duplicates"] = {}
                         progress_bar = st.progress(0, text="Checking v2 STAC database...")
                         total = len(display_oam_items)
@@ -2176,7 +2194,17 @@ elif active_workflow == "Discover & map":
 
                     for idx, meta in enumerate(display_oam_items, 1):
                         status_label = meta["oam_duplicate_status"]
-                        with st.expander(f"{idx}. {meta['title']} | Status: [{status_label}]"):
+                        if "Already exists" in status_label:
+                            status_word = "duplicate"
+                        elif "Not found" in status_label:
+                            status_word = "clear"
+                        elif "Check Failed" in status_label:
+                            status_word = "check failed"
+                        elif "Inconclusive" in status_label or "Unable to check" in status_label:
+                            status_word = "unverified"
+                        else:
+                            status_word = "not checked"
+                        with st.expander(f"{idx}. {meta['title']} · {status_word}"):
                             if meta.get("thumbnail_url"):
                                 st.image(meta["thumbnail_url"], caption="STAC thumbnail asset")
                             if "Already exists" in status_label:
@@ -2210,20 +2238,19 @@ elif active_workflow == "Discover & map":
                                 st.caption("Review the prefilled metadata in OAM before submitting. The source URL is passed to OAM; this app does not download the imagery.")
 
                             fields = [
-                                ("Title", meta["title"]),
                                 ("Platform", meta["platform"]),
                                 ("Sensor", meta["sensor"]),
                                 ("Date start", meta["date_start"]),
                                 ("Image source (Url)", meta["image_source_url"]),
                                 ("Provider", meta["provider"]),
-                                ("Duplicate Status", meta["oam_duplicate_status"]),
                             ]
-                            for label, value in fields:
-                                col_lbl, col_val = st.columns([1, 3])
-                                with col_lbl:
-                                    st.markdown(f"**{label}**")
-                                with col_val:
-                                    st.code(value, language=None)
+                            st.code(
+                                "\n".join(
+                                    f"{label}: {value if value not in (None, '') else 'not reported'}"
+                                    for label, value in fields
+                                ),
+                                language=None,
+                            )
 
                     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                     export_csv_filename = f"{event_prefix}_audit_log_{timestamp_str}.csv"
@@ -2234,7 +2261,7 @@ elif active_workflow == "Discover & map":
                     for meta in display_oam_items:
                         writer.writerow(meta)
 
-                    st.markdown("---")
+                    st.divider()
                     st.download_button(
                         label="Download audit log / checklist (CSV)",
                         data=csv_buffer.getvalue(),
