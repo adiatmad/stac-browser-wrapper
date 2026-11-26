@@ -1484,6 +1484,11 @@ if active_workflow == "Local processing":
             value=True,
             key="local_processing_verify_checksums",
         )
+        st.warning(
+            "COG creation may need extra temporary disk space for overview generation. "
+            "GDAL documents temporary storage around one third of final output size in typical CreateCopy workflows; "
+            "keep free space on the output disk."
+        )
         st.info(
             "Recommended: **COG + ZSTD level 12 + predictor + 512-pixel tiles**. "
             "This is lossless: no full-resolution resampling, resizing, or JPEG encoding. "
