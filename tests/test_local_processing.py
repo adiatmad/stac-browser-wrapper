@@ -15,6 +15,26 @@ class LocalProcessingTests(unittest.TestCase):
         float_command = " ".join(lp.compression_command("gdal_translate", "float.tif", "float_out.tif", predictor=3))
         self.assertIn("PREDICTOR=3", float_command)
 
+    def test_inspection_reports_basic_preflight_and_prepares_command_without_running_it(self):
+        with tempfile.TemporaryDirectory() as td:
+            src, out = Path(td) / "source.tif", Path(td) / "out.tif"
+            src.write_bytes(b"source")
+            info = {
+                "driverShortName": "GTiff",
+                "size": [100, 200],
+                "coordinateSystem": {"wkt": "WKT"},
+                "geoTransform": [0, 1, 0, 200, 0, -1],
+                "bands": [{"type": "Float32"}],
+            }
+            with patch.object(lp, "read_raster_info", return_value=info):
+                with patch.object(lp, "_run") as mocked:
+                    result = lp.inspect_geotiff("gdalinfo", "gdal_translate", str(src), str(out))
+                    mocked.assert_not_called()
+            self.assertTrue(result["ready"])
+            self.assertIn("-json", result["inspect_command"])
+            self.assertIn("PREDICTOR=3", " ".join(result["compression_command"]))
+            self.assertFalse(out.exists())
+
     def test_gdal_failure_includes_stderr_diagnostic(self):
         import subprocess
         with patch("local_processing.subprocess.run", side_effect=subprocess.CalledProcessError(1, ["gdal_translate"], stderr="ZSTD codec unavailable")):
