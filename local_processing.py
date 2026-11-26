@@ -142,7 +142,7 @@ def process_lossless_geotiff(
 
     bands = source_info.get("bands") or []
     dtype = str(bands[0].get("type", "")).lower()
-    predictor = 3 if dtype.startswith("float") else (1 if dtype.startswith("c") else 2)
+    predictor = 3 if dtype.startswith(("float", "complex")) else 2
     command = compression_command(gdal_translate_path, str(source), str(output), predictor)
 
     try:
