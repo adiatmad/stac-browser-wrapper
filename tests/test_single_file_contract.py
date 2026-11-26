@@ -22,9 +22,9 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertIn('options=["Discover & map", "Local processing"]', source)
         self.assertIn('key="local_processing_source"', source)
         self.assertIn("process_lossless_geotiff(", source)
-        self.assertIn("ZSTD level 12", source)
-        self.assertIn("100 GiB default upload limit", source)
-        self.assertIn("Open official OAM uploader", source)
+        self.assertIn("optional lossless optimization", source)
+        self.assertIn("upstream default 100 GiB upload limit", source)
+        self.assertIn("Open OAM uploader", source)
         self.assertIn("COMPRESS=ZSTD", helpers)
         self.assertIn("PREDICTOR=", helpers)
         self.assertIn("BIGTIFF=YES", helpers)
@@ -89,7 +89,7 @@ class HostedSingleFileContractTests(unittest.TestCase):
         ast.parse(source, filename="app.py")
         self.assertIn("import streamlit_shadcn_ui as ui", source)
         self.assertIn("ui.tabs(", source)
-        self.assertIn(".metric(", source)
+        self.assertIn("ui.metric_card(", source)
         self.assertRegex(requirements, r"(?m)^streamlit>=1\.60\.0$")
         self.assertRegex(requirements, r"(?m)^streamlit-shadcn-ui>=1\.4\.0,<2\.0\.0$")
 
@@ -98,7 +98,7 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertIn("Check OAM v2 for Duplicates", source)
         self.assertIn("Prepare OAM v2 upload", source)
         self.assertIn("Apply filter", source)
-        self.assertIn("does not send imagery or credentials to OAM", source)
+        self.assertIn("never uploads imagery or credentials", source)
         self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
 
     def test_hallmark_workbench_navigation_and_accessibility_shell(self):
@@ -128,9 +128,11 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertIn('"Usable GeoTIFFs"', source)
         self.assertIn('m1, m2, m3, m4 = st.columns(4)', source)
         self.assertIn('st.header("Prepare a handoff")', source)
-        self.assertIn('st.header("Local GeoTIFF compression")', source)
+        self.assertIn('st.header("Local GeoTIFF preflight")', source)
         self.assertIn('key="local_processing_source"', source)
-        self.assertIn('st.button("Inspect and compress", type="primary", disabled=not ready)', source)
+        self.assertIn('st.button("Inspect GeoTIFF", type="primary", disabled=not bool(source))', source)
+        self.assertIn("inspect_geotiff(", source)
+        self.assertIn("Create lossless GeoTIFF", source)
         self.assertIn('"-json"', (ROOT / "local_processing.py").read_text(encoding="utf-8"))
         self.assertNotIn('st.form_submit_button("Inspect raster", type="primary")', source)
         self.assertNotIn('Inspect raster with GDAL', source)
@@ -138,7 +140,7 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertNotIn('Separate DroneTM task-download and mosaic workflow', source)
         self.assertNotIn("<style>", source)
         self.assertNotIn("--app-canvas:", source)
-        self.assertIn("does not send imagery or credentials to OAM", source)
+        self.assertIn("never uploads imagery or credentials", source)
 
     def test_source_selector_only_renders_the_active_source_controls(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
