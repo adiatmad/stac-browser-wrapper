@@ -12,6 +12,8 @@ class LocalProcessingTests(unittest.TestCase):
         self.assertNotIn("JPEG", joined)
         self.assertNotIn("-scale", joined)
         self.assertNotIn("-outsize", joined)
+        float_command = " ".join(lp.compression_command("gdal_translate", "float.tif", "float_out.tif", predictor=3))
+        self.assertIn("PREDICTOR=3", float_command)
 
     def test_gdal_failure_includes_stderr_diagnostic(self):
         import subprocess
