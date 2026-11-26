@@ -44,7 +44,7 @@ The **Local processing** tab runs GDAL on the imagery computer. No imagery is se
 1. Run the app locally on the computer containing the GeoTIFF.
 2. Ensure QGIS/GDAL is installed; the app detects GDAL CLI tools on PATH or common Windows install paths.
 3. Select the stitched orthomosaic and output filename.
-4. Click **Inspect and compress**. GDAL writes a tiled GeoTIFF using lossless ZSTD level 9, predictor, 512-pixel tiles, BigTIFF, and multithreading.
+4. Click **Inspect and compress**. GDAL writes a tiled GeoTIFF using lossless ZSTD level 12, predictor, 512-pixel tiles, BigTIFF, and multithreading.
 5. Review size reduction and validation. The original is never overwritten. Full-resolution checksum comparison is optional because it rereads the large file; GDAL checksums are only a practical integrity check.
 6. Upload the output manually using the official [OAM uploader](https://upload.imagery.hotosm.org/).
 
