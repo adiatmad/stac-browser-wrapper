@@ -136,6 +136,48 @@ def _compare_raster_structure(source: dict[str, Any], output: dict[str, Any]) ->
     return issues
 
 
+
+def inspect_geotiff(
+    gdalinfo_path: str,
+    gdal_translate_path: str,
+    source_path: str,
+    output_path: str,
+) -> dict[str, Any]:
+    """Inspect a local GeoTIFF and prepare (but do not run) its lossless command."""
+    source, output = Path(source_path), Path(output_path)
+    if not source.is_file():
+        raise ValueError("The source file does not exist or is not a file.")
+    if source.suffix.lower() not in {".tif", ".tiff"}:
+        raise ValueError("Choose a GeoTIFF (.tif or .tiff).")
+    if source.resolve() == output.resolve():
+        raise ValueError("Choose a different output path; the original must never be overwritten.")
+    if output.exists():
+        raise ValueError("Output already exists. Choose a new filename; nothing was overwritten.")
+    if not output.parent.is_dir():
+        raise ValueError("The output folder does not exist. Choose an existing folder.")
+
+    info = read_raster_info(gdalinfo_path, str(source))
+    ready = _has_valid_georeferencing(info)
+    bands = info.get("bands") or []
+    dtype = str(bands[0].get("type", "")).lower() if bands else ""
+    predictor = 3 if dtype.startswith(("float", "complex")) else 2
+    return {
+        "source_path": str(source),
+        "source_size_bytes": source.stat().st_size,
+        "under_upload_limit": source.stat().st_size <= OAM_UPLOAD_LIMIT_BYTES,
+        "info": info,
+        "ready": ready,
+        "reason": "" if ready else (
+            "Basic preflight failed: source must be a readable GeoTIFF with positive dimensions, "
+            "a CRS and a valid affine geotransform. Correct it in QGIS before processing."
+        ),
+        "inspect_command": f'"{gdalinfo_path}" -json "{source}"',
+        "compression_command": compression_command(
+            gdal_translate_path, str(source), str(output), predictor
+        ),
+    }
+
+
 def process_lossless_geotiff(
     gdalinfo_path: str,
     gdal_translate_path: str,
