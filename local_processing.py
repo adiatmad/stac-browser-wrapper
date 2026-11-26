@@ -42,7 +42,11 @@ def find_gdal_tools() -> tuple[str | None, str | None]:
     return info, translate
 
 def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    try:
+        return subprocess.run(args, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    except subprocess.CalledProcessError as exc:
+        diagnostic = (exc.stderr or exc.stdout or "").strip()
+        raise RuntimeError(diagnostic or f"GDAL command failed (exit code {exc.returncode}).") from exc
 
 def read_raster_info(gdalinfo_path: str, raster_path: str, checksums: bool = False) -> dict[str, Any]:
     args = [gdalinfo_path, "-json"]
