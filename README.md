@@ -37,20 +37,18 @@ The current OAM STAC extension is [v0.3.0](https://docs.imagery.hotosm.org/oam/v
 
 For a remote import, source_url must be a public HTTPS URL that resolves directly to the GeoTIFF and remains valid through queueing and transfer. For a local file, choose Upload a file in the official uploader instead.
 
-## Local orthomosaic compression → OAM workflow
+## Local GDAL command generator → OAM workflow
 
-The **Local processing** tab runs GDAL on the imagery computer. No imagery is sent to this app.
+The **Local processing** tab generates commands for you to run in PowerShell. The app does not open, process, or upload your local imagery.
 
-1. Run the app locally on the computer containing the GeoTIFF.
-2. Ensure QGIS/GDAL is installed; the app detects GDAL CLI tools on PATH or common Windows install paths.
-3. Select the stitched orthomosaic and output filename.
-4. Click **Inspect GeoTIFF** to run `gdalinfo -json` and review dimensions, bands, CRS, geotransform, compression, and file size. These are basic preflight checks, not a guarantee of OAM acceptance.
-5. If the source passes, review the generated `gdal_translate` command and click **Create lossless GeoTIFF** to make a separate tiled ZSTD copy. This is an optional lossless optimization, not a mandatory OAM upload format.
-6. Review output validation and size. The original is never overwritten. Upload the output manually using the official [OAM uploader](https://upload.imagery.hotosm.org/).
+1. Enter the full path to the source GeoTIFF. The app suggests a separate `_oam.tif` output path.
+2. Copy and run the generated `gdalinfo -json` command in PowerShell.
+3. Copy the complete JSON output and paste it into the app.
+4. The app checks the reported driver, dimensions, CRS, and geotransform, then generates a ready-to-copy `gdal_translate` command.
+5. Run that command yourself. It creates a separate tiled ZSTD GeoTIFF using lossless compression, with no resampling, resizing, or JPEG. The generated PowerShell command first refuses to run if the output file already exists.
 
-**Why not create a COG locally?** OAM performs its own ingestion and creates its serving COG. A local COG and overview generation add work and temporary storage without being required for upload. Compression ratio depends on image content; if the output is not smaller or remains above the deployed upload limit, use the original or confirm the limit with the OAM operator.
+These are basic metadata checks, not a guarantee of OAM acceptance. ZSTD is an optional lossless optimization, not a mandatory OAM upload format. Compression may not reduce every file's size. Upload the resulting file manually using the official [OAM uploader](https://upload.imagery.hotosm.org/).
 
-The 100 GiB upload ceiling is the current upstream default and can be changed by deployment configuration. This tool never uploads imagery or OAM credentials.
 
 ## Notes
 
