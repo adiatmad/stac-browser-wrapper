@@ -18,7 +18,7 @@ The application includes functionality for:
 - displaying spatial information with Folium;
 - discovering GeoTIFFs under public S3 Open Data prefixes;
 - preparing OAM v2 remote-source handoffs without downloading the raster into the app;
-- compressing local stitched orthomosaic GeoTIFFs into lossless ZSTD Cloud Optimized GeoTIFFs with GDAL, including output verification and upload-size reporting;
+- compressing local stitched orthomosaic GeoTIFFs into tiled, lossless ZSTD GeoTIFFs with GDAL, including validation and upload-size reporting;
 
 ## Requirements
 
@@ -39,17 +39,18 @@ For a remote import, source_url must be a public HTTPS URL that resolves directl
 
 ## Local orthomosaic compression → OAM workflow
 
-The **Local processing** tab runs GDAL on the Windows computer containing the orthomosaic. Raster data never leaves that computer through this app.
+The **Local processing** tab runs GDAL on the imagery computer. No imagery is sent to this app.
 
-1. Run the Streamlit app locally on the imagery computer.
-2. Ensure GDAL CLI tools (`gdalinfo` and `gdal_translate`) are available on PATH, or installed through QGIS/OSGeo4W where the app can detect them.
-3. Enter the full path to the stitched GeoTIFF and the new output path.
-4. Click **Inspect and compress**. The app creates a separate COG using lossless ZSTD level 12, predictor, 512-pixel tiles, BigTIFF, and multithreaded compression.
-5. COG generation may need additional temporary disk space for overview creation (GDAL documents roughly one third of final output size for common CreateCopy workflows). Ensure the output disk has adequate free space. Full-resolution pixel values are not resampled or JPEG-compressed. Display overviews are generated using average resampling. The optional (default-on) band checksum verification reads both source and output again and can take significant time on large files.
-6. Review the output size and verification report. The original remains untouched; existing output files are never overwritten. If compression does not reduce size, use the original instead.
-7. Upload the compressed output manually through the official [OAM uploader](https://upload.imagery.hotosm.org/). The app does not upload files or metadata automatically.
+1. Run the app locally on the computer containing the GeoTIFF.
+2. Ensure QGIS/GDAL is installed; the app detects GDAL CLI tools on PATH or common Windows install paths.
+3. Select the stitched orthomosaic and output filename.
+4. Click **Inspect and compress**. GDAL writes a tiled GeoTIFF using lossless ZSTD level 9, predictor, 512-pixel tiles, BigTIFF, and multithreading.
+5. Review size reduction and validation. The original is never overwritten. Full-resolution checksum comparison is optional because it rereads the large file; GDAL checksums are only a practical integrity check.
+6. Upload the output manually using the official [OAM uploader](https://upload.imagery.hotosm.org/).
 
-The output is a COG for local storage/transfer convenience. OAM still performs its own ingestion, validation, and serving-COG creation. The 100 GiB figure is the current upstream default upload ceiling; the deployed OAM instance can override it. Compression ratio is data-dependent and is not guaranteed.
+**Why not create a COG locally?** OAM performs its own ingestion and creates its serving COG. A local COG and overview generation add work and temporary storage without being required for upload. Compression ratio depends on image content; if the output is not smaller or remains above the deployed upload limit, use the original or confirm the limit with the OAM operator.
+
+The 100 GiB upload ceiling is the current upstream default and can be changed by deployment configuration. This tool never uploads imagery or OAM credentials.
 
 ## Notes
 
