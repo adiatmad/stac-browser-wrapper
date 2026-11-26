@@ -21,7 +21,7 @@ class ReportDrivenLocalImageryWorkflowTests(unittest.TestCase):
         self.assertIn("process_lossless_geotiff(", source)
         self.assertIn('"-json"', helpers)
         self.assertIn("COMPRESS=ZSTD", helpers)
-        self.assertIn("ZSTD_LEVEL=9", helpers)
+        self.assertIn("ZSTD_LEVEL=12", helpers)
         self.assertIn("PREDICTOR=", helpers)
         self.assertNotIn("OVERVIEW_RESAMPLING", helpers)
         self.assertIn("source.resolve() == output.resolve()", helpers)
