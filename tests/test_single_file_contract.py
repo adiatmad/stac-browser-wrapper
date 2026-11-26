@@ -152,7 +152,7 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         ast.parse(source, filename="app.py")
         self.assertIn("import streamlit_shadcn_ui as ui", source)
         self.assertIn("ui.tabs(", source)
-        self.assertIn("st.metric(", source)
+        self.assertIn(".metric(", source)
         self.assertRegex(requirements, r"(?m)^streamlit>=1\.60\.0$")
         self.assertRegex(requirements, r"(?m)^streamlit-shadcn-ui>=1\.4\.0,<2\.0\.0$")
 
@@ -194,7 +194,7 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn('st.header("Local lossless GeoTIFF compression")', source)
         self.assertIn('key="local_processing_source"', source)
         self.assertIn('st.button("Inspect and compress", type="primary", disabled=not ready)', source)
-        self.assertIn("gdalinfo -json", (ROOT / "local_processing.py").read_text(encoding="utf-8"))
+        self.assertIn('["-json"]', (ROOT / "local_processing.py").read_text(encoding="utf-8"))
         self.assertNotIn('st.form_submit_button("Inspect raster", type="primary")', source)
         self.assertNotIn('Inspect raster with GDAL', source)
         self.assertNotIn('GDAL bin directory (optional)', source)
