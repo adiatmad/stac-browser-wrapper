@@ -260,9 +260,6 @@ def build_gdal_commands(
         raise ValueError("Output path must end in .tif or .tiff.")
     if str(source).casefold() == str(output).casefold():
         raise ValueError("Output path must be different from the source; the original must never be overwritten.")
-    if not output.parent.is_dir():
-        # The app cannot check a path on the user's computer; this is only a syntax/path-parent hint.
-        pass
     try:
         info = json.loads(gdalinfo_json)
     except json.JSONDecodeError as exc:
@@ -278,7 +275,11 @@ def build_gdal_commands(
     dtype = str(bands[0].get("type", "")).lower()
     predictor = 3 if dtype.startswith(("float", "complex")) else 2
     args = compression_command(gdal_translate_path, str(source), str(output), predictor)
-    command = "& " + " ".join(_powershell_quote(arg) for arg in args)
+    command = (
+        f"if (Test-Path -LiteralPath {_powershell_quote(str(output))}) "
+        "{ throw 'Output already exists; choose a new output filename.' }; "
+        + "& " + " ".join(_powershell_quote(arg) for arg in args)
+    )
     return {
         "source_path": str(source),
         "output_path": str(output),
