@@ -5,9 +5,9 @@ from unittest.mock import patch
 import local_processing as lp
 
 class LocalProcessingTests(unittest.TestCase):
-    def test_command_is_lossless_zstd_cog(self):
-        joined = " ".join(lp.compression_command("gdal_translate", "source.tif", "out.tif"))
-        for opt in ("COMPRESS=ZSTD", "LEVEL=12", "PREDICTOR=YES", "BLOCKSIZE=512", "BIGTIFF=YES", "NUM_THREADS=ALL_CPUS"):
+    def test_command_is_lossless_zstd_geotiff(self):
+        joined = " ".join(lp.compression_command("gdal_translate", "source.tif", "out.tif", predictor=2))
+        for opt in ("COMPRESS=ZSTD", "ZSTD_LEVEL=9", "PREDICTOR=2", "BLOCKXSIZE=512", "BLOCKYSIZE=512", "BIGTIFF=YES", "NUM_THREADS=ALL_CPUS"):
             self.assertIn(opt, joined)
         self.assertNotIn("JPEG", joined)
         self.assertNotIn("-scale", joined)
@@ -19,17 +19,17 @@ class LocalProcessingTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "ZSTD codec unavailable"):
                 lp._run(["gdal_translate", "source.tif", "out.tif"])
 
-    def test_structural_validation_passes_matching_cog(self):
+    def test_structural_validation_passes_matching_tiled_geotiff(self):
         src = {"size": [10, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "coordinateSystem": {"id": {"authority": "EPSG", "code": "4326"}}, "bands": [{"type": "Byte", "colorInterpretation": "Red", "noDataValue": 0}]}
-        out = {**src, "metadata": {"IMAGE_STRUCTURE": {"LAYOUT": "COG", "COMPRESSION": "ZSTD"}}}
+        out = {**src, "metadata": {"IMAGE_STRUCTURE": {"COMPRESSION": "ZSTD"}}, "bands": [{"block": [512, 512]}]}
         self.assertEqual(lp._compare_raster_structure(src, out), [])
 
     def test_validation_detects_structure_and_compression_issues(self):
         src = {"size": [10, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "bands": []}
-        out = {"size": [11, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "bands": [], "metadata": {"IMAGE_STRUCTURE": {"LAYOUT": "GTiff", "COMPRESSION": "DEFLATE"}}}
+        out = {"size": [11, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "bands": [], "metadata": {"IMAGE_STRUCTURE": {"COMPRESSION": "DEFLATE"}}, "bands": [{"block": [20, 10]}]}
         issues = lp._compare_raster_structure(src, out)
         self.assertTrue(any("dimensions" in x for x in issues))
-        self.assertTrue(any("COG" in x for x in issues))
+        self.assertTrue(any("ZSTD" in x for x in issues))
         self.assertTrue(any("ZSTD" in x for x in issues))
 
     def test_existing_output_never_overwritten(self):
