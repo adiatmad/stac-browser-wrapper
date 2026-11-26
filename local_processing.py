@@ -18,9 +18,9 @@ def _candidate_gdal_dirs() -> list[Path]:
             candidates.extend([root / "bin", root / "apps" / "gdal" / "bin"])
             if env_name == "QGIS_PREFIX_PATH":
                 candidates.extend([root.parent / "bin", root.parent / "apps" / "gdal" / "bin"])
-    for root in (Path(r"C:\\OSGeo4W"), Path(r"C:\\OSGeo4W64")):
+    for root in (Path("C:/OSGeo4W"), Path("C:/OSGeo4W64")):
         candidates.extend([root / "bin", root / "apps" / "gdal" / "bin"])
-    for base in (Path(r"C:\\Program Files"), Path(r"C:\\Program Files (x86)")):
+    for base in (Path("C:/Program Files"), Path("C:/Program Files (x86)")):
         try:
             for qgis in base.glob("QGIS*"):
                 candidates.extend([qgis / "bin", qgis / "apps" / "gdal" / "bin"])
