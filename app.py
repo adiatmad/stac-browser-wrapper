@@ -990,7 +990,12 @@ if active_workflow == "Local processing":
                         "compression. It does not resample, resize, or use JPEG. Compression "
                         "may not reduce every input file's size."
                     )
-                    st.code(commands["translate_command"], language="powershell")
+                    st.text_area(
+                        "PowerShell command (copy and run)",
+                        value=commands["translate_command"],
+                        height=220,
+                        key="local_processing_translate_command_display",
+                    )
                     st.caption(
                         "Copy and run the command yourself. GDAL normally refuses an existing "
                         "destination; check the output path before running. The original is not "
