@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app.py"
 
 
-class ReportDrivenLocalImageryWorkflowTests(unittest.TestCase):
+class LocalImageryWorkflowTests(unittest.TestCase):
     def test_local_processing_runs_gdal_on_local_orthomosaic(self):
         source = SOURCE.read_text(encoding="utf-8")
         helpers = (ROOT / "local_processing.py").read_text(encoding="utf-8")
@@ -31,7 +31,7 @@ class ReportDrivenLocalImageryWorkflowTests(unittest.TestCase):
 
     def test_oam_handoff_opens_uploader_without_a_separate_metadata_form(self):
         source = SOURCE.read_text(encoding="utf-8")
-        self.assertIn('st.link_button("Open official OAM uploader", OAM_UPLOAD_URL)', source)
+        self.assertIn('st.link_button("Open OAM uploader", OAM_UPLOAD_URL)', source)
         self.assertIn('Open official OAM uploader', source)
         self.assertNotIn("local_oam_metadata_form", source)
         self.assertNotIn("build_oam_local_prefill_url", source)
