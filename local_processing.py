@@ -163,6 +163,7 @@ def inspect_geotiff(
     predictor = 3 if dtype.startswith(("float", "complex")) else 2
     return {
         "source_path": str(source),
+        "output_path": str(output),
         "source_size_bytes": source.stat().st_size,
         "under_upload_limit": source.stat().st_size <= OAM_UPLOAD_LIMIT_BYTES,
         "info": info,
