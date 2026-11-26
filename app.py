@@ -1470,7 +1470,7 @@ if active_workflow == "Local processing":
         )
         source = source_path.strip().strip('"')
         default_output = (
-            str(Path(source).with_name(Path(source).stem + "_oam_zstd_cog.tif"))
+            str(Path(source).with_name(Path(source).stem + "_oam_zstd.tif"))
             if source else ""
         )
         output_path = st.text_input(
