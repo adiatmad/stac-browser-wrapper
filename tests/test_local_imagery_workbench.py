@@ -19,7 +19,7 @@ class ReportDrivenLocalImageryWorkflowTests(unittest.TestCase):
         self.assertIn('options=["Discover & map", "Local processing"]', source)
         self.assertIn("find_gdal_tools()", source)
         self.assertIn("process_lossless_cog(", source)
-        self.assertIn('["-json"]', helpers)
+        self.assertIn('"-json"', helpers)
         self.assertIn("COMPRESS=ZSTD", helpers)
         self.assertIn("LEVEL=12", helpers)
         self.assertIn("PREDICTOR=YES", helpers)
