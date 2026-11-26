@@ -191,7 +191,7 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn('"Usable GeoTIFFs"', source)
         self.assertIn('m1, m2, m3, m4 = st.columns(4)', source)
         self.assertIn('st.header("Prepare a handoff")', source)
-        self.assertIn('st.header("Local lossless GeoTIFF compression")', source)
+        self.assertIn('st.header("Local GeoTIFF compression")', source)
         self.assertIn('key="local_processing_source"', source)
         self.assertIn('st.button("Inspect and compress", type="primary", disabled=not ready)', source)
         self.assertIn('"-json"', (ROOT / "local_processing.py").read_text(encoding="utf-8"))
