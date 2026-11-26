@@ -238,3 +238,50 @@ def process_lossless_geotiff(
         "checksums_verified": verify_checksums and not any("checksum" in issue.lower() for issue in issues),
         "command": command,
     }
+
+
+
+def _powershell_quote(value: str) -> str:
+    """Quote one argument for a PowerShell command line."""
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def build_gdal_commands(
+    gdal_translate_path: str,
+    source_path: str,
+    output_path: str,
+    gdalinfo_json: str,
+) -> dict[str, str]:
+    """Validate pasted gdalinfo JSON and return a copy/paste PowerShell command."""
+    source, output = Path(source_path), Path(output_path)
+    if source.suffix.lower() not in {".tif", ".tiff"}:
+        raise ValueError("Source path must end in .tif or .tiff.")
+    if output.suffix.lower() not in {".tif", ".tiff"}:
+        raise ValueError("Output path must end in .tif or .tiff.")
+    if str(source).casefold() == str(output).casefold():
+        raise ValueError("Output path must be different from the source; the original must never be overwritten.")
+    if not output.parent.is_dir():
+        # The app cannot check a path on the user's computer; this is only a syntax/path-parent hint.
+        pass
+    try:
+        info = json.loads(gdalinfo_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Paste the complete, valid JSON output from gdalinfo -json (line {exc.lineno}, column {exc.colno}).") from exc
+    if not isinstance(info, dict):
+        raise ValueError("The pasted gdalinfo JSON must be a JSON object.")
+    if not _has_valid_georeferencing(info):
+        raise ValueError(
+            "Basic preflight failed. Expected a GTiff with positive dimensions, a CRS, "
+            "and a valid affine geotransform. Check the source in QGIS."
+        )
+    bands = info.get("bands") or []
+    dtype = str(bands[0].get("type", "")).lower()
+    predictor = 3 if dtype.startswith(("float", "complex")) else 2
+    args = compression_command(gdal_translate_path, str(source), str(output), predictor)
+    command = "& " + " ".join(_powershell_quote(arg) for arg in args)
+    return {
+        "source_path": str(source),
+        "output_path": str(output),
+        "predictor": str(predictor),
+        "translate_command": command,
+    }
