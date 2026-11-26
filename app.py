@@ -978,7 +978,8 @@ if active_workflow == "Local processing":
                 st.error(f"Inspection failed: {exc}")
 
         inspection = st.session_state.get("local_processing_inspection")
-        if (inspection and inspection.get("source_path") == source\n                and inspection.get("output_path") == output_path.strip().strip('"')):
+        if (inspection and inspection.get("source_path") == source
+                and inspection.get("output_path") == output_path.strip().strip('"')):
             info = inspection["info"]
             size = info.get("size") or [None, None]
             bands = info.get("bands") or []
