@@ -32,7 +32,7 @@ class LocalImageryWorkflowTests(unittest.TestCase):
     def test_oam_handoff_opens_uploader_without_a_separate_metadata_form(self):
         source = SOURCE.read_text(encoding="utf-8")
         self.assertIn('st.link_button("Open OAM uploader", OAM_UPLOAD_URL)', source)
-        self.assertIn('Open official OAM uploader', source)
+        self.assertIn('Open OAM uploader', source)
         self.assertNotIn("local_oam_metadata_form", source)
         self.assertNotIn("build_oam_local_prefill_url", source)
 
