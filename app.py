@@ -18,7 +18,7 @@ from shapely.geometry import box, shape
 from typing import Any
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit, parse_qsl
 import xml.etree.ElementTree as ET
-from local_processing import find_gdal_tools, process_lossless_geotiff
+from local_processing import find_gdal_tools, inspect_geotiff, process_lossless_geotiff
 
 OAM_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
 DEFAULT_SAMPLE_URL = (
@@ -927,10 +927,10 @@ active_workflow = ui.tabs(
 )
 
 if active_workflow == "Local processing":
-    st.header("Local GeoTIFF compression")
+    st.header("Local GeoTIFF preflight")
     st.caption(
-        "Reduce a stitched orthomosaic's file size locally using lossless ZSTD compression. "
-        "The original stays untouched; no raster data is uploaded by this app."
+        "Inspect a local orthomosaic with GDAL, then create a separate lossless GeoTIFF copy if needed. "
+        "All processing happens on this computer; the original is never changed."
     )
 
     gdalinfo_path, gdal_translate_path = find_gdal_tools()
@@ -940,99 +940,117 @@ if active_workflow == "Local processing":
             "QGIS / OSGeo4W shell so gdalinfo and gdal_translate are available."
         )
     else:
-        st.caption(f"GDAL detected: {gdalinfo_path}")
+        st.caption(f"GDAL: {gdalinfo_path}")
         def _update_local_output_path():
             current_source = st.session_state.get("local_processing_source", "").strip().strip('"')
             if current_source:
                 st.session_state["local_processing_output"] = str(
-                    Path(current_source).with_name(Path(current_source).stem + "_oam_zstd.tif")
+                    Path(current_source).with_name(Path(current_source).stem + "_oam.tif")
                 )
 
         source_path = st.text_input(
-            "Source orthomosaic GeoTIFF",
+            "Source GeoTIFF",
             placeholder=r"D:\orthomosaic.tif",
             key="local_processing_source",
             on_change=_update_local_output_path,
-            help="Enter the full path to your stitched GeoTIFF on this Windows computer.",
+            help="Full path to the stitched orthomosaic on this computer.",
         )
         source = source_path.strip().strip('"')
-        default_output = (
-            str(Path(source).with_name(Path(source).stem + "_oam_zstd.tif"))
-            if source else ""
-        )
         output_path = st.text_input(
-            "New compressed output file",
-            value=default_output,
+            "Output GeoTIFF (new file)",
+            value=(
+                str(Path(source).with_name(Path(source).stem + "_oam.tif"))
+                if source else ""
+            ),
             key="local_processing_output",
-            help="A separate output file is created. Existing files are never overwritten.",
+            help="A separate output file. Existing files are never overwritten.",
         )
-        verify_checksums = st.checkbox(
-            "Compare full-resolution band checksums after conversion (extra read; can take a long time)",
-            value=False,
-            key="local_processing_verify_checksums",
-        )
-        st.info(
-            "Recommended: **tiled GeoTIFF + lossless ZSTD level 12 + predictor**. "
-            "Full-resolution pixels are preserved: no resizing, resampling, or JPEG encoding. "
-            "OAM creates the serving COG during ingestion."
-        )
-        ready = bool(source and output_path and gdalinfo_path and gdal_translate_path)
-        if st.button("Inspect and compress", type="primary", disabled=not ready):
+        if st.button("Inspect GeoTIFF", type="primary", disabled=not bool(source)):
+            st.session_state.pop("local_processing_inspection", None)
             st.session_state.pop("local_processing_result", None)
             try:
-                with st.spinner("Compressing locally with GDAL. Large orthomosaics may take a while…"):
-                    result = process_lossless_geotiff(
-                        gdalinfo_path, gdal_translate_path, source, output_path, verify_checksums
+                with st.spinner("Running gdalinfo…"):
+                    inspection = inspect_geotiff(
+                        gdalinfo_path, gdal_translate_path, source, output_path.strip().strip('"')
                     )
-                st.session_state["local_processing_result"] = result
+                st.session_state["local_processing_inspection"] = inspection
             except Exception as exc:
-                st.error(f"Local processing failed: {exc}")
-                st.caption("The original file is not modified. If an incomplete output was created, remove it or choose a new output name before retrying.")
+                st.error(f"Inspection failed: {exc}")
 
+        inspection = st.session_state.get("local_processing_inspection")
+        if inspection and inspection.get("source_path") == source:
+            info = inspection["info"]
+            size = info.get("size") or [None, None]
+            bands = info.get("bands") or []
+            crs = info.get("coordinateSystem") or {}
+            structure = (info.get("metadata") or {}).get("IMAGE_STRUCTURE") or {}
+            st.subheader("Inspection")
+            st.write(f"**Dimensions:** {size[0]} × {size[1]} pixels")
+            st.write(f"**Bands:** {len(bands)} · **Data types:** {', '.join(str(b.get('type', 'unknown')) for b in bands)}")
+            st.write(f"**CRS:** {'Present' if crs else 'Missing'}")
+            st.write(f"**Geotransform:** {'Present' if info.get('geoTransform') else 'Missing'}")
+            st.write(f"**Current compression:** {structure.get('COMPRESSION', 'Not reported')}")
+            st.write(f"**File size:** {format_bytes(inspection['source_size_bytes'])}")
+            if inspection["under_upload_limit"]:
+                st.success("Below the upstream default 100 GiB upload limit. Deployment settings may differ.")
+            else:
+                st.warning("Above the upstream default 100 GiB upload limit.")
+            if inspection["ready"]:
+                st.success("Basic preflight passed: readable GeoTIFF, CRS and valid georeferencing.")
+            else:
+                st.error(inspection["reason"])
+            st.caption(
+                "These are basic file and georeferencing checks, not a guarantee of acceptance: "
+                "OAM performs additional validation during ingestion. ZSTD/tiled output is an optional "
+                "lossless optimization, not a mandatory OAM upload format."
+            )
+            with st.expander("GDAL inspection command and full report"):
+                st.code(inspection["inspect_command"], language="powershell")
+                st.json(info)
+            if inspection["ready"]:
+                st.subheader("Optional lossless output")
+                st.caption(
+                    "Creates a tiled ZSTD GeoTIFF without resampling, resizing or JPEG. "
+                    "OAM creates its serving COG during ingestion."
+                )
+                st.code(" ".join(inspection["compression_command"]), language="powershell")
+                if st.button(
+                    "Create lossless GeoTIFF",
+                    type="primary",
+                    disabled=not bool(output_path.strip()),
+                ):
+                    st.session_state.pop("local_processing_result", None)
+                    try:
+                        with st.spinner("Creating and validating the lossless GeoTIFF…"):
+                            result = process_lossless_geotiff(
+                                gdalinfo_path, gdal_translate_path, source,
+                                output_path.strip().strip('"'), verify_checksums=False
+                            )
+                        st.session_state["local_processing_result"] = result
+                    except Exception as exc:
+                        st.error(f"Processing failed: {exc}")
+                        st.caption("The original is unchanged. Any partial output is removed on failure.")
         result = st.session_state.get("local_processing_result")
         if result and result.get("source_path") == source:
-            st.subheader("Compression results")
-            result_cols = st.columns(4)
-            result_cols[0].metric("Original size", format_bytes(result["source_size_bytes"]))
-            result_cols[1].metric("Compressed output", format_bytes(result["output_size_bytes"]))
-            result_cols[2].metric(
-                "Size change",
-                f"{result['reduction_percent']:.1f}%",
-                delta=f"{result['reduction_percent']:.1f}% smaller" if result["reduction_percent"] >= 0 else "larger",
-                delta_color="normal" if result["reduction_percent"] >= 0 else "inverse",
-            )
-            result_cols[3].metric(
-                "100 GiB default upload limit",
-                "Under limit" if result["under_upload_limit"] else "Over limit",
-            )
-            if result["reduction_percent"] <= 0:
-                st.warning("This file did not become smaller with lossless ZSTD. Upload the original instead; do not force lossy compression.")
-            elif result["under_upload_limit"]:
-                st.success("The compressed output is below OAM's default 100 GiB upload ceiling. OAM's deployed configuration may differ.")
+            st.subheader("Output verification")
+            st.write(f"**Output:** {result['output_path']}")
+            st.write(f"**Output size:** {format_bytes(result['output_size_bytes'])}")
+            st.write(f"**Size reduction:** {result['reduction_percent']:.1f}%")
+            if result["under_upload_limit"]:
+                st.success("Output is below the upstream default 100 GiB upload limit.")
             else:
-                st.warning("The output is still above the default 100 GiB upload limit. Compression did not reach the target; confirm the deployed limit or consider splitting only if the workflow supports it.")
+                st.warning("Output remains above the upstream default 100 GiB upload limit.")
             issues = result.get("verification_issues") or []
             if issues:
                 st.error("Output verification found differences:")
                 for issue in issues:
                     st.markdown(f"- {issue}")
             else:
-                st.success("Output structure verified: dimensions, geotransform, band structure, CRS, tiling and ZSTD compression.")
-            if result.get("checksums_verified"):
-                st.success("Full-resolution band checksums match. This is a practical integrity check; checksums are not a mathematical proof against collisions.")
-            elif verify_checksums:
-                st.warning("Full-resolution checksum comparison did not pass.")
-            st.caption(f"Output: {result['output_path']}")
-            with st.expander("Technical details"):
-                st.json({
-                    "source": result["source_info"],
-                    "output": result["output_info"],
-                })
-                st.code(" ".join(result["command"]), language="powershell")
-            st.link_button("Open official OAM uploader", OAM_UPLOAD_URL)
-            st.caption("Upload the compressed output manually in OAM. This app does not send imagery or credentials to OAM.")
-        elif result:
-            st.info("The source path changed; results above are from the previously processed file. Run processing again to refresh.")
+                st.success("Output structure verified: dimensions, geotransform, bands, CRS, tiling and ZSTD.")
+            with st.expander("GDAL output details"):
+                st.json({"source": result["source_info"], "output": result["output_info"]})
+            st.link_button("Open OAM uploader", OAM_UPLOAD_URL)
+            st.caption("Upload the output manually. This app never uploads imagery or credentials.")
 
 elif active_workflow == "Discover & map":
     st.header("Choose an imagery source")
@@ -1218,7 +1236,7 @@ elif active_workflow == "Discover & map":
         real_url = extract_real_stac_url(root_url_input)
         event_prefix = extract_event_name_from_url(real_url)
 
-        if real_url != st.session_state["last_processed_url"]:
+        if real_url != st.session_state.get("last_processed_url"):
             st.session_state["oam_duplicates"] = {}
             st.session_state["location_filter_bbox"] = None
             st.session_state["pending_drawing"] = None
