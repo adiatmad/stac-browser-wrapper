@@ -970,12 +970,12 @@ if active_workflow == "Local processing":
             st.caption("Copy this command into PowerShell. It writes the full GDAL report as JSON.")
             inspect_command = f'& "{gdalinfo_path}" -json "{source}"'
             st.code(inspect_command, language="powershell")
-            st.caption("Run the command, copy its complete JSON output, and paste it below.")
+            st.caption("Run the command, then paste the terminal output here. You can include the PowerShell banner and prompts; the app extracts the JSON report.")
             gdalinfo_json = st.text_area(
                 "Paste gdalinfo JSON output",
                 height=220,
                 key="local_processing_gdalinfo_json",
-                placeholder='{"description": "...", "driverShortName": "GTiff", ...}',
+                placeholder="Paste the full PowerShell output, including the gdalinfo JSON object...",
             )
             if gdalinfo_json.strip():
                 st.subheader("2. Generate the lossless processing command")
