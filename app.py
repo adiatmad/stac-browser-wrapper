@@ -19,7 +19,7 @@ from shapely.geometry import box, shape
 from typing import Any
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit, parse_qsl
 import xml.etree.ElementTree as ET
-from local_processing import find_gdal_tools, process_lossless_cog
+from local_processing import find_gdal_tools, process_lossless_geotiff
 
 OAM_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
 SPACE_EYE_LICENSE = "CC-BY-4.0"
@@ -1440,7 +1440,7 @@ active_workflow = ui.tabs(
 )
 
 if active_workflow == "Local processing":
-    st.header("Local lossless GeoTIFF compression")
+    st.header("Local GeoTIFF compression")
     st.caption(
         "Reduce a stitched orthomosaic's file size locally using lossless ZSTD compression. "
         "The original stays untouched; no raster data is uploaded by this app."
@@ -1458,7 +1458,7 @@ if active_workflow == "Local processing":
             current_source = st.session_state.get("local_processing_source", "").strip().strip('"')
             if current_source:
                 st.session_state["local_processing_output"] = str(
-                    Path(current_source).with_name(Path(current_source).stem + "_oam_zstd_cog.tif")
+                    Path(current_source).with_name(Path(current_source).stem + "_oam_zstd.tif")
                 )
 
         source_path = st.text_input(
@@ -1481,25 +1481,20 @@ if active_workflow == "Local processing":
         )
         verify_checksums = st.checkbox(
             "Compare full-resolution band checksums after conversion (extra read; can take a long time)",
-            value=True,
+            value=False,
             key="local_processing_verify_checksums",
         )
-        st.warning(
-            "COG creation may need extra temporary disk space for overview generation. "
-            "GDAL documents temporary storage around one third of final output size in typical CreateCopy workflows; "
-            "keep free space on the output disk."
-        )
         st.info(
-            "Recommended: **COG + ZSTD level 12 + predictor + 512-pixel tiles**. "
-            "This is lossless: no full-resolution resampling, resizing, or JPEG encoding. "
-            "COG overviews are generated for display and are downsampled."
+            "Recommended: **tiled GeoTIFF + lossless ZSTD level 9 + predictor**. "
+            "Full-resolution pixels are preserved: no resizing, resampling, or JPEG encoding. "
+            "OAM creates the serving COG during ingestion."
         )
         ready = bool(source and output_path and gdalinfo_path and gdal_translate_path)
         if st.button("Inspect and compress", type="primary", disabled=not ready):
             st.session_state.pop("local_processing_result", None)
             try:
                 with st.spinner("Compressing locally with GDAL. Large orthomosaics may take a while…"):
-                    result = process_lossless_cog(
+                    result = process_lossless_geotiff(
                         gdalinfo_path, gdal_translate_path, source, output_path, verify_checksums
                     )
                 st.session_state["local_processing_result"] = result
@@ -1535,7 +1530,7 @@ if active_workflow == "Local processing":
                 for issue in issues:
                     st.markdown(f"- {issue}")
             else:
-                st.success("Output structure verified: dimensions, geotransform, band structure, CRS, COG layout and ZSTD compression.")
+                st.success("Output structure verified: dimensions, geotransform, band structure, CRS, tiling and ZSTD compression.")
             if result.get("checksums_verified"):
                 st.success("Full-resolution band checksums match. This is a practical integrity check; checksums are not a mathematical proof against collisions.")
             elif verify_checksums:
