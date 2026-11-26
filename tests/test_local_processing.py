@@ -1,0 +1,46 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+import local_processing as lp
+
+class LocalProcessingTests(unittest.TestCase):
+    def test_command_is_lossless_zstd_cog(self):
+        joined = " ".join(lp.compression_command("gdal_translate", "source.tif", "out.tif"))
+        for opt in ("COMPRESS=ZSTD", "LEVEL=12", "PREDICTOR=YES", "BLOCKSIZE=512", "BIGTIFF=YES", "NUM_THREADS=ALL_CPUS"):
+            self.assertIn(opt, joined)
+        self.assertNotIn("JPEG", joined)
+        self.assertNotIn("-scale", joined)
+        self.assertNotIn("-outsize", joined)
+
+    def test_structural_validation_passes_matching_cog(self):
+        src = {"size": [10, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "coordinateSystem": {"id": {"authority": "EPSG", "code": "4326"}}, "bands": [{"type": "Byte", "colorInterpretation": "Red", "noDataValue": 0}]}
+        out = {**src, "metadata": {"IMAGE_STRUCTURE": {"LAYOUT": "COG", "COMPRESSION": "ZSTD"}}}
+        self.assertEqual(lp._compare_raster_structure(src, out), [])
+
+    def test_validation_detects_structure_and_compression_issues(self):
+        src = {"size": [10, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "bands": []}
+        out = {"size": [11, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "bands": [], "metadata": {"IMAGE_STRUCTURE": {"LAYOUT": "GTiff", "COMPRESSION": "DEFLATE"}}}
+        issues = lp._compare_raster_structure(src, out)
+        self.assertTrue(any("dimensions" in x for x in issues))
+        self.assertTrue(any("COG" in x for x in issues))
+        self.assertTrue(any("ZSTD" in x for x in issues))
+
+    def test_existing_output_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as td:
+            src, out = Path(td)/"src.tif", Path(td)/"out.tif"
+            src.write_bytes(b"source"); out.write_bytes(b"preserve")
+            with patch.object(lp, "_run") as mocked:
+                with self.assertRaisesRegex(ValueError, "already exists"):
+                    lp.process_lossless_cog("gdalinfo", "gdal_translate", str(src), str(out), False)
+                mocked.assert_not_called()
+            self.assertEqual(out.read_bytes(), b"preserve")
+
+    def test_source_output_same_path_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td)/"src.tif"; src.write_bytes(b"source")
+            with self.assertRaisesRegex(ValueError, "different output"):
+                lp.process_lossless_cog("gdalinfo", "gdal_translate", str(src), str(src), False)
+
+if __name__ == "__main__":
+    unittest.main()
