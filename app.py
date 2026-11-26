@@ -940,13 +940,6 @@ if active_workflow == "Local processing":
             "gdalinfo.exe and gdal_translate.exe to PATH."
         )
     else:
-        source_path = st.text_input(
-            "Source GeoTIFF",
-            placeholder=r"D:\Drone\orthomosaic.tif",
-            key="local_processing_source",
-            help="Full Windows path to your stitched orthomosaic.",
-        )
-        source = source_path.strip().strip('"')
         def _update_local_output_path():
             current = st.session_state.get("local_processing_source", "").strip().strip('"')
             if current:
@@ -955,6 +948,14 @@ if active_workflow == "Local processing":
                     source_file.with_name(source_file.stem + "_oam.tif")
                 )
 
+        source_path = st.text_input(
+            "Source GeoTIFF",
+            placeholder=r"D:\Drone\orthomosaic.tif",
+            key="local_processing_source",
+            on_change=_update_local_output_path,
+            help="Full Windows path to your stitched orthomosaic.",
+        )
+        source = source_path.strip().strip('"')
         if source and "local_processing_output" not in st.session_state:
             _update_local_output_path()
         output_path = st.text_input(
