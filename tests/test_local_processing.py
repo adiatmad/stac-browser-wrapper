@@ -35,6 +35,26 @@ class LocalProcessingTests(unittest.TestCase):
             self.assertIn("PREDICTOR=3", " ".join(result["compression_command"]))
             self.assertFalse(out.exists())
 
+    def test_pasted_gdalinfo_generates_copy_paste_command_without_running_gdal(self):
+        info = {
+            "driverShortName": "GTiff",
+            "size": [100, 200],
+            "coordinateSystem": {"wkt": "WKT"},
+            "geoTransform": [0, 1, 0, 200, 0, -1],
+            "bands": [{"type": "Float32"}],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            source = str(Path(td) / "orthomosaic.tif")
+            output = str(Path(td) / "orthomosaic_oam.tif")
+            result = lp.build_gdal_commands("C:/QGIS/bin/gdal_translate.exe", source, output, __import__("json").dumps(info))
+        self.assertIn("PREDICTOR=3", result["translate_command"])
+        self.assertIn("orthomosaic_oam.tif", result["translate_command"])
+        self.assertNotIn("orthomosaic.tif' 'orthomosaic.tif", result["translate_command"])
+
+    def test_gdalinfo_json_rejects_missing_georeferencing(self):
+        with self.assertRaisesRegex(ValueError, "Basic preflight failed"):
+            lp.build_gdal_commands("gdal_translate", "source.tif", "out.tif", '{"driverShortName":"GTiff"}')
+
     def test_gdal_failure_includes_stderr_diagnostic(self):
         import subprocess
         with patch("local_processing.subprocess.run", side_effect=subprocess.CalledProcessError(1, ["gdal_translate"], stderr="ZSTD codec unavailable")):
