@@ -36,6 +36,16 @@ class LocalProcessingTests(unittest.TestCase):
                 mocked.assert_not_called()
             self.assertEqual(out.read_bytes(), b"preserve")
 
+    def test_missing_crs_or_geotransform_is_rejected_before_conversion(self):
+        with tempfile.TemporaryDirectory() as td:
+            src, out = Path(td)/"src.tif", Path(td)/"out.tif"
+            src.write_bytes(b"source")
+            with patch.object(lp, "read_raster_info", return_value={"size": [1, 1], "bands": [{"type": "Byte"}]}):
+                with patch.object(lp, "_run") as mocked:
+                    with self.assertRaisesRegex(ValueError, "missing a CRS"):
+                        lp.process_lossless_cog("gdalinfo", "gdal_translate", str(src), str(out), False)
+                    mocked.assert_not_called()
+
     def test_source_output_same_path_refused(self):
         with tempfile.TemporaryDirectory() as td:
             src = Path(td)/"src.tif"; src.write_bytes(b"source")
