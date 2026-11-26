@@ -13,6 +13,12 @@ class LocalProcessingTests(unittest.TestCase):
         self.assertNotIn("-scale", joined)
         self.assertNotIn("-outsize", joined)
 
+    def test_gdal_failure_includes_stderr_diagnostic(self):
+        import subprocess
+        with patch("local_processing.subprocess.run", side_effect=subprocess.CalledProcessError(1, ["gdal_translate"], stderr="ZSTD codec unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "ZSTD codec unavailable"):
+                lp._run(["gdal_translate", "source.tif", "out.tif"])
+
     def test_structural_validation_passes_matching_cog(self):
         src = {"size": [10, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "coordinateSystem": {"id": {"authority": "EPSG", "code": "4326"}}, "bands": [{"type": "Byte", "colorInterpretation": "Red", "noDataValue": 0}]}
         out = {**src, "metadata": {"IMAGE_STRUCTURE": {"LAYOUT": "COG", "COMPRESSION": "ZSTD"}}}
