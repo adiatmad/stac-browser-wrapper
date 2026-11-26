@@ -1031,7 +1031,8 @@ if active_workflow == "Local processing":
                         st.error(f"Processing failed: {exc}")
                         st.caption("The original is unchanged. Any partial output is removed on failure.")
         result = st.session_state.get("local_processing_result")
-        if result and result.get("source_path") == source:
+        if (result and result.get("source_path") == source
+                and result.get("output_path") == output_path.strip().strip('"')):
             st.subheader("Output verification")
             st.write(f"**Output:** {result['output_path']}")
             st.write(f"**Output size:** {format_bytes(result['output_size_bytes'])}")
