@@ -153,6 +153,8 @@ def inspect_geotiff(
         raise ValueError("Choose a different output path; the original must never be overwritten.")
     if output.exists():
         raise ValueError("Output already exists. Choose a new filename; nothing was overwritten.")
+    if output.suffix.lower() not in {".tif", ".tiff"}:
+        raise ValueError("The output must use a .tif or .tiff filename.")
     if not output.parent.is_dir():
         raise ValueError("The output folder does not exist. Choose an existing folder.")
 
