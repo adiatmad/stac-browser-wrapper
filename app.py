@@ -18,7 +18,7 @@ from shapely.geometry import box, shape
 from typing import Any
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit, parse_qsl
 import xml.etree.ElementTree as ET
-from local_processing import find_gdal_tools, inspect_geotiff, process_lossless_geotiff
+from local_processing import find_gdal_tools, build_gdal_commands
 
 OAM_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
 DEFAULT_SAMPLE_URL = (
@@ -927,132 +927,78 @@ active_workflow = ui.tabs(
 )
 
 if active_workflow == "Local processing":
-    st.header("Local GeoTIFF preflight")
+    st.header("Local GDAL command generator")
     st.caption(
-        "Inspect a local orthomosaic with GDAL, then create a separate lossless GeoTIFF copy if needed. "
-        "All processing happens on this computer; the original is never changed."
+        "Enter the local GeoTIFF path to generate commands. Run them yourself in PowerShell; "
+        "this app does not read, modify, or upload your local imagery."
     )
 
     gdalinfo_path, gdal_translate_path = find_gdal_tools()
     if not gdalinfo_path or not gdal_translate_path:
         st.warning(
-            "GDAL command-line tools were not found. Install QGIS/GDAL or start this app from the "
-            "QGIS / OSGeo4W shell so gdalinfo and gdal_translate are available."
+            "GDAL executables were not found automatically. Install QGIS/GDAL or add "
+            "gdalinfo.exe and gdal_translate.exe to PATH."
         )
     else:
-        st.caption(f"GDAL: {gdalinfo_path}")
-        def _update_local_output_path():
-            current_source = st.session_state.get("local_processing_source", "").strip().strip('"')
-            if current_source:
-                st.session_state["local_processing_output"] = str(
-                    Path(current_source).with_name(Path(current_source).stem + "_oam.tif")
-                )
-
         source_path = st.text_input(
             "Source GeoTIFF",
-            placeholder=r"D:\orthomosaic.tif",
+            placeholder=r"D:\Drone\orthomosaic.tif",
             key="local_processing_source",
-            on_change=_update_local_output_path,
-            help="Full path to the stitched orthomosaic on this computer.",
+            help="Full Windows path to your stitched orthomosaic.",
         )
         source = source_path.strip().strip('"')
-        output_path = st.text_input(
-            "Output GeoTIFF (new file)",
-            value=(
-                str(Path(source).with_name(Path(source).stem + "_oam.tif"))
-                if source else ""
-            ),
-            key="local_processing_output",
-            help="A separate output file. Existing files are never overwritten.",
-        )
-        if st.button("Inspect GeoTIFF", type="primary", disabled=not bool(source)):
-            st.session_state.pop("local_processing_inspection", None)
-            st.session_state.pop("local_processing_result", None)
-            try:
-                with st.spinner("Running gdalinfo…"):
-                    inspection = inspect_geotiff(
-                        gdalinfo_path, gdal_translate_path, source, output_path.strip().strip('"')
-                    )
-                st.session_state["local_processing_inspection"] = inspection
-            except Exception as exc:
-                st.error(f"Inspection failed: {exc}")
-
-        inspection = st.session_state.get("local_processing_inspection")
-        if (inspection and inspection.get("source_path") == source
-                and inspection.get("output_path") == output_path.strip().strip('"')):
-            info = inspection["info"]
-            size = info.get("size") or [None, None]
-            bands = info.get("bands") or []
-            crs = info.get("coordinateSystem") or {}
-            structure = (info.get("metadata") or {}).get("IMAGE_STRUCTURE") or {}
-            st.subheader("Inspection")
-            st.write(f"**Dimensions:** {size[0]} × {size[1]} pixels")
-            st.write(f"**Bands:** {len(bands)} · **Data types:** {', '.join(str(b.get('type', 'unknown')) for b in bands)}")
-            st.write(f"**CRS:** {'Present' if crs else 'Missing'}")
-            st.write(f"**Geotransform:** {'Present' if info.get('geoTransform') else 'Missing'}")
-            st.write(f"**Current compression:** {structure.get('COMPRESSION', 'Not reported')}")
-            st.write(f"**File size:** {format_bytes(inspection['source_size_bytes'])}")
-            if inspection["under_upload_limit"]:
-                st.success("Below the upstream default 100 GiB upload limit. Deployment settings may differ.")
-            else:
-                st.warning("Above the upstream default 100 GiB upload limit.")
-            if inspection["ready"]:
-                st.success("Basic preflight passed: readable GeoTIFF, CRS and valid georeferencing.")
-            else:
-                st.error(inspection["reason"])
-            st.caption(
-                "These are basic file and georeferencing checks, not a guarantee of acceptance: "
-                "OAM performs additional validation during ingestion. ZSTD/tiled output is an optional "
-                "lossless optimization, not a mandatory OAM upload format."
-            )
-            with st.expander("GDAL inspection command and full report"):
-                st.code(inspection["inspect_command"], language="powershell")
-                st.json(info)
-            if inspection["ready"]:
-                st.subheader("Optional lossless output")
-                st.caption(
-                    "Creates a tiled ZSTD GeoTIFF without resampling, resizing or JPEG. "
-                    "OAM creates its serving COG during ingestion."
+        def _update_local_output_path():
+            current = st.session_state.get("local_processing_source", "").strip().strip('"')
+            if current:
+                source_file = Path(current)
+                st.session_state["local_processing_output"] = str(
+                    source_file.with_name(source_file.stem + "_oam.tif")
                 )
-                st.code(" ".join(inspection["compression_command"]), language="powershell")
-                if st.button(
-                    "Create lossless GeoTIFF",
-                    type="primary",
-                    disabled=not bool(output_path.strip()),
-                ):
-                    st.session_state.pop("local_processing_result", None)
-                    try:
-                        with st.spinner("Creating and validating the lossless GeoTIFF…"):
-                            result = process_lossless_geotiff(
-                                gdalinfo_path, gdal_translate_path, source,
-                                output_path.strip().strip('"'), verify_checksums=False
-                            )
-                        st.session_state["local_processing_result"] = result
-                    except Exception as exc:
-                        st.error(f"Processing failed: {exc}")
-                        st.caption("The original is unchanged. Any partial output is removed on failure.")
-        result = st.session_state.get("local_processing_result")
-        if (result and result.get("source_path") == source
-                and result.get("output_path") == output_path.strip().strip('"')):
-            st.subheader("Output verification")
-            st.write(f"**Output:** {result['output_path']}")
-            st.write(f"**Output size:** {format_bytes(result['output_size_bytes'])}")
-            st.write(f"**Size reduction:** {result['reduction_percent']:.1f}%")
-            if result["under_upload_limit"]:
-                st.success("Output is below the upstream default 100 GiB upload limit.")
-            else:
-                st.warning("Output remains above the upstream default 100 GiB upload limit.")
-            issues = result.get("verification_issues") or []
-            if issues:
-                st.error("Output verification found differences:")
-                for issue in issues:
-                    st.markdown(f"- {issue}")
-            else:
-                st.success("Output structure verified: dimensions, geotransform, bands, CRS, tiling and ZSTD.")
-            with st.expander("GDAL output details"):
-                st.json({"source": result["source_info"], "output": result["output_info"]})
-            st.link_button("Open OAM uploader", OAM_UPLOAD_URL)
-            st.caption("Upload the output manually. This app never uploads imagery or credentials.")
+
+        if source and "local_processing_output" not in st.session_state:
+            _update_local_output_path()
+        output_path = st.text_input(
+            "Output GeoTIFF (separate file)",
+            key="local_processing_output",
+            help="A new filename is suggested automatically. Never use the source filename.",
+        )
+        output = output_path.strip().strip('"')
+
+        if source:
+            st.subheader("1. Inspect the source")
+            st.caption("Copy this command into PowerShell. It writes the full GDAL report as JSON.")
+            inspect_command = f'& "{gdalinfo_path}" -json "{source}"'
+            st.code(inspect_command, language="powershell")
+            st.caption("Run the command, copy its complete JSON output, and paste it below.")
+            gdalinfo_json = st.text_area(
+                "Paste gdalinfo JSON output",
+                height=220,
+                key="local_processing_gdalinfo_json",
+                placeholder='{"description": "...", "driverShortName": "GTiff", ...}',
+            )
+            if gdalinfo_json.strip():
+                st.subheader("2. Generate the lossless processing command")
+                try:
+                    commands = build_gdal_commands(
+                        gdal_translate_path, source, output, gdalinfo_json
+                    )
+                    st.success("GDAL metadata parsed. Basic GeoTIFF and georeferencing checks passed.")
+                    st.write(f"**Output file:** {commands['output_path']}")
+                    st.caption(
+                        "This command creates a separate tiled ZSTD GeoTIFF using lossless "
+                        "compression. It does not resample, resize, or use JPEG. Compression "
+                        "may not reduce every input file's size."
+                    )
+                    st.code(commands["translate_command"], language="powershell")
+                    st.caption(
+                        "Copy and run the command yourself. GDAL normally refuses an existing "
+                        "destination; check the output path before running. The original is not "
+                        "the destination."
+                    )
+                except ValueError as exc:
+                    st.error(f"Cannot generate the processing command: {exc}")
+        else:
+            st.info("Enter the full path to a local .tif or .tiff file to generate the inspection command.")
 
 elif active_workflow == "Discover & map":
     st.header("Choose an imagery source")
