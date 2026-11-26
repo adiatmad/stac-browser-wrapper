@@ -44,9 +44,9 @@ The **Local processing** tab runs GDAL on the imagery computer. No imagery is se
 1. Run the app locally on the computer containing the GeoTIFF.
 2. Ensure QGIS/GDAL is installed; the app detects GDAL CLI tools on PATH or common Windows install paths.
 3. Select the stitched orthomosaic and output filename.
-4. Click **Inspect and compress**. GDAL writes a tiled GeoTIFF using lossless ZSTD level 12, predictor, 512-pixel tiles, BigTIFF, and multithreading.
-5. Review size reduction and validation. The original is never overwritten. Full-resolution checksum comparison is optional because it rereads the large file; GDAL checksums are only a practical integrity check.
-6. Upload the output manually using the official [OAM uploader](https://upload.imagery.hotosm.org/).
+4. Click **Inspect GeoTIFF** to run `gdalinfo -json` and review dimensions, bands, CRS, geotransform, compression, and file size. These are basic preflight checks, not a guarantee of OAM acceptance.
+5. If the source passes, review the generated `gdal_translate` command and click **Create lossless GeoTIFF** to make a separate tiled ZSTD copy. This is an optional lossless optimization, not a mandatory OAM upload format.
+6. Review output validation and size. The original is never overwritten. Upload the output manually using the official [OAM uploader](https://upload.imagery.hotosm.org/).
 
 **Why not create a COG locally?** OAM performs its own ingestion and creates its serving COG. A local COG and overview generation add work and temporary storage without being required for upload. Compression ratio depends on image content; if the output is not smaller or remains above the deployed upload limit, use the original or confirm the limit with the OAM operator.
 
