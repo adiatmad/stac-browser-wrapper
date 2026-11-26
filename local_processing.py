@@ -82,6 +82,27 @@ def compression_command(
     ]
 
 
+
+def _has_valid_georeferencing(info: dict[str, Any]) -> bool:
+    """Check GeoTIFF driver, positive raster dimensions, CRS, and a nonsingular affine transform."""
+    if info.get("driverShortName") != "GTiff":
+        return False
+    size = info.get("size") or []
+    if len(size) != 2 or any(int(value) <= 0 for value in size):
+        return False
+    crs = info.get("coordinateSystem") or {}
+    if not (crs.get("id") or crs.get("wkt") or crs.get("projjson")):
+        return False
+    transform = info.get("geoTransform") or []
+    if len(transform) != 6:
+        return False
+    try:
+        determinant = float(transform[1]) * float(transform[5]) - float(transform[2]) * float(transform[4])
+    except (TypeError, ValueError):
+        return False
+    return determinant != 0
+
+
 def _compare_raster_structure(source: dict[str, Any], output: dict[str, Any]) -> list[str]:
     issues: list[str] = []
     for key, label in (("size", "dimensions"), ("geoTransform", "geotransform")):
@@ -137,8 +158,8 @@ def process_lossless_geotiff(
         raise ValueError("The output folder does not exist. Choose an existing folder.")
 
     source_info = read_raster_info(gdalinfo_path, str(source), checksums=verify_checksums)
-    if not source_info.get("coordinateSystem") or not source_info.get("geoTransform"):
-        raise ValueError("Source is missing a CRS or geotransform. Correct it in QGIS first; compression cannot repair georeferencing.")
+    if not _has_valid_georeferencing(source_info):
+        raise ValueError("Source must be a GeoTIFF with positive dimensions, a CRS, and a valid affine transform. Correct it in QGIS first.")
 
     bands = source_info.get("bands") or []
     dtype = str(bands[0].get("type", "")).lower()
