@@ -19,7 +19,7 @@ from shapely.geometry import box, shape
 from typing import Any
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit, parse_qsl
 import xml.etree.ElementTree as ET
-from local_processing import find_gdal_tools, process_lossless_cog, OAM_UPLOAD_LIMIT_BYTES
+from local_processing import find_gdal_tools, process_lossless_cog
 
 OAM_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
 SPACE_EYE_LICENSE = "CC-BY-4.0"
