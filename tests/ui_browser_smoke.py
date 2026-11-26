@@ -197,7 +197,7 @@ def main() -> None:
                 discover_tab.focus()
                 discover_tab.press("Enter")
                 page.get_by_role("heading", name="Choose an imagery source").wait_for()
-                page.get_by_role("heading", name="Local geospatial imagery preparation").wait_for(state="detached")
+                page.get_by_role("heading", name="Local GeoTIFF compression").wait_for(state="detached")
                 wait_for_streamlit_idle(page)
 
                 page.set_viewport_size({"width": 390, "height": 844})
@@ -223,8 +223,8 @@ def main() -> None:
                 wait_for_streamlit_idle(page)
                 expect(page.get_by_role("textbox", name="Data Catalog URL:")).to_be_visible()
 
-                page.get_by_role("tab", name="Local preparation").click()
-                page.get_by_role("heading", name="Local geospatial imagery preparation").wait_for()
+                page.get_by_role("tab", name="Local processing").click()
+                page.get_by_role("heading", name="Local GeoTIFF compression").wait_for()
                 page.wait_for_timeout(300)
                 assert_no_horizontal_overflow(page, "Local processing at 390px")
                 page.screenshot(
