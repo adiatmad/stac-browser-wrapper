@@ -77,7 +77,7 @@ def compression_command(
     return [
         gdal_translate_path, "-of", "GTiff",
         "-co", "TILED=YES", "-co", "BLOCKXSIZE=512", "-co", "BLOCKYSIZE=512",
-        "-co", "COMPRESS=ZSTD", "-co", "ZSTD_LEVEL=9", "-co", f"PREDICTOR={predictor}",
+        "-co", "COMPRESS=ZSTD", "-co", "ZSTD_LEVEL=12", "-co", f"PREDICTOR={predictor}",
         "-co", "BIGTIFF=YES", "-co", "NUM_THREADS=ALL_CPUS", source, output,
     ]
 
