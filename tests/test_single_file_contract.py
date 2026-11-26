@@ -128,7 +128,7 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertIn('"Usable GeoTIFFs"', source)
         self.assertIn('m1, m2, m3, m4 = st.columns(4)', source)
         self.assertIn('st.header("Prepare a handoff")', source)
-        self.assertIn('st.header("Local GeoTIFF preflight")', source)
+        self.assertIn('st.header("Local GDAL command generator")', source)
         self.assertIn('key="local_processing_source"', source)
         self.assertIn("build_gdal_commands(", source)
         self.assertIn("2. Generate the lossless processing command", source)
