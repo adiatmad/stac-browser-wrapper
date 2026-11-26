@@ -21,7 +21,7 @@ class LocalProcessingTests(unittest.TestCase):
 
     def test_structural_validation_passes_matching_tiled_geotiff(self):
         src = {"size": [10, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "coordinateSystem": {"id": {"authority": "EPSG", "code": "4326"}}, "bands": [{"type": "Byte", "colorInterpretation": "Red", "noDataValue": 0}]}
-        out = {**src, "metadata": {"IMAGE_STRUCTURE": {"COMPRESSION": "ZSTD"}}, "bands": [{"block": [512, 512]}]}
+        out = {**src, "metadata": {"IMAGE_STRUCTURE": {"COMPRESSION": "ZSTD"}}, "bands": [{"block": [512, 512], **src["bands"][0]}]}
         self.assertEqual(lp._compare_raster_structure(src, out), [])
 
     def test_validation_detects_structure_and_compression_issues(self):
@@ -30,7 +30,6 @@ class LocalProcessingTests(unittest.TestCase):
         issues = lp._compare_raster_structure(src, out)
         self.assertTrue(any("dimensions" in x for x in issues))
         self.assertTrue(any("ZSTD" in x for x in issues))
-        self.assertTrue(any("ZSTD" in x for x in issues))
 
     def test_existing_output_never_overwritten(self):
         with tempfile.TemporaryDirectory() as td:
@@ -38,7 +37,7 @@ class LocalProcessingTests(unittest.TestCase):
             src.write_bytes(b"source"); out.write_bytes(b"preserve")
             with patch.object(lp, "_run") as mocked:
                 with self.assertRaisesRegex(ValueError, "already exists"):
-                    lp.process_lossless_cog("gdalinfo", "gdal_translate", str(src), str(out), False)
+                    lp.process_lossless_geotiff("gdalinfo", "gdal_translate", str(src), str(out), False)
                 mocked.assert_not_called()
             self.assertEqual(out.read_bytes(), b"preserve")
 
