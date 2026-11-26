@@ -45,7 +45,7 @@ def wait_for_streamlit_idle(page) -> None:
 
 
 def exercise_stac_discovery(page) -> None:
-    page.locator("summary").filter(has_text="Find a public STAC catalog").click()
+    page.get_by_text("Find a public STAC catalog", exact=True).click()
     page.get_by_role("button", name="Load public catalog directory").click()
     catalog_search = page.get_by_role("textbox", name="Search catalog name or description")
     catalog_search.wait_for(timeout=60_000)
@@ -64,7 +64,7 @@ def exercise_stac_discovery(page) -> None:
     )
 
     page.get_by_role("tab", name="OpenAerialMap").click()
-    page.locator("summary").filter(has_text="Grytdalen Tjern").click()
+    page.get_by_text("Grytdalen Tjern", exact=True).click()
     expect(page.get_by_text("STAC thumbnail asset", exact=True)).to_have_count(
         2, timeout=30_000
     )
