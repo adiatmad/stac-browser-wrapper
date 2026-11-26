@@ -7,7 +7,7 @@ import local_processing as lp
 class LocalProcessingTests(unittest.TestCase):
     def test_command_is_lossless_zstd_geotiff(self):
         joined = " ".join(lp.compression_command("gdal_translate", "source.tif", "out.tif", predictor=2))
-        for opt in ("COMPRESS=ZSTD", "ZSTD_LEVEL=9", "PREDICTOR=2", "BLOCKXSIZE=512", "BLOCKYSIZE=512", "BIGTIFF=YES", "NUM_THREADS=ALL_CPUS"):
+        for opt in ("COMPRESS=ZSTD", "ZSTD_LEVEL=12", "PREDICTOR=2", "BLOCKXSIZE=512", "BLOCKYSIZE=512", "BIGTIFF=YES", "NUM_THREADS=ALL_CPUS"):
             self.assertIn(opt, joined)
         self.assertNotIn("JPEG", joined)
         self.assertNotIn("-scale", joined)
