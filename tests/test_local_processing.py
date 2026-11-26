@@ -21,12 +21,12 @@ class LocalProcessingTests(unittest.TestCase):
 
     def test_structural_validation_passes_matching_tiled_geotiff(self):
         src = {"size": [10, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "coordinateSystem": {"id": {"authority": "EPSG", "code": "4326"}}, "bands": [{"type": "Byte", "colorInterpretation": "Red", "noDataValue": 0}]}
-        out = {**src, "metadata": {"IMAGE_STRUCTURE": {"COMPRESSION": "ZSTD"}}, "bands": [{"block": [512, 512], **src["bands"][0]}]}
+        out = {**src, "metadata": {"IMAGE_STRUCTURE": {"COMPRESSION": "ZSTD"}}, "driverShortName": "GTiff", "bands": [{"block": [512, 512], **src["bands"][0]}]}
         self.assertEqual(lp._compare_raster_structure(src, out), [])
 
     def test_validation_detects_structure_and_compression_issues(self):
         src = {"size": [10, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "bands": []}
-        out = {"size": [11, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "bands": [], "metadata": {"IMAGE_STRUCTURE": {"COMPRESSION": "DEFLATE"}}, "bands": [{"block": [20, 10]}]}
+        out = {"size": [11, 20], "geoTransform": [0, 1, 0, 20, 0, -1], "bands": [], "metadata": {"IMAGE_STRUCTURE": {"COMPRESSION": "DEFLATE"}}, "driverShortName": "GTiff", "bands": [{"block": [20, 10]}]}
         issues = lp._compare_raster_structure(src, out)
         self.assertTrue(any("dimensions" in x for x in issues))
         self.assertTrue(any("ZSTD" in x for x in issues))
