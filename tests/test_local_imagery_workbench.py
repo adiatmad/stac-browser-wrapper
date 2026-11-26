@@ -10,31 +10,29 @@ SOURCE = ROOT / "app.py"
 
 
 class ReportDrivenLocalImageryWorkflowTests(unittest.TestCase):
-    def test_local_preparation_generates_commands_without_executing_local_gdal(self):
+    def test_local_processing_runs_gdal_on_local_orthomosaic(self):
         source = SOURCE.read_text(encoding="utf-8")
+        helpers = (ROOT / "local_processing.py").read_text(encoding="utf-8")
         ast.parse(source, filename="app.py")
+        ast.parse(helpers, filename="local_processing.py")
 
-        self.assertIn("build_osgeo4w_commands(source_value)", source)
-        self.assertIn("gdalinfo -json", source)
-        self.assertIn('"report_file": f"gdalinfo -json {quoted} > {report_path}"', source)
-        self.assertIn('"copy_report": f"clip < {report_path}"', source)
-        self.assertIn('"open_report": f"notepad {report_path}"', source)
-        self.assertNotIn('gdalinfo -json {quoted} | clip', source)
-        self.assertIn("parse_oam_gdalinfo_report(report_text)", source)
-        self.assertIn("gdal_report_matches_path(info, source_value)", source)
-        self.assertIn("has_usable_geotransform(info)", source)
-
-        # The hosted app must never try to inspect a user's local filesystem.
-        self.assertNotIn("subprocess.run(", source)
-        self.assertNotIn("run_local_gdalinfo", source)
-        self.assertNotIn("resolve_local_gdal_tools", source)
-        self.assertNotIn("Path(source_value)", source)
-        self.assertNotIn("source_value.is_file()", source)
+        self.assertIn('options=["Discover & map", "Local processing"]', source)
+        self.assertIn("find_gdal_tools()", source)
+        self.assertIn("process_lossless_cog(", source)
+        self.assertIn("gdalinfo -json", helpers)
+        self.assertIn("COMPRESS=ZSTD", helpers)
+        self.assertIn("LEVEL=12", helpers)
+        self.assertIn("PREDICTOR=YES", helpers)
+        self.assertIn("OVERVIEW_RESAMPLING=AVERAGE", helpers)
+        self.assertIn("source.resolve() == output.resolve()", helpers)
+        self.assertIn("output.exists()", helpers)
+        self.assertIn("checksum", helpers)
+        self.assertNotIn("JPEG", helpers)
 
     def test_oam_handoff_opens_uploader_without_a_separate_metadata_form(self):
         source = SOURCE.read_text(encoding="utf-8")
         self.assertIn('st.link_button("Open official OAM uploader", OAM_UPLOAD_URL)', source)
-        self.assertIn('st.markdown("### 7 · Open the OAM uploader")', source)
+        self.assertIn('Open official OAM uploader', source)
         self.assertNotIn("local_oam_metadata_form", source)
         self.assertNotIn("build_oam_local_prefill_url", source)
 
