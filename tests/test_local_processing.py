@@ -48,14 +48,14 @@ class LocalProcessingTests(unittest.TestCase):
             with patch.object(lp, "read_raster_info", return_value={"size": [1, 1], "bands": [{"type": "Byte"}]}):
                 with patch.object(lp, "_run") as mocked:
                     with self.assertRaisesRegex(ValueError, "missing a CRS"):
-                        lp.process_lossless_cog("gdalinfo", "gdal_translate", str(src), str(out), False)
+                        lp.process_lossless_geotiff("gdalinfo", "gdal_translate", str(src), str(out), False)
                     mocked.assert_not_called()
 
     def test_source_output_same_path_refused(self):
         with tempfile.TemporaryDirectory() as td:
             src = Path(td)/"src.tif"; src.write_bytes(b"source")
             with self.assertRaisesRegex(ValueError, "different output"):
-                lp.process_lossless_cog("gdalinfo", "gdal_translate", str(src), str(src), False)
+                lp.process_lossless_geotiff("gdalinfo", "gdal_translate", str(src), str(src), False)
 
 if __name__ == "__main__":
     unittest.main()
