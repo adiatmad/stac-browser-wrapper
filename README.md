@@ -45,7 +45,7 @@ The **Local processing** tab runs GDAL on the Windows computer containing the or
 2. Ensure GDAL CLI tools (`gdalinfo` and `gdal_translate`) are available on PATH, or installed through QGIS/OSGeo4W where the app can detect them.
 3. Enter the full path to the stitched GeoTIFF and the new output path.
 4. Click **Inspect and compress**. The app creates a separate COG using lossless ZSTD level 12, predictor, 512-pixel tiles, BigTIFF, and multithreaded compression.
-5. Full-resolution pixel values are not resampled or JPEG-compressed. Display overviews are generated using average resampling. The optional (default-on) band checksum verification reads both source and output again and can take significant time on large files.
+5. COG generation may need additional temporary disk space for overview creation (GDAL documents roughly one third of final output size for common CreateCopy workflows). Ensure the output disk has adequate free space. Full-resolution pixel values are not resampled or JPEG-compressed. Display overviews are generated using average resampling. The optional (default-on) band checksum verification reads both source and output again and can take significant time on large files.
 6. Review the output size and verification report. The original remains untouched; existing output files are never overwritten. If compression does not reduce size, use the original instead.
 7. Upload the compressed output manually through the official [OAM uploader](https://upload.imagery.hotosm.org/). The app does not upload files or metadata automatically.
 
