@@ -1454,10 +1454,18 @@ if active_workflow == "Local processing":
         )
     else:
         st.caption(f"GDAL detected: {gdalinfo_path}")
+        def _update_local_output_path():
+            current_source = st.session_state.get("local_processing_source", "").strip().strip('"')
+            if current_source:
+                st.session_state["local_processing_output"] = str(
+                    Path(current_source).with_name(Path(current_source).stem + "_oam_zstd_cog.tif")
+                )
+
         source_path = st.text_input(
             "Source orthomosaic GeoTIFF",
             placeholder=r"D:\orthomosaic.tif",
             key="local_processing_source",
+            on_change=_update_local_output_path,
             help="Enter the full path to your stitched GeoTIFF on this Windows computer.",
         )
         source = source_path.strip().strip('"')
