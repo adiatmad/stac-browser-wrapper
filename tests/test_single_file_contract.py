@@ -22,7 +22,7 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertIn('options=["Discover & map", "Local processing"]', source)
         self.assertIn('key="local_processing_source"', source)
         self.assertIn("process_lossless_geotiff(", source)
-        self.assertIn("ZSTD level 9", source)
+        self.assertIn("ZSTD level 12", source)
         self.assertIn("100 GiB default upload limit", source)
         self.assertIn("Open official OAM uploader", source)
         self.assertIn("COMPRESS=ZSTD", helpers)
