@@ -182,9 +182,9 @@ def main() -> None:
                 )
                 exercise_stac_discovery(page)
 
-                local_tab = page.get_by_role("tab", name="Local preparation")
+                local_tab = page.get_by_role("tab", name="Local processing")
                 local_tab.click()
-                page.get_by_role("heading", name="Local geospatial imagery preparation").wait_for()
+                page.get_by_role("heading", name="Local GeoTIFF compression").wait_for()
                 assert page.get_by_role(
                     "heading", name="Choose an imagery source"
                 ).count() == 0
@@ -226,7 +226,7 @@ def main() -> None:
                 page.get_by_role("tab", name="Local preparation").click()
                 page.get_by_role("heading", name="Local geospatial imagery preparation").wait_for()
                 page.wait_for_timeout(300)
-                assert_no_horizontal_overflow(page, "Local preparation at 390px")
+                assert_no_horizontal_overflow(page, "Local processing at 390px")
                 page.screenshot(
                     path=str(ARTIFACTS / "workbench-local-mobile.png"),
                     full_page=True,
