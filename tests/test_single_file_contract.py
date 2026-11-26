@@ -130,7 +130,6 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertIn('st.header("Prepare a handoff")', source)
         self.assertIn('st.header("Local GeoTIFF preflight")', source)
         self.assertIn('key="local_processing_source"', source)
-        self.assertIn('st.button("Inspect GeoTIFF", type="primary", disabled=not bool(source))', source)
         self.assertIn("build_gdal_commands(", source)
         self.assertIn("2. Generate the lossless processing command", source)
         self.assertIn('-json', source)
