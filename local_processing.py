@@ -260,10 +260,15 @@ def build_gdal_commands(
         raise ValueError("Output path must end in .tif or .tiff.")
     if str(source).casefold() == str(output).casefold():
         raise ValueError("Output path must be different from the source; the original must never be overwritten.")
+    # Accept raw JSON or a complete PowerShell transcript. The latter commonly
+    # includes a banner, command prompt, and trailing prompt around gdalinfo JSON.
+    json_start = gdalinfo_json.find("{")
+    if json_start < 0:
+        raise ValueError("No JSON object found. Paste the gdalinfo -json output, or the complete PowerShell terminal output containing it.")
     try:
-        info = json.loads(gdalinfo_json)
+        info, _ = json.JSONDecoder().raw_decode(gdalinfo_json[json_start:])
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Paste the complete, valid JSON output from gdalinfo -json (line {exc.lineno}, column {exc.colno}).") from exc
+        raise ValueError(f"Could not parse the gdalinfo JSON object (line {exc.lineno}, column {exc.colno}). Make sure the complete JSON output was copied.") from exc
     if not isinstance(info, dict):
         raise ValueError("The pasted gdalinfo JSON must be a JSON object.")
     if not _has_valid_georeferencing(info):
