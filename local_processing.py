@@ -103,8 +103,8 @@ def process_lossless_cog(gdalinfo_path: str, gdal_translate_path: str, source_pa
     if source.suffix.lower() not in {".tif", ".tiff"}:
         raise ValueError("Choose a stitched orthomosaic GeoTIFF (.tif or .tiff).")
     source_info = read_raster_info(gdalinfo_path, str(source), checksums=verify_checksums)
-    if not (source_info.get("coordinateSystem") or source_info.get("geoTransform")):
-        raise ValueError("Source has no reported georeferencing. Stop; compression cannot fix this.")
+    if not source_info.get("coordinateSystem") or not source_info.get("geoTransform"):
+        raise ValueError("Source is missing a CRS or geotransform. Stop; compression cannot repair georeferencing. Correct it in QGIS first, then retry.")
     command = compression_command(gdal_translate_path, str(source), str(output))
     _run(command)
     output_info = read_raster_info(gdalinfo_path, str(output), checksums=verify_checksums)
