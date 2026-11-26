@@ -967,7 +967,7 @@ if active_workflow == "Local processing":
             key="local_processing_verify_checksums",
         )
         st.info(
-            "Recommended: **tiled GeoTIFF + lossless ZSTD level 9 + predictor**. "
+            "Recommended: **tiled GeoTIFF + lossless ZSTD level 12 + predictor**. "
             "Full-resolution pixels are preserved: no resizing, resampling, or JPEG encoding. "
             "OAM creates the serving COG during ingestion."
         )
