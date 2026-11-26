@@ -21,6 +21,11 @@ import xml.etree.ElementTree as ET
 from local_processing import find_gdal_tools, process_lossless_geotiff
 
 OAM_UPLOAD_URL = "https://upload.imagery.hotosm.org/"
+DEFAULT_SAMPLE_URL = (
+    "https://browser.moregeo.it/external/vantor-opendata.s3.amazonaws.com/"
+    "events/Indonesia-Earthquakes-Aug-2026/collection.json"
+)
+
 SPACE_EYE_LICENSE = "CC-BY-4.0"
 SPACE_EYE_PROVIDER = "SI Imaging Services"
 SPACE_EYE_PLATFORM = "satellite"
