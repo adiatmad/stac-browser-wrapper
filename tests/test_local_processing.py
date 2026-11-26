@@ -51,6 +51,28 @@ class LocalProcessingTests(unittest.TestCase):
         self.assertIn("orthomosaic_oam.tif", result["translate_command"])
         self.assertNotIn("orthomosaic.tif' 'orthomosaic.tif", result["translate_command"])
 
+    def test_pasted_full_powershell_transcript_generates_command(self):
+        import json
+        info = {
+            "driverShortName": "GTiff",
+            "size": [29145, 46646],
+            "coordinateSystem": {"wkt": "WGS 84"},
+            "geoTransform": [121.2, 0.0000047, 0, -8.4, 0, -0.0000046],
+            "bands": [{"type": "Byte"}, {"type": "Byte"}, {"type": "Byte"}],
+        }
+        transcript = (
+            "Windows PowerShell 5.1\\n"
+            "PS C:\\WINDOWS\\system32> gdalinfo.exe -json source.tif\\n"
+            + json.dumps(info, indent=2)
+            + "\\nPS C:\\WINDOWS\\system32>"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            source = str(Path(td) / "source.tif")
+            output = str(Path(td) / "source_oam.tif")
+            result = lp.build_gdal_commands("C:/QGIS/gdal_translate.exe", source, output, transcript)
+        self.assertIn("source_oam.tif", result["translate_command"])
+        self.assertEqual(result["predictor"], "2")
+
     def test_gdalinfo_json_rejects_missing_georeferencing(self):
         with self.assertRaisesRegex(ValueError, "Basic preflight failed"):
             lp.build_gdal_commands("gdal_translate", "source.tif", "out.tif", '{"driverShortName":"GTiff"}')
