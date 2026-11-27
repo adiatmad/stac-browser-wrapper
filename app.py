@@ -978,31 +978,39 @@ if active_workflow == "Local processing":
                 placeholder="Paste the full PowerShell output, including the gdalinfo JSON object...",
             )
             if gdalinfo_json.strip():
-                st.subheader("2. Generate the lossless processing command")
+                st.subheader("2. Analyze source and recommend an action")
                 try:
                     commands = build_gdal_commands(
                         gdal_translate_path, source, output, gdalinfo_json
                     )
-                    st.success("GDAL metadata parsed. Basic GeoTIFF and georeferencing checks passed.")
-                    st.write(f"**Output file:** {commands['output_path']}")
-                    st.caption(
-                        "This command creates a separate tiled ZSTD GeoTIFF using lossless "
-                        "compression. It does not resample, resize, or use JPEG. Compression "
-                        "may not reduce every input file's size."
-                    )
-                    st.text_area(
-                        "PowerShell command (copy and run)",
-                        value=commands["translate_command"],
-                        height=220,
-                        key="local_processing_translate_command_display",
-                    )
-                    st.caption(
-                        "Copy and run the command yourself. GDAL normally refuses an existing "
-                        "destination; check the output path before running. The original is not "
-                        "the destination."
-                    )
+                    st.success("Metadata parsed. Basic GeoTIFF and georeferencing checks passed.")
+                    st.write(f"**Detected compression:** {commands['source_compression']}")
+                    if commands["photometric"]:
+                        st.write(f"**Photometric interpretation:** {commands['photometric']}")
+                    st.info(commands["recommendation"])
+                    if commands["action"] == "keep_original":
+                        st.caption(
+                            "No conversion command is generated. The original is already JPEG-compressed; "
+                            "lossless conversion can balloon file size, and another JPEG encode would add loss. "
+                            "Use the original TIFF for OAM."
+                        )
+                    else:
+                        st.write(f"**Candidate output:** {commands['output_path']}")
+                        st.caption(
+                            "This candidate uses tiled lossless ZSTD. It does not resample or resize. "
+                            "Size reduction is not guaranteed—compare the output with the original before upload."
+                        )
+                        st.text_area(
+                            "PowerShell command (copy and run)",
+                            value=commands["translate_command"],
+                            height=220,
+                            key="local_processing_translate_command_display",
+                        )
+                        st.caption(
+                            "Run the command yourself. It refuses an existing output path; the original is never the destination."
+                        )
                 except ValueError as exc:
-                    st.error(f"Cannot generate the processing command: {exc}")
+                    st.error(f"Cannot generate a recommendation: {exc}")
         else:
             st.info("Enter the full path to a local .tif or .tiff file to generate the inspection command.")
 
