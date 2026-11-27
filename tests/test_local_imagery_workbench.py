@@ -27,7 +27,9 @@ class LocalImageryWorkflowTests(unittest.TestCase):
         self.assertIn("source.resolve() == output.resolve()", helpers)
         self.assertIn("output.exists()", helpers)
         self.assertIn("checksum", helpers)
-        self.assertNotIn("JPEG", helpers)
+        self.assertIn("JPEG", helpers)  # JPEG-compressed sources are detected and left unchanged.
+        self.assertIn("recommend_processing", helpers)
+        self.assertIn('commands["action"] == "keep_original"', source)
 
     def test_oam_handoff_opens_uploader_without_a_separate_metadata_form(self):
         source = SOURCE.read_text(encoding="utf-8")
