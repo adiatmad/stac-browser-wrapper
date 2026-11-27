@@ -14,86 +14,23 @@ class HostedSingleFileContractTests(unittest.TestCase):
         self.assertNotIn("from utils.oam_sources import", source)
         self.assertNotIn("from mosaic_core import", source)
 
-    def test_local_raster_workflow_uses_one_path(self):
+    def test_local_processing_workflow_is_lossless_and_local_only(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn("Local raster path", source)
-        self.assertIn("gdalinfo -json", source)
-        self.assertIn("build_osgeo4w_commands(source_value)", source)
-        self.assertIn('st.form("oam_gdal_report_form"', source)
-        self.assertIn('st.form_submit_button("Analyse GDAL report", type="primary")', source)
-        self.assertIn("never opens your D: drive or receives raster bytes.", source)
-        self.assertIn("Review the report for sensitive file paths or metadata before pasting.", source)
-        self.assertIn("100 GiB OAM uploader ceiling", source)
-        self.assertIn("OAM creates its own COG", source)
-        self.assertIn('st.link_button("Open official OAM uploader", OAM_UPLOAD_URL)', source)
-        self.assertNotIn("build_oam_local_prefill_url", source)
-        self.assertNotIn("Separate DroneTM task-download and mosaic workflow", source)
-        self.assertNotIn("https://github.com/adiatmad/dronetm-progress-mosaic", source)
-        self.assertNotIn("api.drone.hotosm.org", source)
+        helpers = (ROOT / "local_processing.py").read_text(encoding="utf-8")
+        ast.parse(source, filename="app.py")
+        ast.parse(helpers, filename="local_processing.py")
+        self.assertIn('options=["Discover & map", "Local processing"]', source)
+        self.assertIn('key="local_processing_source"', source)
+        self.assertIn("build_gdal_commands(", source)
+        self.assertIn("not a mandatory OAM upload format", source)
+        self.assertIn("does not read, modify, or upload your local imagery", source)
+        self.assertIn("Paste gdalinfo JSON output", source)
+        self.assertIn("COMPRESS=ZSTD", helpers)
+        self.assertIn("PREDICTOR=", helpers)
+        self.assertIn("BIGTIFF=YES", helpers)
+        self.assertIn("build_gdal_commands(", helpers)
+        self.assertNotIn("JPEG", helpers)
         self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
-
-    def test_generated_cog_commands_refuse_to_overwrite_existing_outputs(self):
-        source = (ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertNotIn("gdalwarp -overwrite", source)
-        self.assertNotIn("Remove-Item $out -Force", source)
-        self.assertIn("Test-Path -LiteralPath $out", source)
-        self.assertIn("Output already exists; choose a different output path.", source)
-
-    def test_inlined_validation_helpers_match_existing_module(self):
-        import re
-        from typing import Any
-        from validate_imagery import (
-            parse_gdalinfo_text as original_parse,
-            validate_info as original_validate,
-            build_oam_recommendation as original_recommend,
-        )
-
-        source = (ROOT / "app.py").read_text(encoding="utf-8")
-        tree = ast.parse(source, filename="app.py")
-        wanted = {
-            "metadata_value", "first_band", "band_types", "color_interpretations",
-            "has_overviews", "is_tiled", "crs_present", "bounds_summary",
-            "add_check", "parse_gdalinfo_text", "validate_info",
-            "build_oam_recommendation",
-        }
-        body = []
-        for node in tree.body:
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in wanted:
-                body.append(node)
-            elif isinstance(node, ast.Assign) and any(
-                isinstance(target, ast.Name) and target.id == "STATUS_ORDER"
-                for target in node.targets
-            ):
-                body.append(node)
-        namespace = {"re": re, "Any": Any, "Path": __import__("pathlib").Path}
-        exec(compile(ast.Module(body=body, type_ignores=[]), "app.py", "exec"), namespace)
-
-        gdal_text = """Driver: GTiff/GeoTIFF
-Size is 20, 10
-Coordinate System is:
-GEOGCRS["WGS 84",
-    ID["EPSG",4326]]
-Origin = (1.0,2.0)
-Pixel Size = (0.1,-0.1)
-Corner Coordinates:
-Upper Left (1.0,2.0)
-Lower Right (3.0,1.0)
-Band 1 Block=20x10 Type=Byte, ColorInterp=Red
-Band 2 Block=20x10 Type=Byte, ColorInterp=Green
-Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
-"""
-        parsed_inline = namespace["parse_gdalinfo_text"](gdal_text)
-        parsed_original = original_parse(gdal_text)
-        self.assertEqual(parsed_inline, parsed_original)
-        self.assertEqual(namespace["validate_info"](parsed_inline), original_validate(parsed_original))
-        inline_recommendation = namespace["build_oam_recommendation"](parsed_inline, "input.tif")
-        original_recommendation = original_recommend(parsed_original, "input.tif")
-        for field in ("ready", "issues", "output", "notes"):
-            self.assertEqual(inline_recommendation[field], original_recommendation[field])
-        self.assertIn("gdal_translate -of COG -co COMPRESS=DEFLATE", inline_recommendation["command"])
-        self.assertIn('"input.tif" "$out"', inline_recommendation["command"])
-        self.assertIn("Test-Path -LiteralPath $out", inline_recommendation["command"])
-        self.assertNotIn("-overwrite", inline_recommendation["command"])
 
     def test_inlined_oam_helpers_match_existing_module(self):
         import re
@@ -151,7 +88,7 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         ast.parse(source, filename="app.py")
         self.assertIn("import streamlit_shadcn_ui as ui", source)
-        self.assertIn("ui.badge(", source)
+        self.assertIn("ui.tabs(", source)
         self.assertIn("ui.metric_card(", source)
         self.assertRegex(requirements, r"(?m)^streamlit>=1\.60\.0$")
         self.assertRegex(requirements, r"(?m)^streamlit-shadcn-ui>=1\.4\.0,<2\.0\.0$")
@@ -161,7 +98,7 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn("Check OAM v2 for Duplicates", source)
         self.assertIn("Prepare OAM v2 upload", source)
         self.assertIn("Apply filter", source)
-        self.assertIn("This app does not upload the file", source)
+        self.assertIn("never uploads imagery or credentials", source)
         self.assertNotRegex(source, r"requests\.(post|put|patch|delete)\s*\(")
 
     def test_hallmark_workbench_navigation_and_accessibility_shell(self):
@@ -169,17 +106,17 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         ast.parse(source, filename="app.py")
         self.assertIn('st.title("STAC Imagery Workbench")', source)
         self.assertIn('active_workflow = ui.tabs(', source)
-        self.assertIn('options=["Discover & map", "Local preparation"]', source)
+        self.assertIn('options=["Discover & map", "Local processing"]', source)
         self.assertIn('variant="line"', source)
         self.assertIn('key="active-workflow-tabs"', source)
         for existing_key in (
-            "preflight_path",
+            "local_processing_source",
             "source_mode",
             "location_filter_map",
         ):
             self.assertIn(f'key="{existing_key}"', source)
         self.assertNotIn('st.segmented_control(', source)
-        self.assertIn('if active_workflow == "Local preparation":', source)
+        self.assertIn('if active_workflow == "Local processing":', source)
         self.assertIn('elif active_workflow == "Discover & map":', source)
         self.assertIn('with st.spinner("Discovering STAC items and imagery assets..."):', source)
         self.assertIn('No STAC imagery links were found.', source)
@@ -191,17 +128,18 @@ Band 3 Block=20x10 Type=Byte, ColorInterp=Blue
         self.assertIn('"Usable GeoTIFFs"', source)
         self.assertIn('m1, m2, m3, m4 = st.columns(4)', source)
         self.assertIn('st.header("Prepare a handoff")', source)
-        self.assertIn('st.header("Local geospatial imagery preparation")', source)
-        self.assertIn('key="preflight_path"', source)
-        self.assertIn('st.form_submit_button("Analyse GDAL report", type="primary")', source)
-        self.assertIn('gdalinfo -json', source)
+        self.assertIn('st.header("Local GDAL command generator")', source)
+        self.assertIn('key="local_processing_source"', source)
+        self.assertIn("build_gdal_commands(", source)
+        self.assertIn("2. Generate the lossless processing command", source)
+        self.assertIn('-json', source)
         self.assertNotIn('st.form_submit_button("Inspect raster", type="primary")', source)
         self.assertNotIn('Inspect raster with GDAL', source)
         self.assertNotIn('GDAL bin directory (optional)', source)
         self.assertNotIn('Separate DroneTM task-download and mosaic workflow', source)
         self.assertNotIn("<style>", source)
         self.assertNotIn("--app-canvas:", source)
-        self.assertIn("This app does not upload the file", source)
+        self.assertIn("never uploads imagery or credentials", source)
 
     def test_source_selector_only_renders_the_active_source_controls(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
