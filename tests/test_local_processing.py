@@ -73,6 +73,25 @@ class LocalProcessingTests(unittest.TestCase):
         self.assertIn("source_oam.tif", result["translate_command"])
         self.assertEqual(result["predictor"], "2")
 
+    def test_jpeg_compressed_source_recommends_original_and_generates_no_conversion(self):
+        import json
+        info = {
+            "driverShortName": "GTiff",
+            "size": [36902, 48521],
+            "coordinateSystem": {"wkt": "WGS 84"},
+            "geoTransform": [121.2, 0.0000047, 0, -8.4, 0, -0.0000046],
+            "metadata": {"IMAGE_STRUCTURE": {"COMPRESSION": "YCbCr JPEG", "PHOTOMETRIC": "YCBCR", "LAYOUT": "COG"}},
+            "bands": [{"type": "Byte"}, {"type": "Byte"}, {"type": "Byte"}],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            source = str(Path(td) / "already_jpeg.tif")
+            output = str(Path(td) / "already_jpeg_oam.tif")
+            result = lp.build_gdal_commands("gdal_translate", source, output, json.dumps(info))
+        self.assertEqual(result["action"], "keep_original")
+        self.assertIn("JPEG-compressed", result["recommendation"])
+        self.assertEqual(result["translate_command"], "")
+        self.assertEqual(result["source_compression"], "YCBCR JPEG")
+
     def test_gdalinfo_json_rejects_missing_georeferencing(self):
         with self.assertRaisesRegex(ValueError, "Basic preflight failed"):
             lp.build_gdal_commands("gdal_translate", "source.tif", "out.tif", '{"driverShortName":"GTiff"}')
