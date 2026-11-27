@@ -246,13 +246,41 @@ def _powershell_quote(value: str) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+def recommend_processing(info: dict[str, Any]) -> dict[str, str]:
+    """Choose a safe action based on source compression metadata."""
+    structure = _image_structure(info)
+    compression = str(structure.get("COMPRESSION", "UNKNOWN")).upper()
+    photometric = str(structure.get("PHOTOMETRIC", "")).upper()
+    if "JPEG" in compression or compression == "JPG":
+        return {
+            "action": "keep_original",
+            "compression": compression,
+            "photometric": photometric,
+            "reason": (
+                "The source is already JPEG-compressed. Re-encoding it as lossless ZSTD "
+                "can greatly increase size, while another JPEG encode adds quality loss. "
+                "No conversion is recommended; use the original."
+            ),
+        }
+    return {
+        "action": "lossless_zstd",
+        "compression": compression,
+        "photometric": photometric,
+        "reason": (
+            "The source is not identified as JPEG-compressed. A lossless tiled ZSTD "
+            "conversion is a reasonable candidate, but file size may increase; compare "
+            "the result with the original before upload."
+        ),
+    }
+
+
 def build_gdal_commands(
     gdal_translate_path: str,
     source_path: str,
     output_path: str,
     gdalinfo_json: str,
 ) -> dict[str, str]:
-    """Validate pasted gdalinfo JSON and return a copy/paste PowerShell command."""
+    """Analyze pasted metadata and generate a command only when conversion is recommended."""
     source, output = Path(source_path), Path(output_path)
     if source.suffix.lower() not in {".tif", ".tiff"}:
         raise ValueError("Source path must end in .tif or .tiff.")
@@ -276,18 +304,26 @@ def build_gdal_commands(
             "Basic preflight failed. Expected a GTiff with positive dimensions, a CRS, "
             "and a valid affine geotransform. Check the source in QGIS."
         )
-    bands = info.get("bands") or []
-    dtype = str(bands[0].get("type", "")).lower()
-    predictor = 3 if dtype.startswith(("float", "complex")) else 2
-    args = compression_command(gdal_translate_path, str(source), str(output), predictor)
-    command = (
-        f"if (Test-Path -LiteralPath {_powershell_quote(str(output))}) "
-        "{ throw 'Output already exists; choose a new output filename.' }; "
-        + "& " + " ".join(_powershell_quote(arg) for arg in args)
-    )
+    recommendation = recommend_processing(info)
+    command = ""
+    predictor = ""
+    if recommendation["action"] == "lossless_zstd":
+        bands = info.get("bands") or []
+        dtype = str(bands[0].get("type", "")).lower()
+        predictor = str(3 if dtype.startswith(("float", "complex")) else 2)
+        args = compression_command(gdal_translate_path, str(source), str(output), int(predictor))
+        command = (
+            f"if (Test-Path -LiteralPath {_powershell_quote(str(output))}) "
+            "{ throw 'Output already exists; choose a new output filename.' }; "
+            + "& " + " ".join(_powershell_quote(arg) for arg in args)
+        )
     return {
         "source_path": str(source),
         "output_path": str(output),
-        "predictor": str(predictor),
+        "predictor": predictor,
+        "source_compression": recommendation["compression"],
+        "photometric": recommendation["photometric"],
+        "action": recommendation["action"],
+        "recommendation": recommendation["reason"],
         "translate_command": command,
     }
